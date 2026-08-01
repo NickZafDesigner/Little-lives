@@ -1,0 +1,28 @@
+import type { SaveData } from "../data/types";
+
+const SAVE_KEY = "little-lives-save-v1";
+export const SAVE_VERSION = 5;
+
+export function hasSave(): boolean {
+  return localStorage.getItem(SAVE_KEY) !== null;
+}
+
+export function loadSave(): SaveData | null {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as SaveData;
+    if (data.version !== SAVE_VERSION) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export function writeSave(data: SaveData): void {
+  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+}
+
+export function clearSave(): void {
+  localStorage.removeItem(SAVE_KEY);
+}

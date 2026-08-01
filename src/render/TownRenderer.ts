@@ -1,0 +1,555 @@
+import * as THREE from "three";
+import { Palette } from "../game/palette";
+import { TILE, GAME_WIDTH, GAME_HEIGHT } from "../game/constants";
+import { MAP_H, MAP_W, type TownMapData } from "../world/townMap";
+import { buildTerrain } from "../mesh/terrain";
+import {
+  buildBuildings,
+  playerInsideBuilding,
+  type BuildingHandle,
+} from "../mesh/buildings";
+import { buildTownSigns, type SignHandle } from "../mesh/signs";
+import { worldToTile } from "./coords";
+
+export class TownRenderer {
+  readonly renderer: THREE.WebGLRenderer;
+  readonly scene: THREE.Scene;
+  readonly camera: THREE.OrthographicCamera;
+  readonly pickPlane: THREE.Mesh;
+
+  private hemi: THREE.HemisphereLight;
+  private sun: THREE.DirectionalLight;
+  private buildings: BuildingHandle[] = [];
+  private buildingsUpdate: ((dt: number) => void) | null = null;
+  private signs: SignHandle[] = [];
+  private follow = new THREE.Vector3();
+  private followTarget = new THREE.Vector3();
+  /**
+   * Vertical world units in view — smaller = zoomed in.
+   * Default is roughly a lot and a half, Sims-ish.
+   */
+  static readonly FRUSTUM_DEFAULT = 560;
+  static readonly FRUSTUM_MIN = 240;
+  static readonly FRUSTUM_MAX = 980;
+  private frustumSize = TownRenderer.FRUSTUM_DEFAULT;
+  private frustumTarget = TownRenderer.FRUSTUM_DEFAULT;
+  private viewWidth = GAME_WIDTH;
+  private viewHeight = GAME_HEIGHT;
+  private raycaster = new THREE.Raycaster();
+  private pointer = new THREE.Vector2();
+  private moveMarker: THREE.Mesh;
+  private ghost: THREE.Group | null = null;
+  private buildSelection: THREE.BoxHelper | null = null;
+  private gridHelper: THREE.Group | null = null;
+  private hoverOutline: THREE.Group | null = null;
+  private gridHome: { tx: number; ty: number; tw: number; th: number } | null = null;
+  private hoverTw = 0;
+  private hoverTh = 0;
+  private clock = 0;
+  private worldBuilt = false;
+  private camOffset = new THREE.Vector3(120, 300, 250);
+  /** Locked orientation — lookAt is NOT called while the camera moves. */
+  private camQuat = new THREE.Quaternion();
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: false,
+    });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(GAME_WIDTH, GAME_HEIGHT, false);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.setClearColor(Palette.sky, 1);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    this.scene = new THREE.Scene();
+    this.scene.fog = new THREE.Fog(Palette.sky, 500, 1400);
+
+    const aspect = GAME_WIDTH / GAME_HEIGHT;
+    this.camera = new THREE.OrthographicCamera(
+      (-this.frustumSize * aspect) / 2,
+      (this.frustumSize * aspect) / 2,
+      this.frustumSize / 2,
+      -this.frustumSize / 2,
+      0.1,
+      3000,
+    );
+    // Bake a fixed oblique orientation once — never re-derive it per frame.
+    this.camera.position.copy(this.camOffset);
+    this.camera.lookAt(0, 10, 0);
+    this.camera.rotation.order = "YXZ";
+    this.camQuat.copy(this.camera.quaternion);
+
+    this.hemi = new THREE.HemisphereLight(0xfff2dd, 0x7a9e6a, 0.85);
+    this.scene.add(this.hemi);
+
+    this.sun = new THREE.DirectionalLight(0xfff0d0, 1.05);
+    this.sun.position.set(200, 420, 120);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.camera.near = 10;
+    this.sun.shadow.camera.far = 1200;
+    this.sun.shadow.camera.left = -400;
+    this.sun.shadow.camera.right = 400;
+    this.sun.shadow.camera.top = 400;
+    this.sun.shadow.camera.bottom = -400;
+    this.sun.shadow.bias = -0.0008;
+    this.scene.add(this.sun);
+    this.scene.add(this.sun.target);
+
+    // Invisible ground for raycasting
+    this.pickPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(MAP_W * TILE, MAP_H * TILE),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
+    this.pickPlane.rotation.x = -Math.PI / 2;
+    this.pickPlane.position.set((MAP_W * TILE) / 2, 0.05, (MAP_H * TILE) / 2);
+    this.scene.add(this.pickPlane);
+
+    this.moveMarker = new THREE.Mesh(
+      new THREE.RingGeometry(6, 10, 24),
+      new THREE.MeshBasicMaterial({
+        color: Palette.sunflower,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    this.moveMarker.rotation.x = -Math.PI / 2;
+    this.moveMarker.position.y = 1.5;
+    this.scene.add(this.moveMarker);
+  }
+
+  buildWorld(map: TownMapData) {
+    if (this.worldBuilt) return;
+    const terrain = buildTerrain(map);
+    this.scene.add(terrain);
+    const built = buildBuildings();
+    this.scene.add(built.group);
+    this.buildings = built.buildings;
+    this.buildingsUpdate = built.update;
+    const signed = buildTownSigns();
+    this.scene.add(signed.group);
+    this.signs = signed.signs;
+    this.worldBuilt = true;
+  }
+
+  getSigns(): SignHandle[] {
+    return this.signs;
+  }
+
+  setFollow(x: number, z: number) {
+    this.followTarget.set(x, 0, z);
+    this.follow.set(x, 0, z);
+  }
+
+  /** 1 = default; higher = closer; lower = farther out. */
+  getZoom(): number {
+    return TownRenderer.FRUSTUM_DEFAULT / this.frustumTarget;
+  }
+
+  /** Set zoom factor (1 = default). Clamped to FRUSTUM_MIN/MAX. */
+  setZoom(zoom: number) {
+    const z = Math.max(0.05, zoom);
+    this.frustumTarget = THREE.MathUtils.clamp(
+      TownRenderer.FRUSTUM_DEFAULT / z,
+      TownRenderer.FRUSTUM_MIN,
+      TownRenderer.FRUSTUM_MAX,
+    );
+  }
+
+  /** Multiply current zoom (e.g. 1.1 = 10% closer, 0.9 = 10% farther). */
+  adjustZoom(factor: number) {
+    this.setZoom(this.getZoom() * factor);
+  }
+
+  /**
+   * Wheel / trackpad pinch → zoom.
+   * Only pinch (ctrl/meta + wheel) zooms — plain trackpad scroll is ignored
+   * entirely so walking never nudges the frustum.
+   */
+  zoomByWheel(deltaY: number, pinch = false) {
+    if (!pinch) return;
+    const steps = THREE.MathUtils.clamp(deltaY, -400, 400) / 120;
+    const base = 0.28;
+    this.adjustZoom(Math.pow(base, steps));
+  }
+
+  private applyFrustum() {
+    const aspect = this.viewWidth / Math.max(1, this.viewHeight);
+    this.camera.left = (-this.frustumSize * aspect) / 2;
+    this.camera.right = (this.frustumSize * aspect) / 2;
+    this.camera.top = this.frustumSize / 2;
+    this.camera.bottom = -this.frustumSize / 2;
+    this.camera.updateProjectionMatrix();
+  }
+
+  showMoveMarker(tx: number, ty: number) {
+    this.moveMarker.position.x = tx * TILE + TILE / 2;
+    this.moveMarker.position.z = ty * TILE + TILE / 2;
+    const mat = this.moveMarker.material as THREE.MeshBasicMaterial;
+    mat.opacity = 0.95;
+    this.clock = 0;
+  }
+
+  setGhost(mesh: THREE.Group | null) {
+    if (this.ghost) {
+      this.scene.remove(this.ghost);
+      this.ghost = null;
+    }
+    if (mesh) {
+      mesh.traverse((o) => {
+        if (o instanceof THREE.Mesh && o.material instanceof THREE.Material) {
+          const m = (o.material as THREE.MeshLambertMaterial).clone();
+          m.transparent = true;
+          m.opacity = 0.55;
+          o.material = m;
+        }
+      });
+      this.ghost = mesh;
+      this.scene.add(mesh);
+    }
+  }
+
+  setGhostTint(ok: boolean) {
+    if (!this.ghost) return;
+    this.ghost.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshLambertMaterial) {
+        o.material.color.setHex(ok ? 0x76e887 : 0xff7188);
+        o.material.emissive.setHex(ok ? 0x1f8f3a : 0x8f1f32);
+        o.material.emissiveIntensity = 0.55;
+      }
+    });
+  }
+
+  /** Bright outline for existing furniture that can be selected/moved. */
+  setBuildSelection(object: THREE.Object3D | null) {
+    if (this.buildSelection) {
+      this.scene.remove(this.buildSelection);
+      this.buildSelection.geometry.dispose();
+      (this.buildSelection.material as THREE.Material).dispose();
+      this.buildSelection = null;
+    }
+    if (!object) return;
+    const helper = new THREE.BoxHelper(object, 0x48e66b);
+    const mat = helper.material as THREE.LineBasicMaterial;
+    mat.depthTest = false;
+    mat.transparent = true;
+    mat.opacity = 0.95;
+    helper.renderOrder = 30;
+    helper.update();
+    this.buildSelection = helper;
+    this.scene.add(helper);
+  }
+
+  setGridVisible(visible: boolean, home?: { tx: number; ty: number; tw: number; th: number }) {
+    if (this.gridHelper) {
+      this.scene.remove(this.gridHelper);
+      this.gridHelper = null;
+    }
+    this.gridHome = visible && home ? home : null;
+    this.setHoverTile(null);
+    if (!visible || !home) return;
+    const g = new THREE.Group();
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.25,
+    });
+    for (let y = home.ty + 1; y < home.ty + home.th - 1; y++) {
+      for (let x = home.tx + 1; x < home.tx + home.tw - 1; x++) {
+        const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(x * TILE, 1.2, y * TILE),
+          new THREE.Vector3((x + 1) * TILE, 1.2, y * TILE),
+          new THREE.Vector3((x + 1) * TILE, 1.2, (y + 1) * TILE),
+          new THREE.Vector3(x * TILE, 1.2, (y + 1) * TILE),
+          new THREE.Vector3(x * TILE, 1.2, y * TILE),
+        ]);
+        g.add(new THREE.Line(geo, lineMat));
+      }
+    }
+    this.gridHelper = g;
+    this.scene.add(g);
+  }
+
+  /**
+   * Highlight buildable cells under the pointer.
+   * `tw`/`th` cover a furniture footprint; `ok` tints valid vs blocked.
+   */
+  setHoverTile(
+    tile: { tx: number; ty: number } | null,
+    opts?: { tw?: number; th?: number; ok?: boolean; fill?: number; edge?: number },
+  ) {
+    if (!tile || !this.gridHome) {
+      this.hoverTw = 0;
+      this.hoverTh = 0;
+      if (this.hoverOutline) this.hoverOutline.visible = false;
+      return;
+    }
+    const home = this.gridHome;
+    const tw = Math.max(1, opts?.tw ?? 1);
+    const th = Math.max(1, opts?.th ?? 1);
+    const inside =
+      tile.tx > home.tx &&
+      tile.ty > home.ty &&
+      tile.tx + tw - 1 < home.tx + home.tw - 1 &&
+      tile.ty + th - 1 < home.ty + home.th - 1;
+    if (!inside) {
+      this.hoverTw = 0;
+      this.hoverTh = 0;
+      if (this.hoverOutline) this.hoverOutline.visible = false;
+      return;
+    }
+
+    const ok = opts?.ok !== false;
+    const fillCol = opts?.fill ?? (ok ? 0x63e678 : 0xff8a9a);
+    const edgeCol = opts?.edge ?? (ok ? 0x19a83c : 0xe04560);
+    const sizeChanged = tw !== this.hoverTw || th !== this.hoverTh;
+    this.hoverTw = tw;
+    this.hoverTh = th;
+
+    if (!this.hoverOutline || sizeChanged) {
+      if (this.hoverOutline) {
+        this.scene.remove(this.hoverOutline);
+        this.hoverOutline.traverse((o) => {
+          if (o instanceof THREE.Mesh) {
+            o.geometry.dispose();
+            if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
+            else (o.material as THREE.Material).dispose();
+          }
+        });
+        this.hoverOutline = null;
+      }
+
+      const g = new THREE.Group();
+      const ww = tw * TILE;
+      const hh = th * TILE;
+
+      const fill = new THREE.Mesh(
+        new THREE.PlaneGeometry(ww - 1, hh - 1),
+        new THREE.MeshBasicMaterial({
+          color: fillCol,
+          transparent: true,
+          opacity: 0.55,
+          depthWrite: false,
+          depthTest: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      fill.rotation.x = -Math.PI / 2;
+      fill.position.set(ww / 2, 0, hh / 2);
+      fill.renderOrder = 20;
+      g.add(fill);
+
+      const borderMat = new THREE.MeshBasicMaterial({
+        color: edgeCol,
+        transparent: true,
+        opacity: 1,
+        depthWrite: false,
+        depthTest: false,
+      });
+      const t = 3.2;
+      const edges: Array<[number, number, number, number]> = [
+        [ww / 2, t / 2, ww, t],
+        [ww / 2, hh - t / 2, ww, t],
+        [t / 2, hh / 2, t, hh],
+        [ww - t / 2, hh / 2, t, hh],
+      ];
+      for (const [cx, cz, w, d] of edges) {
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(w, 0.6, d), borderMat);
+        edge.position.set(cx, 0.3, cz);
+        edge.renderOrder = 21;
+        g.add(edge);
+      }
+      this.hoverOutline = g;
+      this.scene.add(g);
+    } else {
+      this.hoverOutline.traverse((o) => {
+        if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshBasicMaterial) {
+          const isFill = o.geometry instanceof THREE.PlaneGeometry;
+          o.material.color.setHex(isFill ? fillCol : edgeCol);
+        }
+      });
+    }
+
+    this.hoverOutline.position.set(tile.tx * TILE, 2.4, tile.ty * TILE);
+    this.hoverOutline.visible = true;
+  }
+
+  pickTile(clientX: number, clientY: number, rect: DOMRect): { tx: number; ty: number } | null {
+    this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hits = this.raycaster.intersectObject(this.pickPlane);
+    if (hits.length === 0) return null;
+    const p = hits[0].point;
+    return worldToTile(p.x, p.z);
+  }
+
+  /**
+   * Pick the first of `objects` under the cursor. Ground-plane hit testing
+   * misplaces clicks on anything tall — the plane point lands behind the object
+   * — so props are hit tested against their real geometry.
+   */
+  pickFrom(
+    clientX: number,
+    clientY: number,
+    rect: DOMRect,
+    objects: THREE.Object3D[],
+  ): THREE.Object3D | null {
+    if (objects.length === 0) return null;
+    this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hits = this.raycaster.intersectObjects(objects, true);
+    if (hits.length === 0) return null;
+    // Walk up to the object that was registered, which carries the userData
+    const roots = new Set(objects);
+    let node: THREE.Object3D | null = hits[0].object;
+    while (node && !roots.has(node)) node = node.parent;
+    return node ?? null;
+  }
+
+  worldFromScreen(clientX: number, clientY: number, rect: DOMRect): THREE.Vector3 | null {
+    this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hits = this.raycaster.intersectObject(this.pickPlane);
+    return hits.length ? hits[0].point : null;
+  }
+
+  /** Project world XZ to screen CSS pixels relative to canvas. */
+  projectToScreen(x: number, y: number, z: number, rect: DOMRect): { x: number; y: number } {
+    const v = new THREE.Vector3(x, y, z);
+    v.project(this.camera);
+    return {
+      x: ((v.x + 1) / 2) * rect.width,
+      y: ((-v.y + 1) / 2) * rect.height,
+    };
+  }
+
+  setDayTime(t: number) {
+    // 0 night → morning → day → evening → night
+    let sunIntensity = 1.05;
+    let hemiIntensity = 0.85;
+    let sunColor = new THREE.Color(0xfff0d0);
+    let clear = new THREE.Color(Palette.sky);
+    let fogCol = new THREE.Color(Palette.sky);
+
+    if (t < 0.2 || t >= 0.88) {
+      // night
+      sunIntensity = 0.15;
+      hemiIntensity = 0.25;
+      sunColor.set(0x6a7ec8);
+      clear.set(0x1b2a5c);
+      fogCol.set(0x1b2a5c);
+    } else if (t < 0.3) {
+      const k = (t - 0.2) / 0.1;
+      sunIntensity = 0.15 + k * 0.9;
+      hemiIntensity = 0.25 + k * 0.6;
+      sunColor.set(0x6a7ec8).lerp(new THREE.Color(0xffc090), k);
+      clear.set(0x1b2a5c).lerp(new THREE.Color(Palette.sky), k);
+      fogCol.copy(clear);
+    } else if (t < 0.72) {
+      sunIntensity = 1.05;
+      hemiIntensity = 0.85;
+    } else if (t < 0.82) {
+      const k = (t - 0.72) / 0.1;
+      sunIntensity = 1.05 - k * 0.5;
+      sunColor.set(0xfff0d0).lerp(new THREE.Color(0xd06a4a), k);
+      clear.set(Palette.sky).lerp(new THREE.Color(0xd06a4a), k * 0.4);
+      fogCol.copy(clear);
+    } else {
+      const k = (t - 0.82) / 0.06;
+      sunIntensity = 0.55 - k * 0.4;
+      hemiIntensity = 0.85 - k * 0.6;
+      sunColor.set(0xd06a4a).lerp(new THREE.Color(0x6a7ec8), k);
+      clear.set(0xd06a4a).lerp(new THREE.Color(0x1b2a5c), k);
+      fogCol.copy(clear);
+    }
+
+    this.sun.intensity = sunIntensity;
+    this.sun.color.copy(sunColor);
+    this.hemi.intensity = hemiIntensity;
+    this.renderer.setClearColor(clear, 1);
+    if (this.scene.fog instanceof THREE.Fog) {
+      this.scene.fog.color.copy(fogCol);
+    }
+
+    const angle = (t - 0.25) * Math.PI * 2;
+    this.sun.position.set(
+      Math.cos(angle) * 280,
+      180 + Math.sin(angle) * 260,
+      Math.sin(angle) * 180,
+    );
+  }
+
+  resize(width: number, height: number) {
+    if (width === this.viewWidth && height === this.viewHeight) return;
+    this.viewWidth = width;
+    this.viewHeight = height;
+    this.renderer.setSize(width, height, false);
+    this.applyFrustum();
+  }
+
+  update(dt: number, playerX: number, playerZ: number) {
+    // Hard-lock to the player — no lag, no damp overshoot, no rubber-band on turns.
+    this.follow.set(playerX, 0, playerZ);
+    this.followTarget.copy(this.follow);
+
+    // Smooth zoom toward target frustum (pinch / +/- only)
+    if (Math.abs(this.frustumSize - this.frustumTarget) > 0.05) {
+      this.frustumSize = THREE.MathUtils.damp(
+        this.frustumSize,
+        this.frustumTarget,
+        28,
+        dt,
+      );
+      this.applyFrustum();
+    } else if (this.frustumSize !== this.frustumTarget) {
+      this.frustumSize = this.frustumTarget;
+      this.applyFrustum();
+    }
+
+    this.camera.position.copy(this.follow).add(this.camOffset);
+    this.camera.quaternion.copy(this.camQuat);
+
+    this.sun.target.position.copy(this.follow);
+    this.sun.target.updateMatrixWorld();
+
+    // Fade / lift the roof only when the player is inside — never hide the
+    // whole shell based on camera XZ (that made cafés vanish on approach).
+    if (this.buildings.length > 0) {
+      const inside = playerInsideBuilding(playerX, playerZ, this.buildings);
+      for (const b of this.buildings) {
+        b.setRoofOpen(inside === b.lotId);
+        b.group.visible = true;
+      }
+      this.buildingsUpdate?.(dt);
+    }
+
+    // Move marker fade
+    this.clock += dt;
+    const mat = this.moveMarker.material as THREE.MeshBasicMaterial;
+    if (mat.opacity > 0) {
+      mat.opacity = Math.max(0, 0.95 - this.clock * 1.2);
+    }
+
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  add(obj: THREE.Object3D) {
+    this.scene.add(obj);
+  }
+
+  remove(obj: THREE.Object3D) {
+    this.scene.remove(obj);
+  }
+
+  dispose() {
+    this.renderer.dispose();
+  }
+}
