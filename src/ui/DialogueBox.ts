@@ -32,13 +32,14 @@ export class DialogueBox {
   private typing = false;
   private charAcc = 0;
   private readonly cps = 42;
+  /** Play a voice blip every N non-space characters while typing. */
   private voiceEvery = 2;
   private charsSinceVoice = 0;
   private speakerId: PortraitId = "player";
   private look: PlayerLook | undefined;
   private queue: DialogueLine[] = [];
   private active = false;
-  /** Ignore advances until this time — stops the opening click from dismissing. */
+  /** Ignore advances until this time - stops the opening click from dismissing. */
   private ignoreUntil = 0;
   private onKey: ((e: KeyboardEvent) => void) | null = null;
   private exiting = false;
@@ -102,12 +103,18 @@ export class DialogueBox {
     this.onClosed = cb;
   }
 
+  /** True while the box is up or still playing its exit - keeps camera focus stable. */
   isOpen(): boolean {
-    return this.visible;
+    return this.visible || this.exiting;
   }
 
   hasChoices(): boolean {
     return !!this.pendingChoices && this.pendingChoices.length > 0;
+  }
+
+  /** True only while reply buttons are on screen (not merely queued after lines). */
+  private choicesVisible(): boolean {
+    return this.hasChoices() && !this.choicesEl.hidden;
   }
 
   say(line: DialogueLine | DialogueLine[]) {
@@ -116,8 +123,10 @@ export class DialogueBox {
     );
     if (lines.length === 0) return;
     this.cancelExit();
+    const wasEmpty = this.queue.length === 0;
     this.queue.push(...lines);
-    if (!this.active) this.playNext();
+    // After a choice pick, active stays true — still need to drain the reply.
+    if (!this.typing && (!this.active || wasEmpty)) this.playNext();
   }
 
   sayNow(line: DialogueLine) {
@@ -177,18 +186,22 @@ export class DialogueBox {
 
   advance() {
     if (!this.visible || this.exiting) return;
-    if (this.hasChoices()) return;
-    if (performance.now() < this.ignoreUntil) return;
+    // Nested chats call offerChoices while reply lines still play. Block only
+    // when buttons are actually showing — otherwise Space/click can never drain
+    // the queue (Pickle "Truce?" softlock).
+    if (this.choicesVisible()) return;
 
     if (this.typing) {
+      // Ignore the opening click that started this line.
+      if (performance.now() < this.ignoreUntil) return;
       this.shown = this.fullText.length;
       this.textEl.textContent = this.fullText;
       this.finishTyping();
-      // Small beat so one click = finish, next click = dismiss
-      this.ignoreUntil = performance.now() + 120;
       return;
     }
 
+    // Line fully shown — always allow next/dismiss (do not apply the
+    // open-line ignore window; short lines finish typing before it ends).
     this.playNext();
   }
 
@@ -305,15 +318,18 @@ export class DialogueBox {
     this.cancelExit();
     this.choicesEl.hidden = true;
     this.root.classList.remove("has-choices");
+    const firstOpen = !this.visible;
     this.active = true;
     this.visible = true;
     this.wrap.hidden = false;
     this.wrap.removeAttribute("hidden");
     this.root.classList.remove("is-done", "is-exit");
-    // Retrigger enter animation
-    this.root.classList.remove("is-enter");
-    void this.root.offsetWidth;
-    this.root.classList.add("is-enter");
+    // Enter anim only when the box first appears - not between sentences.
+    if (firstOpen) {
+      this.root.classList.remove("is-enter");
+      void this.root.offsetWidth;
+      this.root.classList.add("is-enter");
+    }
 
     this.speakerId = next.speakerId;
     this.nameEl.textContent = next.speakerName;
@@ -334,8 +350,8 @@ export class DialogueBox {
     if (this.onKey) return;
     this.onKey = (e: KeyboardEvent) => {
       if (!this.visible) return;
-      if (this.hasChoices()) {
-        // Number keys 1–4 pick choices
+      if (this.choicesVisible()) {
+        // Number keys 1-4 pick choices
         const idx = Number(e.key) - 1;
         if (
           idx >= 0 &&

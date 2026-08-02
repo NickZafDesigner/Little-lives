@@ -26,7 +26,7 @@ export class BuildCatalog {
     return this.visible;
   }
 
-  /** Only interactive controls block the world — the catalog shell is click-through. */
+  /** Only interactive controls block the world - the catalog shell is click-through. */
   containsPoint(clientX: number, clientY: number): boolean {
     if (!this.visible) return false;
     const hit = document.elementFromPoint(clientX, clientY);
@@ -101,7 +101,10 @@ export class BuildCatalog {
     } else if (this.state.buildTool === "wall") {
       itemsEl.innerHTML = `<p class="ll-hint">Click a tile to place/remove walls ($10 / +$5).</p>`;
     } else if (this.state.buildTool === "floor") {
-      itemsEl.innerHTML = `<p class="ll-hint">Click a tile for flooring ($5).</p>`;
+      const blush = this.state.hasUnlock("floor_blush");
+      itemsEl.innerHTML = blush
+        ? `<p class="ll-hint">Click a tile for blush flooring ($5) — Homebody unlock!</p>`
+        : `<p class="ll-hint">Click a tile for flooring ($5).</p>`;
     } else {
       itemsEl.innerHTML = `<p class="ll-hint">Click furniture to sell (60% refund).</p>`;
     }

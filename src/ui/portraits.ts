@@ -140,7 +140,7 @@ function drawJun(ctx: CanvasRenderingContext2D) {
   const shirt = hex(Palette.mint);
   const apron = hex(Palette.cream);
 
-  // Hair — neat short with side swoop
+  // Hair - neat short with side swoop
   fillRect(ctx, 9, 4, 14, 8, hair);
   fillRect(ctx, 8, 7, 3, 6, hair);
   fillRect(ctx, 21, 7, 3, 5, hair);

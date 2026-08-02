@@ -3,6 +3,10 @@ export type QuestEvent =
   | "opened_build"
   | "talked_jun_job"
   | "shift_complete"
+  /** First ask-about-job at any workplace (café / market / library / clinic). */
+  | "asked_about_job"
+  /** First completed shift at any hired job. */
+  | "any_shift_complete"
   | "placed_sofa"
   | "pet_setup"
   | "adopted_pet"
@@ -51,6 +55,8 @@ export interface QuestDef {
     hiredJobId?: string;
   };
   side?: boolean;
+  /** Skip journal dialogue on start (intro / silent beats). */
+  silentStart?: boolean;
   steps: QuestStepDef[];
   rewards?: {
     money?: number;
@@ -81,39 +87,40 @@ export const QUESTS: QuestDef[] = [
     id: "empty_nest",
     title: "Empty Nest",
     journalLine:
-      "Hmm… I need new furniture for my house. But that costs MONEY. I need a job…",
+      "I need to furnish my house. I need money for that though — let's see who's hiring.",
     autoStart: true,
+    silentStart: true,
     steps: [
       {
         id: "realize",
         event: "game_started",
-        objectiveLabel: "This place needs a sofa… (and a paycheck)",
+        objectiveLabel: "Furnish the house — but first, find work",
       },
     ],
   },
   {
     id: "get_a_job",
     title: "Get a Job",
-    journalLine: "Sunny Café might be hiring. I should talk to Jun.",
+    journalLine: "Someone in town must be hiring. Time to ask around.",
     requires: ["empty_nest"],
     steps: [
       {
-        id: "ask_jun",
-        event: "talked_jun_job",
-        objectiveLabel: "Talk to Jun at Sunny Café about a job",
+        id: "ask_anyone",
+        event: "asked_about_job",
+        objectiveLabel: "Ask around town who's hiring",
       },
     ],
   },
   {
     id: "first_paycheck",
     title: "First Paycheck",
-    journalLine: "Jun said I can work the counter — but only 9 to 5!",
+    journalLine: "I'm on the books! Shifts run 9 to 5 — better clock in.",
     requires: ["get_a_job"],
     steps: [
       {
         id: "shift",
-        event: "shift_complete",
-        objectiveLabel: "Work a full café shift (9 AM – 5 PM)",
+        event: "any_shift_complete",
+        objectiveLabel: "Work a full shift (9 AM – 5 PM)",
       },
     ],
   },
@@ -180,7 +187,7 @@ export const QUESTS: QuestDef[] = [
     id: "explore_east",
     title: "East District",
     journalLine:
-      "There's a whole east side I haven't explored — market, library… people!",
+      "There's a whole east side I haven't explored - market, library… people!",
     requires: ["settled_in"],
     steps: [
       {
@@ -374,7 +381,7 @@ export const QUESTS: QuestDef[] = [
   {
     id: "sage_supplies",
     title: "Clinic Supplies",
-    journalLine: "Sage is low on bandages — market should have a kit.",
+    journalLine: "Sage is low on bandages - market should have a kit.",
     side: true,
     unlockWhen: { hiredJobId: "clinic_aide" },
     requires: ["south_side"],
@@ -402,7 +409,7 @@ export const questById = Object.fromEntries(
   QUESTS.map((q) => [q.id, q]),
 ) as Record<string, QuestDef>;
 
-/** Work hours as dayTime fractions (9 AM – 5 PM). */
+/** Work hours as dayTime fractions (9 AM - 5 PM). */
 export const WORK_START = 9 / 24;
 export const WORK_END = 17 / 24;
 /** In-game day fraction advanced when a shift completes (~3.5 hours). */

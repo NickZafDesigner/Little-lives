@@ -27,7 +27,7 @@ export const NEED_COLORS: Record<NeedId, number> = {
   bladder: 0x90caf9,
 };
 
-/** Decay per real second at 1x clock (needs 0–100). */
+/** Decay per real second at 1x clock (needs 0-100). */
 export const NEED_DECAY: Record<NeedId, number> = {
   hunger: 0.35,
   energy: 0.22,
@@ -67,4 +67,45 @@ export function moodFromNeeds(needs: NeedsState): number {
   const avg =
     NEED_IDS.reduce((sum, id) => sum + needs[id], 0) / NEED_IDS.length;
   return avg;
+}
+
+/** Soft urgency - HUD turns red; comedy thoughts fire. */
+export const NEED_CRITICAL = 10;
+export const NEED_LOW = 25;
+
+export function isNeedCritical(needs: NeedsState, id: NeedId): boolean {
+  return needs[id] < NEED_CRITICAL;
+}
+
+export function criticalNeedThoughts(needs: NeedsState): string | null {
+  if (needs.energy < NEED_CRITICAL) {
+    return "Eyes… heavy… floor looks comfy…";
+  }
+  if (needs.hunger < NEED_CRITICAL) {
+    return "Stomach says: fridge. Immediately.";
+  }
+  if (needs.bladder < NEED_CRITICAL) {
+    return "Uh-oh. Bathroom. Now-ish.";
+  }
+  if (needs.hygiene < NEED_CRITICAL) {
+    return "I can smell myself. Not a compliment.";
+  }
+  if (needs.fun < NEED_CRITICAL) {
+    return "Everything feels beige. Need a spark.";
+  }
+  if (needs.social < NEED_CRITICAL) {
+    return "I miss… people. Or at least a friendly wave.";
+  }
+  return null;
+}
+
+export function canHangOut(needs: NeedsState): boolean {
+  return needs.energy >= NEED_CRITICAL && needs.bladder >= 5;
+}
+
+export function socialBlockedReason(needs: NeedsState): string | null {
+  if (needs.energy < NEED_CRITICAL) return "Too exhausted to hang out.";
+  if (needs.bladder < 5) return "Bathroom emergency - social later!";
+  if (needs.hygiene < 8) return "Maybe shower before company…";
+  return null;
 }

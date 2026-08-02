@@ -56,6 +56,60 @@ export const PET_POOL: PetDef[] = [
     traits: ["Dreamy", "Quiet"],
     fee: 65,
   },
+  {
+    id: "ember",
+    name: "Ember",
+    species: "fox",
+    color: Palette.blush,
+    accent: Palette.cream,
+    traits: ["Clever", "Sneaky"],
+    fee: 90,
+  },
+  {
+    id: "rust",
+    name: "Rust",
+    species: "fox",
+    color: Palette.roof,
+    accent: Palette.white,
+    traits: ["Bold", "Playful"],
+    fee: 88,
+  },
+  {
+    id: "pebble",
+    name: "Pebble",
+    species: "bird",
+    color: Palette.skyDeep,
+    accent: Palette.sunflower,
+    traits: ["Chirpy", "Bright"],
+    fee: 55,
+  },
+  {
+    id: "mango",
+    name: "Mango",
+    species: "bird",
+    color: Palette.sunflower,
+    accent: Palette.leaf,
+    traits: ["Sunny", "Talkative"],
+    fee: 58,
+  },
+  {
+    id: "olive",
+    name: "Olive",
+    species: "cat",
+    color: Palette.leaf,
+    accent: Palette.cream,
+    traits: ["Calm", "Curious"],
+    fee: 72,
+  },
+  {
+    id: "dumpling",
+    name: "Dumpling",
+    species: "dog",
+    color: Palette.cream,
+    accent: Palette.blush,
+    traits: ["Round", "Friendly"],
+    fee: 82,
+  },
 ];
 
 export const petById = Object.fromEntries(
@@ -69,7 +123,7 @@ export const FULL_PET_NEEDS = (): PetNeedsState => ({
   bond: 20,
 });
 
-export function pickShelterPets(count = 4): string[] {
+export function pickShelterPets(count = 6): string[] {
   const shuffled = [...PET_POOL].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count).map((p) => p.id);
 }

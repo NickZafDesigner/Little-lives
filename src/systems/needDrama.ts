@@ -1,0 +1,109 @@
+import {
+  NEED_CRITICAL,
+  applyNeedDeltas,
+  criticalNeedThoughts,
+} from "../data/needs";
+import type { GameState } from "./GameState";
+import { sleepToMorning, emptyDailyStats, formatDailySummary } from "./dayCycle";
+import { computeCozyScore } from "./cozyScore";
+
+const THOUGHT_COOLDOWN_MS = 14_000;
+const COLLAPSE_COOLDOWN_MS = 45_000;
+const BLADDER_COOLDOWN_MS = 50_000;
+
+/**
+ * Soft need drama: comedy thoughts, collapse nap, bladder oops.
+ * Returns true if a collapse busy action was started.
+ */
+export function tickNeedDrama(
+  state: GameState,
+  now: number,
+  onCollapse: (durationMs: number) => void,
+): void {
+  if (state.mode !== "live" || state.isBusy(now)) return;
+
+  // Comedy thought
+  if (now - state.lastCriticalThoughtAt > THOUGHT_COOLDOWN_MS) {
+    const thought = criticalNeedThoughts(state.needs);
+    if (thought) {
+      state.lastCriticalThoughtAt = now;
+      state.showDialogue("player", state.playerName, thought);
+    }
+  }
+
+  // Bladder emergency - funny hygiene dip, not a hard fail
+  if (
+    state.needs.bladder <= 0 &&
+    now - state.lastBladderAccidentAt > BLADDER_COOLDOWN_MS
+  ) {
+    state.lastBladderAccidentAt = now;
+    state.needs = applyNeedDeltas(state.needs, {
+      bladder: 35,
+      hygiene: -25,
+      fun: -8,
+    });
+    state.showToast("Oops… dashed for it. Shower recommended!", 2800);
+    state.showDialogue(
+      "player",
+      state.playerName,
+      "Well. That's one way to wake up.",
+    );
+  }
+
+  // Energy collapse - short nap on the spot + small time skip
+  if (
+    state.needs.energy <= 0 &&
+    now - state.lastCollapseAt > COLLAPSE_COOLDOWN_MS
+  ) {
+    state.lastCollapseAt = now;
+    const ms = 1800;
+    state.startBusy("Collapsed for a tiny nap", ms);
+    onCollapse(ms);
+  }
+}
+
+export function applyCollapseRecovery(state: GameState) {
+  state.needs = applyNeedDeltas(state.needs, {
+    energy: 28,
+    fun: -6,
+    social: -4,
+  });
+  state.dayTime = (state.dayTime + 0.04) % 1; // ~1 hour
+  state.showToast("Bonk. Tiny nap on the spot - feeling a bit better.", 2800);
+  state.showDialogue(
+    "player",
+    state.playerName,
+    "Floor nap: 3 stars. Neck: 1 star.",
+  );
+}
+
+/** Full sleep: restore energy, advance to morning, daily summary. */
+export function finishSleepNight(
+  state: GameState,
+  baseEnergy: number,
+  bonusEnergy: number,
+): string {
+  const { dayTime, crossedMidnight } = sleepToMorning(state.dayTime);
+  state.dayTime = dayTime;
+  if (crossedMidnight) state.dayIndex += 1;
+  else state.dayIndex += 1; // sleeping always ends the day in this cosy loop
+
+  state.needs = applyNeedDeltas(state.needs, {
+    energy: baseEnergy + bonusEnergy,
+    fun: -5,
+  });
+  // Cap energy after big sleep
+  if (state.needs.energy > 100) state.needs.energy = 100;
+
+  const summary = formatDailySummary(
+    state.dayIndex - 1,
+    state.dailyStats,
+    computeCozyScore(state.furniture),
+  );
+  state.dailyStats = emptyDailyStats();
+  return summary;
+}
+
+export function isCriticalEnergy(state: GameState): boolean {
+  return state.needs.energy < NEED_CRITICAL;
+}

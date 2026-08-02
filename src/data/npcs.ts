@@ -8,8 +8,8 @@ export const NPCS: NpcDef[] = [
     color: Palette.rose,
     homeLot: "neighbor",
     traits: ["Friendly", "Baker"],
-    spawnTx: 42,
-    spawnTy: 8,
+    spawnTx: 55,
+    spawnTy: 7,
   },
   {
     id: "jun",
@@ -17,8 +17,8 @@ export const NPCS: NpcDef[] = [
     color: Palette.mint,
     homeLot: "cafe",
     traits: ["Cheerful", "Barista"],
-    spawnTx: 12,
-    spawnTy: 28,
+    spawnTx: 10,
+    spawnTy: 38,
   },
   {
     id: "pip",
@@ -26,8 +26,8 @@ export const NPCS: NpcDef[] = [
     color: Palette.sunflower,
     homeLot: "park",
     traits: ["Playful", "Gardener"],
-    spawnTx: 28,
-    spawnTy: 18,
+    spawnTx: 34,
+    spawnTy: 20,
   },
   {
     id: "vera",
@@ -35,7 +35,7 @@ export const NPCS: NpcDef[] = [
     color: Palette.blush,
     homeLot: "market",
     traits: ["Sharp", "Merchant"],
-    spawnTx: 58,
+    spawnTx: 79,
     spawnTy: 7,
   },
   {
@@ -44,8 +44,8 @@ export const NPCS: NpcDef[] = [
     color: Palette.lavender,
     homeLot: "library",
     traits: ["Quiet", "Bookish"],
-    spawnTx: 58,
-    spawnTy: 28,
+    spawnTx: 79,
+    spawnTy: 38,
   },
   {
     id: "sage",
@@ -53,13 +53,16 @@ export const NPCS: NpcDef[] = [
     color: Palette.mintDark,
     homeLot: "clinic",
     traits: ["Kind", "Careful"],
-    spawnTx: 26,
-    spawnTy: 42,
+    spawnTx: 34,
+    spawnTy: 54,
   },
 ];
 
-export const RELATIONSHIP_FRIEND = 40;
+export const RELATIONSHIP_ACQUAINTANCE = 10;
 export const RELATIONSHIP_GOOD = 20;
+export const RELATIONSHIP_FRIEND = 40;
+export const RELATIONSHIP_CLOSE = 70;
+export const RELATIONSHIP_CRUSH = 75;
 
 /** How you choose to speak — shown before other social actions. */
 export const DIALOGUE_TONES: Array<{

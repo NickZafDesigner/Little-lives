@@ -10,6 +10,7 @@ import {
   nextFurnitureDir,
 } from "../mesh/furniture";
 import type { TownRenderer } from "../render/TownRenderer";
+import { matFlat } from "../mesh/materials";
 
 export type BuildTool = "furniture" | "wall" | "floor" | "sell";
 
@@ -109,20 +110,14 @@ export function createPaintFloorMesh(tx: number, ty: number): THREE.Mesh {
   // Clearly different from default home floor (Palette.floor / floorAlt).
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(TILE * 0.92, 1.4, TILE * 0.92),
-    new THREE.MeshLambertMaterial({
-      color: Palette.woodDeep,
-      flatShading: true,
-    }),
+    matFlat(Palette.woodDeep),
   );
   mesh.position.set(tx * TILE + TILE / 2, 1.5, ty * TILE + TILE / 2);
   mesh.receiveShadow = true;
   // Accent strip so new flooring reads as intentional paint
   const stripe = new THREE.Mesh(
     new THREE.BoxGeometry(TILE * 0.92, 0.2, TILE * 0.18),
-    new THREE.MeshLambertMaterial({
-      color: Palette.mintDark,
-      flatShading: true,
-    }),
+    matFlat(Palette.mintDark),
   );
   stripe.position.set(0, 0.75, 0);
   mesh.add(stripe);

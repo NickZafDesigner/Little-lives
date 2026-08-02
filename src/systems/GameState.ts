@@ -1,4 +1,8 @@
 import {
+  emptyAspirationProgress,
+  type AspirationProgress,
+} from "../data/aspirations";
+import {
   defaultPlayerLook,
   defaultPlayerProfile,
   type PlayerLook,
@@ -6,7 +10,7 @@ import {
 } from "../data/character";
 import { STARTING_MONEY } from "../data/jobs";
 import { FULL_NEEDS } from "../data/needs";
-import { NPCS } from "../data/npcs";
+import { NPCS, RELATIONSHIP_CLOSE, RELATIONSHIP_FRIEND } from "../data/npcs";
 import { FULL_PET_NEEDS, petById, pickShelterPets } from "../data/pets";
 import { emptyQuestProgress, type QuestProgress } from "../data/quests";
 import type {
@@ -19,12 +23,132 @@ import type {
 } from "../data/types";
 import { SAVE_VERSION } from "../save/saveLoad";
 import { TILE } from "../game/constants";
+import { emptyDailyStats, type DailyStats } from "./dayCycle";
 import { LOTS } from "../world/lots";
 import { interiorFurniture } from "../world/rooms";
 
+/** Outdoor park seating, picnic table, and planters. */
+function parkOutdoorFurniture(): PlacedFurniture[] {
+  const park = LOTS.find((l) => l.id === "park")!;
+  return [
+    {
+      uid: "p_bench",
+      defId: "park_bench",
+      tx: park.tx + 3,
+      ty: park.ty + 4,
+      lotId: "park",
+      rot: "right",
+    },
+    {
+      uid: "p_bench2",
+      defId: "park_bench",
+      tx: park.tx + 15,
+      ty: park.ty + 4,
+      lotId: "park",
+      rot: "left",
+    },
+    {
+      uid: "p_bench3",
+      defId: "park_bench",
+      tx: park.tx + 4,
+      ty: park.ty + 11,
+      lotId: "park",
+      rot: "up",
+    },
+    {
+      uid: "p_bench4",
+      defId: "park_bench",
+      tx: park.tx + 14,
+      ty: park.ty + 11,
+      lotId: "park",
+      rot: "up",
+    },
+    {
+      uid: "p_table",
+      defId: "table",
+      tx: park.tx + 16,
+      ty: park.ty + 8,
+      lotId: "park",
+    },
+    {
+      uid: "p_plant1",
+      defId: "plant",
+      tx: park.tx + 1,
+      ty: park.ty + 2,
+      lotId: "park",
+    },
+    {
+      uid: "p_plant2",
+      defId: "fern",
+      tx: park.tx + 1,
+      ty: park.ty + 11,
+      lotId: "park",
+    },
+    {
+      uid: "p_plant3",
+      defId: "plant",
+      tx: park.tx + 18,
+      ty: park.ty + 2,
+      lotId: "park",
+    },
+    {
+      uid: "p_plant4",
+      defId: "fern",
+      tx: park.tx + 18,
+      ty: park.ty + 11,
+      lotId: "park",
+    },
+    {
+      uid: "p_plant5",
+      defId: "plant",
+      tx: park.tx + 6,
+      ty: park.ty + 2,
+      lotId: "park",
+    },
+    {
+      uid: "p_plant6",
+      defId: "fern",
+      tx: park.tx + 12,
+      ty: park.ty + 2,
+      lotId: "park",
+    },
+  ];
+}
+
+/** Beach benches along the south sand strip. */
+function beachOutdoorFurniture(): PlacedFurniture[] {
+  return [
+    {
+      uid: "b_bench1",
+      defId: "park_bench",
+      tx: 22,
+      ty: 63,
+      lotId: "park",
+      rot: "up",
+    },
+    {
+      uid: "b_bench2",
+      defId: "park_bench",
+      tx: 48,
+      ty: 63,
+      lotId: "park",
+      rot: "up",
+    },
+    {
+      uid: "b_bench3",
+      defId: "park_bench",
+      tx: 72,
+      ty: 63,
+      lotId: "park",
+      rot: "up",
+    },
+  ];
+}
+
 export class GameState {
   money = STARTING_MONEY;
-  dayTime = 0.4; // ~9:36 AM — café already open
+  dayTime = 0.4; // ~9:36 AM - café already open
+  dayIndex = 1;
   mode: GameMode = "live";
   playerName = "Pippin";
   playerLook: PlayerLook = defaultPlayerLook();
@@ -32,8 +156,9 @@ export class GameState {
   favouriteFood = "Pancakes";
   favouriteAnimals: string[] = ["Cats"];
   needs: NeedsState = FULL_NEEDS();
-  playerX = 10 * TILE;
-  playerY = 14 * TILE;
+  // Bed centre on home lot (lot 3,3 + bed rx/ry 2,1, 2×2 footprint).
+  playerX = 6 * TILE;
+  playerY = 5 * TILE;
   furniture: PlacedFurniture[] = [];
   /** Extra build walls on home lot (tile keys). */
   walls = new Set<string>();
@@ -45,7 +170,7 @@ export class GameState {
     x: number;
     y: number;
   } = null;
-  shelterPets: string[] = pickShelterPets(4);
+  shelterPets: string[] = pickShelterPets(6);
   busyUntil = 0;
   busyStartedAt = 0;
   busyLabel = "";
@@ -63,7 +188,19 @@ export class GameState {
   /** Active job id while on a shift (cafe_barista, market_clerk, …). */
   activeJobId: string | null = null;
   hiredJobs: string[] = [];
+  jobShiftCounts: Record<string, number> = {};
+  jobPromoted: string[] = [];
   quests: QuestProgress = emptyQuestProgress();
+  aspirations: AspirationProgress = emptyAspirationProgress();
+  dailyStats: DailyStats = emptyDailyStats();
+  flirtCounts: Record<string, number> = {};
+  /** dayIndex when weekly beat was last claimed (−1 = never). */
+  weeklyBeatDay = -1;
+  lastPetCareDay = -1;
+  petCareStreak = 0;
+  lastCriticalThoughtAt = 0;
+  lastCollapseAt = 0;
+  lastBladderAccidentAt = 0;
   /** Null until the player picks something from the catalog. */
   selectedBuildItem: string | null = null;
   buildTool: "furniture" | "wall" | "floor" | "sell" = "furniture";
@@ -83,6 +220,14 @@ export class GameState {
 
   hire(jobId: string) {
     if (!this.hiredJobs.includes(jobId)) this.hiredJobs.push(jobId);
+  }
+
+  isPromoted(jobId: string): boolean {
+    return this.jobPromoted.includes(jobId);
+  }
+
+  hasUnlock(id: string): boolean {
+    return this.aspirations.unlocks.includes(id);
   }
 
   constructor() {
@@ -105,23 +250,25 @@ export class GameState {
       ...interiorFurniture("market"),
       ...interiorFurniture("library"),
       ...interiorFurniture("clinic"),
+      ...parkOutdoorFurniture(),
+      ...beachOutdoorFurniture(),
     ];
+  }
 
-    const park = LOTS.find((l) => l.id === "park")!;
-    this.furniture.push({
-      uid: "p_bench",
-      defId: "park_bench",
-      tx: park.tx + 4,
-      ty: park.ty + 4,
-      lotId: "park",
-    });
-    this.furniture.push({
-      uid: "p_bench2",
-      defId: "park_bench",
-      tx: park.tx + 10,
-      ty: park.ty + 8,
-      lotId: "park",
-    });
+  /** Bring older saves up to the current park / beach scenery set. */
+  ensureParkFurniture() {
+    const byUid = new Map(this.furniture.map((f) => [f.uid, f]));
+    for (const piece of [...parkOutdoorFurniture(), ...beachOutdoorFurniture()]) {
+      const existing = byUid.get(piece.uid);
+      if (existing) {
+        existing.tx = piece.tx;
+        existing.ty = piece.ty;
+        existing.rot = piece.rot;
+        existing.defId = piece.defId;
+      } else {
+        this.furniture.push({ ...piece });
+      }
+    }
   }
 
   showToast(msg: string, ms = 2200) {
@@ -129,15 +276,28 @@ export class GameState {
     this.toastUntil = performance.now() + ms;
   }
 
-  /** Clamp and apply a friendship delta. Returns { before, after, becameFriend }. */
+  /**
+   * Clamp and apply a friendship delta.
+   * Returns tier-crossing flags for Friend / Close Friend.
+   */
   adjustRelationship(
     npcId: string,
     delta: number,
-    friendThreshold = 40,
-  ): { before: number; after: number; becameFriend: boolean } {
+    friendThreshold = RELATIONSHIP_FRIEND,
+  ): {
+    before: number;
+    after: number;
+    becameFriend: boolean;
+    becameClose: boolean;
+  } {
     const rel = this.relationships[npcId];
     if (!rel) {
-      return { before: 0, after: 0, becameFriend: false };
+      return {
+        before: 0,
+        after: 0,
+        becameFriend: false,
+        becameClose: false,
+      };
     }
     const before = rel.score;
     rel.score = Math.max(-100, Math.min(100, rel.score + delta));
@@ -146,6 +306,8 @@ export class GameState {
       before,
       after: rel.score,
       becameFriend: before < friendThreshold && rel.score >= friendThreshold,
+      becameClose:
+        before < RELATIONSHIP_CLOSE && rel.score >= RELATIONSHIP_CLOSE,
     };
   }
 
@@ -202,19 +364,47 @@ export class GameState {
     this.favouriteAnimals = [...profile.favouriteAnimals];
   }
 
+  notePetCare() {
+    if (this.lastPetCareDay !== this.dayIndex) {
+      if (this.lastPetCareDay === this.dayIndex - 1) {
+        this.petCareStreak += 1;
+      } else {
+        this.petCareStreak = 1;
+      }
+      this.lastPetCareDay = this.dayIndex;
+    }
+  }
+
   toSave(): SaveData {
     return {
       version: SAVE_VERSION,
       money: this.money,
       dayTime: this.dayTime,
+      dayIndex: this.dayIndex,
       hiredAtCafe: this.hiredAtCafe,
       hiredJobs: [...this.hiredJobs],
+      jobShiftCounts: { ...this.jobShiftCounts },
+      jobPromoted: [...this.jobPromoted],
       quests: {
         active: [...this.quests.active],
         completed: [...this.quests.completed],
         stepCounts: structuredClone(this.quests.stepCounts),
         flags: { ...this.quests.flags },
       },
+      aspirations: {
+        selected: this.aspirations.selected,
+        progress: { ...this.aspirations.progress },
+        completed: [...this.aspirations.completed],
+        unlocks: [...this.aspirations.unlocks],
+        weeklyBeatsDone: this.aspirations.weeklyBeatsDone,
+        totalShifts: this.aspirations.totalShifts,
+        petTricks: this.aspirations.petTricks,
+      },
+      dailyStats: { ...this.dailyStats },
+      flirtCounts: { ...this.flirtCounts },
+      weeklyBeatDay: this.weeklyBeatDay,
+      lastPetCareDay: this.lastPetCareDay,
+      petCareStreak: this.petCareStreak,
       player: {
         x: this.playerX,
         y: this.playerY,
@@ -259,11 +449,14 @@ export class GameState {
   loadFrom(data: SaveData) {
     this.money = data.money;
     this.dayTime = data.dayTime;
+    this.dayIndex = data.dayIndex ?? 1;
     this.hiredJobs = data.hiredJobs?.length
       ? [...data.hiredJobs]
       : data.hiredAtCafe
         ? ["cafe_barista"]
         : [];
+    this.jobShiftCounts = { ...(data.jobShiftCounts ?? {}) };
+    this.jobPromoted = [...(data.jobPromoted ?? [])];
     this.quests = data.quests
       ? {
           active: [...data.quests.active],
@@ -272,6 +465,24 @@ export class GameState {
           flags: { ...(data.quests.flags ?? {}) },
         }
       : emptyQuestProgress();
+    this.aspirations = data.aspirations
+      ? {
+          selected: (data.aspirations.selected as AspirationProgress["selected"]) ?? null,
+          progress: { ...(data.aspirations.progress ?? {}) },
+          completed: [...(data.aspirations.completed ?? [])],
+          unlocks: [...(data.aspirations.unlocks ?? [])],
+          weeklyBeatsDone: data.aspirations.weeklyBeatsDone ?? 0,
+          totalShifts: data.aspirations.totalShifts ?? 0,
+          petTricks: data.aspirations.petTricks ?? 0,
+        }
+      : emptyAspirationProgress();
+    this.dailyStats = data.dailyStats
+      ? { ...emptyDailyStats(), ...data.dailyStats }
+      : emptyDailyStats();
+    this.flirtCounts = { ...(data.flirtCounts ?? {}) };
+    this.weeklyBeatDay = data.weeklyBeatDay ?? -1;
+    this.lastPetCareDay = data.lastPetCareDay ?? -1;
+    this.petCareStreak = data.petCareStreak ?? 0;
     this.playerName = data.player.name;
     const fallback = defaultPlayerProfile();
     this.playerLook = data.player.look
@@ -291,6 +502,7 @@ export class GameState {
       ...f,
       rot: f.rot ?? "down",
     }));
+    this.ensureParkFurniture();
     this.walls = new Set(data.walls.map((w) => this.wallKey(w.tx, w.ty)));
     this.floors = new Map(
       data.floors.map((f) => [this.wallKey(f.tx, f.ty), f.variant]),

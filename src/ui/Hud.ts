@@ -1,8 +1,22 @@
 import type { GameState } from "../systems/GameState";
 import type { QuestTrackerInfo } from "../systems/QuestSystem";
-import { NEED_IDS, NEED_LABELS, moodFromNeeds } from "../data/needs";
+import type { AspirationTrackerInfo } from "../systems/AspirationSystem";
+import type { NeedId, NeedsState } from "../data/types";
+import {
+  NEED_CRITICAL,
+  NEED_IDS,
+  NEED_LABELS,
+  NEED_LOW,
+  moodFromNeeds,
+} from "../data/needs";
+import { computeCozyScore } from "../systems/cozyScore";
+import { beatForDay } from "../systems/dayCycle";
 import { lotAtTile } from "../world/lots";
 import { TILE } from "../game/constants";
+import { drawPortrait } from "./portraits";
+
+const BOOST_PULSE_MS = 1000;
+const FLOAT_LIFE_MS = 2500;
 
 function clockLabel(dayTime: number): string {
   const hours = Math.floor(dayTime * 24);
@@ -12,8 +26,22 @@ function clockLabel(dayTime: number): string {
   return `${h12}:${mins.toString().padStart(2, "0")} ${ampm}`;
 }
 
+type Urgency = "ok" | "warn" | "critical";
+
+function needsUrgency(needs: GameState["needs"]): Urgency {
+  let worst: Urgency = "ok";
+  for (const id of NEED_IDS) {
+    const v = needs[id];
+    if (v < NEED_CRITICAL) return "critical";
+    if (v < NEED_LOW) worst = "warn";
+  }
+  return worst;
+}
+
 export class Hud {
   private el: HTMLElement;
+  private panel: HTMLElement;
+  private floatHost: HTMLElement;
   private toastEl: HTMLElement;
   private busyEl: HTMLElement;
   private busyLabelEl: HTMLElement;
@@ -21,26 +49,62 @@ export class Hud {
   private bottomInfo: HTMLElement;
   private state: GameState;
   private getTracker: () => QuestTrackerInfo | null;
-  private lastHtml = "";
+  private getAspiration: () => AspirationTrackerInfo | null;
+  private lastStructureKey = "";
   private lastToast = "";
   private toastVisible = false;
   private busyVisible = false;
   private lastObjectiveKey = "";
   private pulseUntil = 0;
+  private needsOpen = false;
+  private lastPortraitKey = "";
+  private prevNeeds: NeedsState | null = null;
+  private boostUntil = 0;
+  private boostToken = 0;
+  private pendingFloats: Array<{
+    key: string;
+    needId: NeedId;
+    amount: number;
+    born: number;
+  }> = [];
 
   constructor(
     parent: HTMLElement,
     state: GameState,
     getTracker: () => QuestTrackerInfo | null = () => null,
+    getAspiration: () => AspirationTrackerInfo | null = () => null,
   ) {
     this.state = state;
     this.getTracker = getTracker;
+    this.getAspiration = getAspiration;
     this.el = document.createElement("div");
     this.el.className = "ll-hud";
+    this.panel = document.createElement("div");
+    this.panel.className = "ll-hud-panel";
+    this.floatHost = document.createElement("div");
+    this.floatHost.className = "ll-need-float-host";
+    this.floatHost.setAttribute("aria-hidden", "true");
+    this.el.append(this.panel, this.floatHost);
     parent.appendChild(this.el);
 
-    // Toast / busy live outside the HUD panel rebuild so clock/needs updates
-    // don't remount them and restart CSS enter animations.
+    this.el.addEventListener("click", (e) => {
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      if (t.closest("[data-hud-avatar]")) {
+        e.stopPropagation();
+        this.needsOpen = !this.needsOpen;
+        this.lastStructureKey = ""; // force structural rebuild
+        this.update();
+        return;
+      }
+      if (t.closest("[data-hud-needs-close]")) {
+        e.stopPropagation();
+        this.needsOpen = false;
+        this.lastStructureKey = "";
+        this.update();
+      }
+    });
+
     this.toastEl = document.createElement("div");
     this.toastEl.className = "ll-toast";
     this.toastEl.hidden = true;
@@ -69,13 +133,9 @@ export class Hud {
     this.bottomInfo.hidden = !v;
   }
 
-  /**
-   * Only the panel clusters block world clicks — the HUD root itself spans the
-   * whole viewport, so testing against it would swallow every click.
-   */
   containsHudCluster(clientX: number, clientY: number): boolean {
-    const clusters = this.el.querySelectorAll(
-      ".ll-hud-left > *, .ll-hud-right > *",
+    const clusters = this.panel.querySelectorAll(
+      ".ll-hud-top, .ll-hud-left > *, .ll-hud-right > *",
     );
     for (const cluster of clusters) {
       const r = cluster.getBoundingClientRect();
@@ -98,66 +158,423 @@ export class Hud {
       Math.floor(s.playerX / TILE),
       Math.floor(s.playerY / TILE),
     );
-
-    const needsHtml = NEED_IDS.map((id) => {
-      const v = Math.round(s.needs[id]);
-      const cls = v < 25 ? "bad" : v < 50 ? "warn" : "ok";
-      return `<div class="ll-need"><span>${NEED_LABELS[id]}</span><div class="ll-bar"><i class="${cls}" style="width:${v}%"></i></div><b>${v}</b></div>`;
-    }).join("");
-
-    const pet = s.adoptedPet
-      ? `<div class="ll-pet-panel"><strong>${escapeHtml(s.adoptedPetName)}</strong><span>Bond ${Math.round(s.adoptedPet.needs.bond)}</span></div>`
-      : "";
+    const cozy = computeCozyScore(s.furniture);
+    const beat = beatForDay(s.dayIndex);
+    const beatClaimed = s.weeklyBeatDay === s.dayIndex;
+    const urgency = needsUrgency(s.needs);
+    const place = lot?.name ?? "Town";
+    const timeTip = `Time · Day ${s.dayIndex} · ${clockLabel(s.dayTime)}`;
+    const modeTip = s.mode === "build" ? "Build mode" : "Live mode";
+    const clock = clockLabel(s.dayTime);
 
     const tracker = this.getTracker();
-    const objectiveKey = tracker
-      ? `${tracker.title}|${tracker.objective}`
+    const aspiration = !tracker ? this.getAspiration() : null;
+    const shown = tracker
+      ? {
+          title: tracker.title,
+          objective: tracker.objective,
+          side: !!tracker.side,
+          kind: "quest" as const,
+        }
+      : aspiration
+        ? {
+            title: aspiration.title,
+            objective: aspiration.objective,
+            side: true,
+            kind: "goal" as const,
+          }
+        : null;
+
+    const objectiveKey = shown
+      ? `${shown.kind}|${shown.title}|${shown.objective}`
       : "";
     if (objectiveKey && objectiveKey !== this.lastObjectiveKey) {
       this.lastObjectiveKey = objectiveKey;
       this.pulseUntil = performance.now() + 700;
     }
-    const pulse = performance.now() < this.pulseUntil ? " is-pulse" : "";
 
-    const objectiveHtml = tracker
-      ? `<div class="ll-objective${pulse}${tracker.side ? " is-side" : ""}">
-          <small>Objective</small>
-          <strong>${escapeHtml(tracker.title)}</strong>
-          <span>${escapeHtml(tracker.objective)}</span>
+    const showBeat = !!(beat && !beatClaimed);
+    // Structural only — value ticks must NOT remount DOM (kills :hover tooltips
+    // and retriggers the needs-panel entrance animation).
+    // Urgency is patched onto the avatar so need recovery doesn't wipe floats.
+    const structureKey = [
+      this.needsOpen ? "1" : "0",
+      s.mode,
+      s.playerName,
+      s.adoptedPet ? "pet" : "",
+      showBeat ? beat!.title : "",
+      shown ? `${shown.kind}|${shown.title}|${shown.side ? 1 : 0}` : "",
+    ].join("|");
+
+    if (structureKey !== this.lastStructureKey) {
+      this.lastStructureKey = structureKey;
+      this.panel.innerHTML = this.buildHtml({
+        s,
+        mood,
+        cozy,
+        urgency,
+        place,
+        timeTip,
+        modeTip,
+        clock,
+        showBeat,
+        beatTitle: beat?.title ?? "",
+        beatPlace: beat?.place ?? "",
+        shown,
+      });
+      this.lastPortraitKey = "";
+    }
+
+    this.detectNeedBoosts();
+
+    this.patchValues({
+      money: s.money,
+      clock,
+      timeTip,
+      place,
+      cozy,
+      modeTip,
+      isBuild: s.mode === "build",
+      mood,
+      urgency,
+      petName: s.adoptedPetName,
+      petBond: s.adoptedPet ? Math.round(s.adoptedPet.needs.bond) : 0,
+      petStreak: s.petCareStreak,
+      objectiveText: shown?.objective ?? "",
+      pulse: performance.now() < this.pulseUntil,
+    });
+
+    this.syncBoostFx();
+    this.syncPortrait();
+    this.updateToast();
+    this.updateBusy();
+  }
+
+  private detectNeedBoosts() {
+    const needs = this.state.needs;
+    if (!this.prevNeeds) {
+      this.prevNeeds = { ...needs };
+      return;
+    }
+
+    const now = performance.now();
+    let stagger = 0;
+    let boosted = false;
+    for (const id of NEED_IDS) {
+      const delta = Math.round(needs[id]) - Math.round(this.prevNeeds[id]);
+      if (delta < 1) continue;
+      boosted = true;
+      this.pendingFloats.push({
+        key: `${now}-${id}-${delta}`,
+        needId: id,
+        amount: delta,
+        born: now + stagger,
+      });
+      stagger += 80;
+    }
+    if (boosted) {
+      this.boostUntil = now + BOOST_PULSE_MS;
+      this.boostToken += 1;
+    }
+    this.prevNeeds = { ...needs };
+    this.pendingFloats = this.pendingFloats.filter(
+      (f) => now - f.born < FLOAT_LIFE_MS,
+    );
+  }
+
+  private syncBoostFx() {
+    const now = performance.now();
+    const btn = this.panel.querySelector(
+      "[data-hud-avatar]",
+    ) as HTMLElement | null;
+    if (btn) {
+      const boosting = now < this.boostUntil;
+      if (boosting) {
+        if (btn.dataset.boostToken !== String(this.boostToken)) {
+          btn.dataset.boostToken = String(this.boostToken);
+          btn.classList.remove("is-boost");
+          void btn.offsetWidth;
+          btn.classList.add("is-boost");
+        }
+      } else if (btn.classList.contains("is-boost")) {
+        btn.classList.remove("is-boost");
+        delete btn.dataset.boostToken;
+      }
+    }
+
+    // Keep the float host anchored over the avatar circle.
+    const avatar = btn;
+    if (avatar) {
+      const avatarRect = avatar.getBoundingClientRect();
+      const hostParent = this.el.getBoundingClientRect();
+      this.floatHost.style.left = `${avatarRect.left - hostParent.left + avatarRect.width / 2}px`;
+      this.floatHost.style.top = `${avatarRect.top - hostParent.top}px`;
+    }
+
+    const alive = new Set(this.pendingFloats.map((f) => f.key));
+    for (const node of Array.from(this.floatHost.children)) {
+      const key = (node as HTMLElement).dataset.floatKey;
+      if (!key || !alive.has(key)) node.remove();
+    }
+
+    for (const f of this.pendingFloats) {
+      if (this.floatHost.querySelector(`[data-float-key="${f.key}"]`)) continue;
+      if (now < f.born) continue;
+      const el = document.createElement("div");
+      el.className = "ll-need-float";
+      el.dataset.floatKey = f.key;
+      el.textContent = `+${f.amount} ${NEED_LABELS[f.needId]}`;
+      // Slight stack offset when several needs pop at once
+      const stackIndex = this.floatHost.childElementCount;
+      if (stackIndex > 0) el.style.top = `${-stackIndex * 6}px`;
+      this.floatHost.appendChild(el);
+      el.addEventListener("animationend", () => {
+        el.remove();
+        this.pendingFloats = this.pendingFloats.filter((x) => x.key !== f.key);
+      });
+    }
+  }
+
+  private buildHtml(opts: {
+    s: GameState;
+    mood: number;
+    cozy: number;
+    urgency: Urgency;
+    place: string;
+    timeTip: string;
+    modeTip: string;
+    clock: string;
+    showBeat: boolean;
+    beatTitle: string;
+    beatPlace: string;
+    shown: {
+      title: string;
+      objective: string;
+      side: boolean;
+      kind: "quest" | "goal";
+    } | null;
+  }): string {
+    const { s, mood, cozy, urgency, place, timeTip, modeTip, clock, showBeat, shown } =
+      opts;
+
+    const needsHtml = NEED_IDS.map((id) => {
+      const v = Math.round(s.needs[id]);
+      const cls =
+        v < NEED_CRITICAL ? "bad is-critical" : v < NEED_LOW ? "warn" : "ok";
+      const rowCls =
+        v < NEED_CRITICAL ? " is-critical" : v < NEED_LOW ? " is-warn" : "";
+      return `<div class="ll-need${rowCls}" data-need="${id}"><span>${NEED_LABELS[id]}</span><div class="ll-bar"><i class="${cls}" data-need-bar="${id}" style="width:${v}%"></i></div><b data-need-val="${id}">${v}</b></div>`;
+    }).join("");
+
+    const pet = s.adoptedPet
+      ? `<div class="ll-pet-chip" title="Pet bond"><strong data-pet-name>${escapeHtml(s.adoptedPetName)}</strong><span data-pet-bond>${Math.round(s.adoptedPet.needs.bond)}${s.petCareStreak > 1 ? ` · ${s.petCareStreak}d` : ""}</span></div>`
+      : "";
+
+    const objectiveHtml = shown
+      ? `<div class="ll-objective${shown.side ? " is-side" : ""}" data-objective>
+          <small>${shown.kind === "goal" ? "Lifestyle" : "Objective"}</small>
+          <strong>${escapeHtml(shown.title)}</strong>
+          <span data-objective-text>${escapeHtml(shown.objective)}</span>
         </div>`
       : "";
 
-    const html = `
-      <div class="ll-hud-left">
-        <div class="ll-panel">
-          <div class="ll-card-head">
-            <strong>${escapeHtml(s.playerName)}</strong>
-            <span class="ll-pill">Mood ${mood}</span>
+    const beatHtml = showBeat
+      ? `<div class="ll-beat"><small>Today</small><strong>${escapeHtml(opts.beatTitle)}</strong><span>${escapeHtml(opts.beatPlace)}</span></div>`
+      : "";
+
+    const modeCls = s.mode === "build" ? " is-build" : "";
+    const modeIcon =
+      s.mode === "build"
+        ? `<svg viewBox="0 0 16 16" width="11" height="11"><path d="M9.2 2.4 13.6 6.8 7.4 13H3v-4.4L9.2 2.4z" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/><path d="M8 3.8 12.2 8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
+        : `<svg viewBox="0 0 16 16" width="11" height="11"><circle cx="8" cy="5.2" r="2.2" fill="none" stroke="currentColor" stroke-width="1.45"/><path d="M3.6 13.2c.6-2.4 2.2-3.6 4.4-3.6s3.8 1.2 4.4 3.6" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/></svg>`;
+
+    const urgencyTip =
+      urgency === "critical"
+        ? "Needs urgent — click for details"
+        : urgency === "warn"
+          ? "Needs getting low — click for details"
+          : "Click for needs & mood";
+
+    const needsPanel = this.needsOpen
+      ? `<div class="ll-needs-pop" role="dialog" aria-label="Needs">
+          <div class="ll-needs-pop-head">
+            <strong>Needs</strong>
+            <span class="ll-pill" data-mood>Mood ${mood}</span>
+            <button type="button" class="ll-needs-close" data-hud-needs-close aria-label="Close needs">✕</button>
           </div>
           ${needsHtml}
+        </div>`
+      : "";
+
+    return `
+      <div class="ll-hud-top" role="status">
+        <div class="ll-stat" data-stat="money" data-tip="Money · $${s.money}" aria-label="Money: $${s.money}">
+          <span class="ll-stat-ico" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="11" height="11"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><text x="8" y="11.2" text-anchor="middle" font-size="9.5" font-weight="700" fill="currentColor" font-family="Fredoka,Nunito,sans-serif">$</text></svg>
+          </span>
+          <b data-stat-val="money">$${s.money}</b>
         </div>
-        ${pet}
+        <div class="ll-stat" data-stat="time" data-tip="${escapeHtml(timeTip)}" aria-label="${escapeHtml(timeTip)}">
+          <span class="ll-stat-ico" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="11" height="11"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.2V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </span>
+          <b data-stat-val="time">${clock}</b>
+        </div>
+        <div class="ll-stat ll-stat-icon" data-stat="place" data-tip="Place · ${escapeHtml(place)}" aria-label="Place: ${escapeHtml(place)}">
+          <span class="ll-stat-ico" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="11" height="11"><path d="M8 1.8c-2.5 0-4.5 1.9-4.5 4.3 0 3.2 4.5 8.1 4.5 8.1s4.5-4.9 4.5-8.1C12.5 3.7 10.5 1.8 8 1.8z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="6" r="1.6" fill="currentColor"/></svg>
+          </span>
+        </div>
+        <div class="ll-stat" data-stat="cozy" data-tip="Cozy · ${cozy}" aria-label="Cozy score: ${cozy}">
+          <span class="ll-stat-ico" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="11" height="11"><path d="M2.5 7.2 8 2.8l5.5 4.4V13a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V7.2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          </span>
+          <b data-stat-val="cozy">${cozy}</b>
+        </div>
+        <div class="ll-stat ll-stat-icon ll-stat-mode${modeCls}" data-stat="mode" data-tip="${modeTip}" aria-label="${modeTip}">
+          <span class="ll-stat-ico" aria-hidden="true">${modeIcon}</span>
+        </div>
+      </div>
+      <div class="ll-hud-left">
+        <div class="ll-avatar-stack">
+          <button
+            type="button"
+            class="ll-avatar-btn is-${urgency}${this.needsOpen ? " is-open" : ""}"
+            data-hud-avatar
+            aria-expanded="${this.needsOpen ? "true" : "false"}"
+            aria-label="${escapeHtml(urgencyTip)}"
+            title="${escapeHtml(urgencyTip)}"
+          >
+            <canvas class="ll-avatar-face" width="32" height="32" aria-hidden="true"></canvas>
+          </button>
+          <span class="ll-avatar-name">${escapeHtml(s.playerName)}</span>
+          ${pet}
+          ${needsPanel}
+        </div>
       </div>
       <div class="ll-hud-right">
-        <div class="ll-panel">
-          <div class="ll-kv"><small>Money</small><strong>$${s.money}</strong></div>
-          <div class="ll-kv"><small>Time</small><strong>${clockLabel(s.dayTime)}</strong></div>
-          <div class="ll-kv"><small>Place</small><strong>${escapeHtml(lot?.name ?? "Town")}</strong></div>
-          <div class="ll-mode${s.mode === "build" ? " is-build" : ""}">${s.mode === "build" ? "Build mode" : "Live"}</div>
-        </div>
+        ${beatHtml}
         ${objectiveHtml}
       </div>
     `;
+  }
 
-    // Only touch the DOM when something actually changed — this HUD updates
-    // every frame and reflowing it constantly breaks hit-testing and animation.
-    if (html !== this.lastHtml) {
-      this.lastHtml = html;
-      this.el.innerHTML = html;
+  private patchValues(v: {
+    money: number;
+    clock: string;
+    timeTip: string;
+    place: string;
+    cozy: number;
+    modeTip: string;
+    isBuild: boolean;
+    mood: number;
+    urgency: Urgency;
+    petName: string;
+    petBond: number;
+    petStreak: number;
+    objectiveText: string;
+    pulse: boolean;
+  }) {
+    const setTip = (stat: string, tip: string, label?: string) => {
+      const el = this.panel.querySelector(
+        `[data-stat="${stat}"]`,
+      ) as HTMLElement | null;
+      if (!el) return;
+      if (el.getAttribute("data-tip") !== tip) el.setAttribute("data-tip", tip);
+      const aria = label ?? tip;
+      if (el.getAttribute("aria-label") !== aria) el.setAttribute("aria-label", aria);
+    };
+    const setVal = (stat: string, text: string) => {
+      const el = this.panel.querySelector(`[data-stat-val="${stat}"]`);
+      if (el && el.textContent !== text) el.textContent = text;
+    };
+
+    setVal("money", `$${v.money}`);
+    setTip("money", `Money · $${v.money}`, `Money: $${v.money}`);
+    setVal("time", v.clock);
+    setTip("time", v.timeTip);
+    setTip("place", `Place · ${v.place}`, `Place: ${v.place}`);
+    setVal("cozy", String(v.cozy));
+    setTip("cozy", `Cozy · ${v.cozy}`, `Cozy score: ${v.cozy}`);
+    setTip("mode", v.modeTip);
+    const modeEl = this.panel.querySelector("[data-stat='mode']");
+    if (modeEl) modeEl.classList.toggle("is-build", v.isBuild);
+
+    const moodEl = this.panel.querySelector("[data-mood]");
+    if (moodEl) {
+      const text = `Mood ${v.mood}`;
+      if (moodEl.textContent !== text) moodEl.textContent = text;
     }
 
-    this.updateToast();
-    this.updateBusy();
+    const avatar = this.panel.querySelector(
+      "[data-hud-avatar]",
+    ) as HTMLElement | null;
+    if (avatar) {
+      avatar.classList.toggle("is-warn", v.urgency === "warn");
+      avatar.classList.toggle("is-critical", v.urgency === "critical");
+      avatar.classList.toggle("is-open", this.needsOpen);
+      const tip =
+        v.urgency === "critical"
+          ? "Needs urgent — click for details"
+          : v.urgency === "warn"
+            ? "Needs getting low — click for details"
+            : "Click for needs & mood";
+      if (avatar.getAttribute("aria-label") !== tip) {
+        avatar.setAttribute("aria-label", tip);
+        avatar.setAttribute("title", tip);
+      }
+    }
+
+    for (const id of NEED_IDS) {
+      const need = Math.round(this.state.needs[id]);
+      const bar = this.panel.querySelector(
+        `[data-need-bar="${id}"]`,
+      ) as HTMLElement | null;
+      const val = this.panel.querySelector(`[data-need-val="${id}"]`);
+      const row = this.panel.querySelector(`[data-need="${id}"]`);
+      if (bar) {
+        const w = `${need}%`;
+        if (bar.style.width !== w) bar.style.width = w;
+        const cls =
+          need < NEED_CRITICAL ? "bad is-critical" : need < NEED_LOW ? "warn" : "ok";
+        if (bar.className !== cls) bar.className = cls;
+      }
+      if (val && val.textContent !== String(need)) val.textContent = String(need);
+      if (row) {
+        row.classList.toggle("is-critical", need < NEED_CRITICAL);
+        row.classList.toggle("is-warn", need < NEED_LOW && need >= NEED_CRITICAL);
+      }
+    }
+
+    const petBond = this.panel.querySelector("[data-pet-bond]");
+    if (petBond) {
+      const text =
+        v.petStreak > 1 ? `${v.petBond} · ${v.petStreak}d` : String(v.petBond);
+      if (petBond.textContent !== text) petBond.textContent = text;
+    }
+    const petName = this.panel.querySelector("[data-pet-name]");
+    if (petName && petName.textContent !== v.petName) {
+      petName.textContent = v.petName;
+    }
+
+    const objText = this.panel.querySelector("[data-objective-text]");
+    if (objText && objText.textContent !== v.objectiveText) {
+      objText.textContent = v.objectiveText;
+    }
+    const obj = this.panel.querySelector("[data-objective]");
+    if (obj) obj.classList.toggle("is-pulse", v.pulse);
+  }
+
+  private syncPortrait() {
+    const canvas = this.panel.querySelector(
+      ".ll-avatar-face",
+    ) as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const look = this.state.playerLook;
+    const key = `${look.sex}|${look.face}|${look.hairStyle}|${look.hair}|${look.skin}|${look.shirt}|${look.clothing}`;
+    if (key === this.lastPortraitKey) return;
+    this.lastPortraitKey = key;
+    drawPortrait(canvas, "player", look);
   }
 
   private updateToast() {
@@ -178,7 +595,6 @@ export class Hud {
       this.lastToast = s.toast;
       this.toastEl.textContent = s.toast;
       this.toastEl.hidden = false;
-      // Retrigger enter animation only when the message actually changes.
       this.toastEl.style.animation = "none";
       void this.toastEl.offsetWidth;
       this.toastEl.style.animation = "";

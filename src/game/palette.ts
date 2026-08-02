@@ -79,4 +79,5 @@ export const CSS = {
   white: "#ffffff",
 } as const;
 
-export const FONT = "Nunito, system-ui, sans-serif";
+export const FONT = '"Fredoka", "Nunito", "Trebuchet MS", sans-serif';
+export const FONT_DISPLAY = '"Fredoka", "Nunito", "Trebuchet MS", sans-serif';

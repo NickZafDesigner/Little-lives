@@ -1,6 +1,6 @@
 /**
  * Soft multi-layer 8-bit audio for Little Lives.
- * Procedural Web Audio — no asset files required.
+ * Procedural Web Audio - no asset files required.
  */
 
 type WaveKind = "sine" | "triangle" | "square" | "sawtooth";
@@ -15,6 +15,8 @@ type SfxId =
   | "walk"
   | "step"
   | "place"
+  | "pickup"
+  | "rotate"
   | "sell"
   | "interact"
   | "success"
@@ -35,7 +37,7 @@ interface NoteEvent {
   n: number;
   /** Duration in beats. */
   d: number;
-  /** Velocity 0–1. */
+  /** Velocity 0-1. */
   v?: number;
 }
 
@@ -78,12 +80,12 @@ function saveMute(muted: boolean) {
   }
 }
 
-/** Soft title / create theme — slow lullaby, sparse melody, no sparkle spam. */
+/** Soft title / create theme - slow lullaby, sparse melody, no sparkle spam. */
 const TITLE_PATTERN: Pattern = {
   bars: 16,
   layers: [
     {
-      // Soft lead — long phrases with breathing room
+      // Soft lead - long phrases with breathing room
       wave: "sine",
       gain: 0.055,
       soft: true,
@@ -162,7 +164,7 @@ const TITLE_PATTERN: Pattern = {
 };
 
 /**
- * Cosy town ambience — long, slow, and airy.
+ * Cosy town ambience - long, slow, and airy.
  * Two alternating phrases keep the loop from feeling identical.
  */
 const WORLD_PATTERN_A: Pattern = {
@@ -294,14 +296,14 @@ const WORLD_PATTERN_B: Pattern = {
 };
 
 /**
- * Build-mode theme — jaunty, bouncy, and brighter than the town stroll.
+ * Build-mode theme - jaunty, bouncy, and brighter than the town stroll.
  * Short hops + light taps so placing furniture feels playful.
  */
 const BUILD_PATTERN: Pattern = {
   bars: 8,
   layers: [
     {
-      // Bouncy lead — skippy major phrases
+      // Bouncy lead - skippy major phrases
       wave: "triangle",
       gain: 0.058,
       soft: true,
@@ -355,7 +357,7 @@ const BUILD_PATTERN: Pattern = {
       ],
     },
     {
-      // Plucky harmony — off-beat answers
+      // Plucky harmony - off-beat answers
       wave: "square",
       gain: 0.028,
       soft: true,
@@ -380,7 +382,7 @@ const BUILD_PATTERN: Pattern = {
       ],
     },
     {
-      // Walking bass — keeps the feet tapping
+      // Walking bass - keeps the feet tapping
       wave: "sine",
       gain: 0.062,
       soft: true,
@@ -577,87 +579,124 @@ class AudioManagerImpl {
 
     switch (id) {
       case "ui":
-        this.blip(now, bus, 880, 0.045, 0.07, "triangle");
+        // Soft pop - short sine hop with a tiny sparkle
+        this.pop(now, bus, 740, 0.055, 0.085);
+        this.blip(now + 0.03, bus, 1180, 0.05, 0.035, "sine", 4200);
         break;
       case "confirm":
-        this.blip(now, bus, 660, 0.06, 0.08, "triangle");
-        this.blip(now + 0.07, bus, 990, 0.08, 0.09, "triangle");
+        // Happy little up-arpeggio
+        this.blip(now, bus, 523, 0.07, 0.07, "triangle", 2800);
+        this.blip(now + 0.055, bus, 659, 0.08, 0.08, "triangle", 3200);
+        this.blip(now + 0.12, bus, 784, 0.12, 0.075, "sine", 4000);
+        this.blip(now + 0.14, bus, 1175, 0.1, 0.035, "sine", 5000);
         break;
       case "deny":
-        this.blip(now, bus, 220, 0.1, 0.06, "square", 800);
-        this.blip(now + 0.08, bus, 180, 0.12, 0.05, "square", 700);
+        // Soft dud - round, not harsh
+        this.swoop(now, bus, 280, 190, 0.14, 0.06, "triangle", 900);
+        this.noiseBurst(now + 0.02, bus, 0.05, 0.02, 900);
         break;
       case "menu":
-        this.blip(now, bus, 520, 0.05, 0.06, "sine");
-        this.blip(now + 0.04, bus, 780, 0.07, 0.07, "triangle");
+        // Menu blossom - three soft petals
+        this.blip(now, bus, 587, 0.05, 0.055, "sine", 3200);
+        this.blip(now + 0.035, bus, 740, 0.055, 0.06, "triangle", 3600);
+        this.blip(now + 0.075, bus, 988, 0.08, 0.05, "sine", 4500);
         break;
       case "walk":
-        this.blip(now, bus, 420, 0.03, 0.04, "triangle", 900);
+        this.pop(now, bus, 480, 0.04, 0.05);
         break;
       case "step": {
         if (now - this.lastStepAt < 0.18) return;
         this.lastStepAt = now;
-        this.noiseBurst(now, bus, 0.03, 0.035, 1800);
-        this.blip(now, bus, 180 + Math.random() * 40, 0.04, 0.028, "sine", 600);
+        this.noiseBurst(now, bus, 0.028, 0.028, 1600);
+        this.blip(now, bus, 200 + Math.random() * 50, 0.035, 0.025, "sine", 700);
         break;
       }
       case "place":
-        this.blip(now, bus, 540, 0.05, 0.07, "triangle");
-        this.blip(now + 0.05, bus, 720, 0.07, 0.08, "triangle");
-        this.blip(now + 0.11, bus, 960, 0.09, 0.07, "sine");
+        // Satisfying plop + sparkle
+        this.pop(now, bus, 320, 0.07, 0.09);
+        this.blip(now + 0.04, bus, 660, 0.06, 0.07, "triangle", 2800);
+        this.blip(now + 0.09, bus, 880, 0.08, 0.065, "sine", 4000);
+        this.blip(now + 0.13, bus, 1320, 0.1, 0.04, "sine", 5200);
+        break;
+      case "pickup":
+        // Light lift whoop
+        this.swoop(now, bus, 420, 720, 0.1, 0.065, "triangle", 2800);
+        this.blip(now + 0.07, bus, 980, 0.07, 0.045, "sine", 4200);
+        break;
+      case "rotate":
+        // Cute twirl - quick rising swirl
+        this.swoop(now, bus, 520, 920, 0.09, 0.06, "sine", 3600);
+        this.blip(now + 0.055, bus, 1100, 0.055, 0.04, "triangle", 4800);
+        this.blip(now + 0.09, bus, 780, 0.06, 0.03, "sine", 4000);
         break;
       case "sell":
-        this.blip(now, bus, 640, 0.05, 0.06, "triangle");
-        this.blip(now + 0.06, bus, 480, 0.08, 0.07, "triangle");
+        // Cash register-ish but soft
+        this.blip(now, bus, 700, 0.05, 0.06, "triangle", 3000);
+        this.swoop(now + 0.05, bus, 620, 380, 0.1, 0.055, "sine", 2200);
+        this.blip(now + 0.12, bus, 1040, 0.06, 0.04, "sine", 4000);
         break;
       case "interact":
-        this.blip(now, bus, 700, 0.08, 0.08, "triangle");
-        this.blip(now + 0.09, bus, 880, 0.1, 0.07, "sine");
+        this.blip(now, bus, 620, 0.06, 0.065, "triangle", 2600);
+        this.blip(now + 0.06, bus, 830, 0.09, 0.07, "sine", 3600);
+        this.blip(now + 0.1, bus, 1245, 0.08, 0.03, "sine", 4800);
         break;
       case "success":
-        this.blip(now, bus, 523, 0.08, 0.07, "triangle");
-        this.blip(now + 0.09, bus, 659, 0.1, 0.08, "triangle");
-        this.blip(now + 0.2, bus, 784, 0.16, 0.09, "sine");
+        // Bright major sparkle
+        this.blip(now, bus, 523, 0.08, 0.065, "triangle", 2800);
+        this.blip(now + 0.075, bus, 659, 0.09, 0.075, "triangle", 3200);
+        this.blip(now + 0.16, bus, 784, 0.14, 0.08, "sine", 4000);
+        this.blip(now + 0.2, bus, 1175, 0.16, 0.04, "sine", 5600);
         break;
       case "pet":
-        this.blip(now, bus, 920, 0.05, 0.06, "sine");
-        this.blip(now + 0.06, bus, 1180, 0.07, 0.055, "sine");
-        this.blip(now + 0.13, bus, 980, 0.09, 0.05, "triangle");
+        // Soft nuzzle chirps
+        this.blip(now, bus, 880, 0.05, 0.055, "sine", 3800);
+        this.blip(now + 0.05, bus, 1180, 0.06, 0.05, "sine", 4600);
+        this.swoop(now + 0.1, bus, 1040, 860, 0.1, 0.045, "triangle", 3600);
         break;
       case "talk":
-        this.blip(now, bus, 640, 0.04, 0.05, "square", 1400);
-        this.blip(now + 0.05, bus, 760, 0.05, 0.045, "square", 1600);
-        this.blip(now + 0.11, bus, 700, 0.06, 0.04, "square", 1500);
+        // Bubbly babble
+        this.blip(now, bus, 600 + Math.random() * 40, 0.04, 0.048, "triangle", 2200);
+        this.blip(now + 0.045, bus, 740 + Math.random() * 50, 0.045, 0.042, "triangle", 2600);
+        this.blip(now + 0.09, bus, 680 + Math.random() * 40, 0.055, 0.038, "sine", 2400);
         break;
       case "coin":
-        this.blip(now, bus, 980, 0.04, 0.06, "square", 2800);
-        this.blip(now + 0.05, bus, 1320, 0.08, 0.07, "square", 3200);
+        // Tiny glitter ping
+        this.blip(now, bus, 1046, 0.05, 0.055, "sine", 5000);
+        this.blip(now + 0.04, bus, 1397, 0.09, 0.065, "sine", 6000);
+        this.blip(now + 0.08, bus, 2093, 0.12, 0.03, "sine", 7000);
         break;
       case "save":
-        this.blip(now, bus, 440, 0.06, 0.06, "triangle");
-        this.blip(now + 0.08, bus, 554, 0.08, 0.07, "triangle");
-        this.blip(now + 0.18, bus, 659, 0.12, 0.08, "sine");
+        this.blip(now, bus, 440, 0.07, 0.055, "triangle", 2200);
+        this.blip(now + 0.07, bus, 554, 0.08, 0.065, "triangle", 2800);
+        this.blip(now + 0.16, bus, 698, 0.14, 0.07, "sine", 3600);
+        this.blip(now + 0.2, bus, 1047, 0.12, 0.03, "sine", 4800);
         break;
       case "build":
-        this.blip(now, bus, 392, 0.05, 0.06, "triangle");
-        this.blip(now + 0.06, bus, 523, 0.08, 0.07, "triangle");
+        // Playful hammer-tap into a bright hop
+        this.pop(now, bus, 360, 0.06, 0.07);
+        this.blip(now + 0.05, bus, 523, 0.07, 0.065, "triangle", 2600);
+        this.blip(now + 0.11, bus, 698, 0.1, 0.06, "sine", 3600);
+        this.blip(now + 0.15, bus, 1047, 0.1, 0.035, "sine", 4800);
         break;
       case "adopt":
-        this.blip(now, bus, 523, 0.1, 0.08, "triangle");
-        this.blip(now + 0.1, bus, 659, 0.1, 0.08, "triangle");
-        this.blip(now + 0.2, bus, 784, 0.12, 0.09, "sine");
-        this.blip(now + 0.34, bus, 1047, 0.18, 0.08, "sine");
+        // Heart-swell fanfare
+        this.blip(now, bus, 523, 0.1, 0.07, "triangle", 2800);
+        this.blip(now + 0.09, bus, 659, 0.1, 0.075, "triangle", 3200);
+        this.blip(now + 0.18, bus, 784, 0.12, 0.08, "sine", 4000);
+        this.blip(now + 0.3, bus, 1047, 0.2, 0.07, "sine", 5200);
+        this.blip(now + 0.34, bus, 1568, 0.18, 0.035, "sine", 6400);
         break;
       case "chime":
-        this.blip(now, bus, 784, 0.2, 0.07, "sine");
-        this.blip(now + 0.04, bus, 988, 0.24, 0.05, "sine");
+        this.blip(now, bus, 784, 0.22, 0.06, "sine", 4200);
+        this.blip(now + 0.03, bus, 988, 0.26, 0.045, "sine", 5200);
+        this.blip(now + 0.06, bus, 1319, 0.2, 0.025, "sine", 6000);
         break;
     }
   }
 
   /**
-   * Silly per-character voice blip for dialogue typing.
-   * Short, quiet, and pitched uniquely per speaker.
+   * Silly per-character voice blip for dialogue typing (Animalese-ish babble).
+   * Punchy short envelopes so every typed syllable is audible.
    */
   voice(id: VoiceId): void {
     if (this.muted) return;
@@ -670,49 +709,74 @@ class AudioManagerImpl {
 
     switch (id) {
       case "mabel": {
-        // Warm baker — soft mid triangle, gentle
-        const f = 420 + wobble * 30 + Math.random() * 40;
-        this.blip(now, bus, f, 0.055, 0.045, "triangle", 1600);
+        // Warm baker - cozy mid "hmmph"s
+        const f = 380 + wobble * 40 + Math.random() * 55;
+        this.voiceBlip(now, bus, f, 0.07, 0.11, "triangle", 1900);
         break;
       }
       case "jun": {
-        // Peppy barista — bright square chirps
-        const f = 720 + wobble * 50 + Math.random() * 80;
-        this.blip(now, bus, f, 0.035, 0.04, "square", 2200);
-        this.blip(now + 0.02, bus, f * 1.25, 0.025, 0.025, "square", 2600);
+        // Peppy barista - bright double chirps
+        const f = 700 + wobble * 70 + Math.random() * 100;
+        this.voiceBlip(now, bus, f, 0.045, 0.1, "square", 2800);
+        this.voiceBlip(now + 0.022, bus, f * 1.28, 0.035, 0.07, "square", 3200);
         break;
       }
       case "pip": {
-        // Playful gardener — bouncy sine hops
-        const f = 560 + wobble * 90 + Math.random() * 120;
-        this.blip(now, bus, f, 0.04, 0.042, "sine", 3000);
-        this.blip(now + 0.025, bus, f * 0.75, 0.03, 0.028, "triangle", 2000);
+        // Playful gardener - squeaky hops
+        const f = 620 + wobble * 110 + Math.random() * 140;
+        this.voiceBlip(now, bus, f, 0.05, 0.1, "sine", 3400);
+        this.voiceBlip(now + 0.028, bus, f * 0.72, 0.04, 0.065, "triangle", 2400);
         break;
       }
       case "vera": {
-        const f = 380 + wobble * 25 + Math.random() * 35;
-        this.blip(now, bus, f, 0.05, 0.04, "square", 1400);
+        // Dry librarian - low clipped buzz
+        const f = 300 + wobble * 30 + Math.random() * 40;
+        this.voiceBlip(now, bus, f, 0.065, 0.1, "square", 1600);
         break;
       }
       case "theo": {
-        const f = 340 + wobble * 20 + Math.random() * 30;
-        this.blip(now, bus, f, 0.05, 0.05, "triangle", 1200);
-        this.blip(now + 0.03, bus, f * 0.85, 0.03, 0.03, "sine", 1000);
+        // Soft vet - gentle low rounds
+        const f = 280 + wobble * 25 + Math.random() * 40;
+        this.voiceBlip(now, bus, f, 0.07, 0.11, "triangle", 1400);
+        this.voiceBlip(now + 0.03, bus, f * 0.88, 0.045, 0.07, "sine", 1200);
         break;
       }
       case "sage": {
-        const f = 460 + wobble * 20 + Math.random() * 25;
-        this.blip(now, bus, f, 0.05, 0.048, "sine", 1500);
+        // Calm shelter host - even mid tones
+        const f = 440 + wobble * 30 + Math.random() * 45;
+        this.voiceBlip(now, bus, f, 0.06, 0.1, "sine", 1800);
         break;
       }
-      case "player":
+      case "player": {
+        // Player thoughts - friendly mid babble
+        const f = 480 + wobble * 50 + Math.random() * 70;
+        this.voiceBlip(now, bus, f, 0.055, 0.1, "triangle", 2200);
+        break;
+      }
       default: {
-        // Ambient / unknown speakers get a pitched soft blip from their id.
+        // Ambient townsfolk - unique pitch seed from id
         let hash = 0;
         for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-        const base = 420 + (Math.abs(hash) % 280);
-        const f = base + wobble * 35 + Math.random() * 40;
-        this.blip(now, bus, f, 0.045, 0.038, "sine", 1800);
+        const base = 360 + (Math.abs(hash) % 360);
+        const wave: WaveKind =
+          Math.abs(hash) % 3 === 0
+            ? "square"
+            : Math.abs(hash) % 3 === 1
+              ? "triangle"
+              : "sine";
+        const f = base + wobble * 55 + Math.random() * 80;
+        this.voiceBlip(now, bus, f, 0.055, 0.1, wave, 2400);
+        if (Math.abs(hash) % 2 === 0) {
+          this.voiceBlip(
+            now + 0.02,
+            bus,
+            f * (0.85 + Math.random() * 0.4),
+            0.04,
+            0.065,
+            wave,
+            2600,
+          );
+        }
         break;
       }
     }
@@ -860,11 +924,17 @@ class AudioManagerImpl {
 
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, when);
-    const attack = soft ? 0.08 : 0.01;
-    const release = soft ? Math.min(0.55, dur * 0.55) : Math.min(0.12, dur * 0.3);
-    env.gain.linearRampToValueAtTime(gain, when + attack);
-    env.gain.setValueAtTime(gain * 0.85, when + Math.max(attack, dur - release));
-    env.gain.linearRampToValueAtTime(0, when + dur);
+    // Clamp attack/release so short blips stay audible (soft attack used to
+    // overrun tiny dialogue voice durations and schedule a silent envelope).
+    const attack = Math.min(soft ? 0.08 : 0.01, dur * 0.35);
+    const release = Math.min(soft ? 0.55 : 0.12, dur * (soft ? 0.55 : 0.35));
+    const peakAt = when + attack;
+    const releaseAt = Math.max(peakAt, when + dur - release);
+    env.gain.linearRampToValueAtTime(gain, peakAt);
+    if (releaseAt > peakAt) {
+      env.gain.setValueAtTime(gain * 0.85, releaseAt);
+    }
+    env.gain.linearRampToValueAtTime(0.0001, when + dur);
 
     let node: AudioNode = osc;
     if (cutoff) {
@@ -891,6 +961,112 @@ class AudioManagerImpl {
     cutoff = 2800,
   ): void {
     this.tone(when, dest, freq, dur, gain, wave, cutoff, true);
+  }
+
+  /** Punchy dialogue syllable - fast attack, slight pitch wobble. */
+  private voiceBlip(
+    when: number,
+    dest: AudioNode,
+    freq: number,
+    dur: number,
+    gain: number,
+    wave: WaveKind,
+    cutoff: number,
+  ): void {
+    const ctx = this.ctx!;
+    const osc = ctx.createOscillator();
+    osc.type = wave;
+    const f0 = Math.max(60, freq);
+    const f1 = Math.max(60, freq * (0.92 + Math.random() * 0.16));
+    osc.frequency.setValueAtTime(f0, when);
+    osc.frequency.exponentialRampToValueAtTime(f1, when + dur);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(cutoff, when);
+    filter.Q.setValueAtTime(0.9, when);
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, when);
+    env.gain.linearRampToValueAtTime(gain, when + 0.008);
+    env.gain.setValueAtTime(gain * 0.75, when + dur * 0.45);
+    env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+
+    osc.connect(filter);
+    filter.connect(env);
+    env.connect(dest);
+    osc.start(when);
+    osc.stop(when + dur + 0.02);
+  }
+
+  /** Soft percussive pop - quick sine with a slight downward pitch. */
+  private pop(
+    when: number,
+    dest: AudioNode,
+    freq: number,
+    dur: number,
+    gain: number,
+  ): void {
+    const ctx = this.ctx!;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, when);
+    osc.frequency.exponentialRampToValueAtTime(
+      Math.max(40, freq * 0.55),
+      when + dur,
+    );
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(2200, when);
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, when);
+    env.gain.linearRampToValueAtTime(gain, when + 0.008);
+    env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+
+    osc.connect(filter);
+    filter.connect(env);
+    env.connect(dest);
+    osc.start(when);
+    osc.stop(when + dur + 0.02);
+  }
+
+  /** Cute pitch swoop - rising or falling whoop. */
+  private swoop(
+    when: number,
+    dest: AudioNode,
+    fromFreq: number,
+    toFreq: number,
+    dur: number,
+    gain: number,
+    wave: WaveKind,
+    cutoff = 3200,
+  ): void {
+    const ctx = this.ctx!;
+    const osc = ctx.createOscillator();
+    osc.type = wave;
+    osc.frequency.setValueAtTime(Math.max(20, fromFreq), when);
+    osc.frequency.exponentialRampToValueAtTime(
+      Math.max(20, toFreq),
+      when + dur,
+    );
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(cutoff, when);
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, when);
+    env.gain.linearRampToValueAtTime(gain, when + 0.015);
+    env.gain.setValueAtTime(gain * 0.7, when + dur * 0.55);
+    env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+
+    osc.connect(filter);
+    filter.connect(env);
+    env.connect(dest);
+    osc.start(when);
+    osc.stop(when + dur + 0.02);
   }
 
   private noiseBurst(

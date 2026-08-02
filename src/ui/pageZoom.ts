@@ -13,7 +13,7 @@ export function mountPageZoomBanner(parent: HTMLElement): () => void {
       el = document.createElement("div");
       el.className = "ll-pagezoom-banner";
       const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
-      el.innerHTML = `Browser zoom is on — press <kbd>${mod}+0</kbd> to fit the screen`;
+      el.innerHTML = `Browser zoom is on - press <kbd>${mod}+0</kbd> to fit the screen`;
       parent.appendChild(el);
     }
   };

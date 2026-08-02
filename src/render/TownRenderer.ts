@@ -1,4 +1,8 @@
 import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { Palette } from "../game/palette";
 import { TILE, GAME_WIDTH, GAME_HEIGHT } from "../game/constants";
 import { MAP_H, MAP_W, type TownMapData } from "../world/townMap";
@@ -10,6 +14,38 @@ import {
 } from "../mesh/buildings";
 import { buildTownSigns, type SignHandle } from "../mesh/signs";
 import { worldToTile } from "./coords";
+import { ghostifyMaterials, tintGhostOk } from "./tint";
+import { addOutline } from "./outline";
+
+/** Soft vignette + warm grade for painted valley look. */
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    vignette: { value: 0.35 },
+    warmth: { value: 0.06 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float vignette;
+    uniform float warmth;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float d = distance(vUv, vec2(0.5));
+      float v = smoothstep(0.45, 0.95, d) * vignette;
+      c.rgb *= 1.0 - v;
+      c.rgb = mix(c.rgb, c.rgb * vec3(1.06, 1.0, 0.92), warmth);
+      gl_FragColor = c;
+    }
+  `,
+};
 
 export class TownRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -25,7 +61,7 @@ export class TownRenderer {
   private follow = new THREE.Vector3();
   private followTarget = new THREE.Vector3();
   /**
-   * Vertical world units in view — smaller = zoomed in.
+   * Vertical world units in view - smaller = zoomed in.
    * Default is roughly a lot and a half, Sims-ish.
    */
   static readonly FRUSTUM_DEFAULT = 560;
@@ -33,6 +69,23 @@ export class TownRenderer {
   static readonly FRUSTUM_MAX = 980;
   private frustumSize = TownRenderer.FRUSTUM_DEFAULT;
   private frustumTarget = TownRenderer.FRUSTUM_DEFAULT;
+  /** Prior user frustum while a cinematic focus zoom is active. */
+  private focusRestore: number | null = null;
+  /** Higher = snappier; lowered briefly for thought close-ups. */
+  private zoomDamp = 28;
+  /** Thought / dialogue close-up (below FRUSTUM_MIN). Soft enough to avoid hard cuts. */
+  static readonly FRUSTUM_FOCUS = 260;
+  /**
+   * Focus framing: shift the ortho window so the follow point sits lower-center,
+   * leaving headroom above for thought bubbles. Values are fractions of half-frustum.
+   * +Y → character lower on screen; +X → character left of center.
+   */
+  private frameShiftX = 0;
+  private frameShiftY = 0;
+  private frameShiftXTarget = 0;
+  private frameShiftYTarget = 0;
+  static readonly FOCUS_FRAME_Y = 0.38;
+  static readonly FOCUS_FRAME_X = 0;
   private viewWidth = GAME_WIDTH;
   private viewHeight = GAME_HEIGHT;
   private raycaster = new THREE.Raycaster();
@@ -47,9 +100,14 @@ export class TownRenderer {
   private hoverTh = 0;
   private clock = 0;
   private worldBuilt = false;
-  private camOffset = new THREE.Vector3(120, 300, 250);
-  /** Locked orientation — lookAt is NOT called while the camera moves. */
+  // Low oblique — high Y made roofs read as flat lids on wide lots.
+  private camOffset = new THREE.Vector3(165, 185, 285);
+  /** Locked orientation - lookAt is NOT called while the camera moves. */
   private camQuat = new THREE.Quaternion();
+  private composer: EffectComposer;
+  private gradePass: ShaderPass;
+  /** Sun offset from follow target — direction changes with time of day. */
+  private sunOffset = new THREE.Vector3(180, 380, 140);
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -63,41 +121,61 @@ export class TownRenderer {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setClearColor(Palette.sky, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(Palette.sky, 500, 1400);
+    // Fog must sit well past the visible frustum or the valley washes to sky.
+    this.scene.fog = new THREE.Fog(Palette.sky, 2200, 7000);
 
     const aspect = GAME_WIDTH / GAME_HEIGHT;
+    // Ortho near MUST be negative: the low oblique angle puts ground and
+    // building faces behind the camera, and a positive near plane carves a
+    // hard diagonal void through the world as you walk.
     this.camera = new THREE.OrthographicCamera(
       (-this.frustumSize * aspect) / 2,
       (this.frustumSize * aspect) / 2,
       this.frustumSize / 2,
       -this.frustumSize / 2,
-      0.1,
-      3000,
+      -4000,
+      8000,
     );
-    // Bake a fixed oblique orientation once — never re-derive it per frame.
+    // Bake a fixed oblique orientation once - never re-derive it per frame.
     this.camera.position.copy(this.camOffset);
     this.camera.lookAt(0, 10, 0);
     this.camera.rotation.order = "YXZ";
     this.camQuat.copy(this.camera.quaternion);
 
-    this.hemi = new THREE.HemisphereLight(0xfff2dd, 0x7a9e6a, 0.85);
+    this.hemi = new THREE.HemisphereLight(0xfff4e0, 0x6b9a55, 0.95);
     this.scene.add(this.hemi);
 
-    this.sun = new THREE.DirectionalLight(0xfff0d0, 1.05);
-    this.sun.position.set(200, 420, 120);
+    this.sun = new THREE.DirectionalLight(0xffe4b8, 1.15);
+    // Direction orbits the map centre; the shadow frustum follows the player
+    // so 2048² stays sharp (whole-town coverage was ~1 texel/unit = jaggies).
+    const mapCx = (MAP_W * TILE) / 2;
+    const mapCz = (MAP_H * TILE) / 2;
+    this.sun.target.position.set(mapCx, 0, mapCz);
+    this.sun.position.set(mapCx + 180, 380, mapCz + 140);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.camera.near = 10;
-    this.sun.shadow.camera.far = 1200;
-    this.sun.shadow.camera.left = -400;
-    this.sun.shadow.camera.right = 400;
-    this.sun.shadow.camera.top = 400;
-    this.sun.shadow.camera.bottom = -400;
-    this.sun.shadow.bias = -0.0008;
+    this.sun.shadow.camera.far = 900;
+    this.sun.shadow.camera.left = -520;
+    this.sun.shadow.camera.right = 520;
+    this.sun.shadow.camera.top = 520;
+    this.sun.shadow.camera.bottom = -520;
+    this.sun.shadow.camera.updateProjectionMatrix();
+    this.sun.shadow.bias = -0.0002;
+    this.sun.shadow.normalBias = 0.08;
+    this.sun.shadow.radius = 2;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
+
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.gradePass = new ShaderPass(GradeShader);
+    this.composer.addPass(this.gradePass);
+    this.composer.addPass(new OutputPass());
 
     // Invisible ground for raycasting
     this.pickPlane = new THREE.Mesh(
@@ -128,10 +206,13 @@ export class TownRenderer {
     const terrain = buildTerrain(map);
     this.scene.add(terrain);
     const built = buildBuildings();
+    // No inverted-hull outlines on buildings - they turn every wall/window
+    // box into a dark border. Silhouette comes from toon lighting + roof mass.
     this.scene.add(built.group);
     this.buildings = built.buildings;
     this.buildingsUpdate = built.update;
     const signed = buildTownSigns();
+    addOutline(signed.group, 1.04);
     this.scene.add(signed.group);
     this.signs = signed.signs;
     this.worldBuilt = true;
@@ -159,6 +240,11 @@ export class TownRenderer {
       TownRenderer.FRUSTUM_MIN,
       TownRenderer.FRUSTUM_MAX,
     );
+    // User override cancels cinematic restore + focus framing.
+    this.focusRestore = null;
+    this.frameShiftXTarget = 0;
+    this.frameShiftYTarget = 0;
+    this.zoomDamp = 28;
   }
 
   /** Multiply current zoom (e.g. 1.1 = 10% closer, 0.9 = 10% farther). */
@@ -167,8 +253,51 @@ export class TownRenderer {
   }
 
   /**
+   * Soft cinematic close-up on the follow target (dialogue / thoughts).
+   * Remembers the current zoom and restores it via endFocusZoom().
+   * Idempotent while already focused - safe to call every frame.
+   */
+  beginFocusZoom(frustum = TownRenderer.FRUSTUM_FOCUS) {
+    if (this.focusRestore === null) {
+      this.focusRestore = this.frustumTarget;
+      this.frustumTarget = frustum;
+      this.zoomDamp = 10;
+    } else if (this.frustumTarget !== frustum) {
+      this.frustumTarget = frustum;
+    }
+    // Character lower-center → clear sky above the head for thought bubbles.
+    this.frameShiftYTarget = TownRenderer.FOCUS_FRAME_Y;
+    this.frameShiftXTarget = TownRenderer.FOCUS_FRAME_X;
+  }
+
+  /** Ease back out of a beginFocusZoom() close-up. */
+  endFocusZoom() {
+    if (this.focusRestore === null && this.frameShiftYTarget === 0) return;
+    if (this.focusRestore !== null) {
+      this.frustumTarget = THREE.MathUtils.clamp(
+        this.focusRestore,
+        TownRenderer.FRUSTUM_MIN,
+        TownRenderer.FRUSTUM_MAX,
+      );
+      this.focusRestore = null;
+      this.zoomDamp = 8;
+    }
+    this.frameShiftYTarget = 0;
+    this.frameShiftXTarget = 0;
+  }
+
+  /** True while a cinematic focus close-up is active (or still easing out). */
+  isFocusZooming(): boolean {
+    return (
+      this.focusRestore !== null ||
+      Math.abs(this.frameShiftY) > 0.01 ||
+      Math.abs(this.frameShiftX) > 0.01
+    );
+  }
+
+  /**
    * Wheel / trackpad pinch → zoom.
-   * Only pinch (ctrl/meta + wheel) zooms — plain trackpad scroll is ignored
+   * Only pinch (ctrl/meta + wheel) zooms - plain trackpad scroll is ignored
    * entirely so walking never nudges the frustum.
    */
   zoomByWheel(deltaY: number, pinch = false) {
@@ -180,10 +309,15 @@ export class TownRenderer {
 
   private applyFrustum() {
     const aspect = this.viewWidth / Math.max(1, this.viewHeight);
-    this.camera.left = (-this.frustumSize * aspect) / 2;
-    this.camera.right = (this.frustumSize * aspect) / 2;
-    this.camera.top = this.frustumSize / 2;
-    this.camera.bottom = -this.frustumSize / 2;
+    const halfH = this.frustumSize / 2;
+    const halfW = halfH * aspect;
+    // Asymmetric ortho window: shift origin on screen without moving the camera.
+    const ox = this.frameShiftX * halfW;
+    const oy = this.frameShiftY * halfH;
+    this.camera.left = -halfW + ox;
+    this.camera.right = halfW + ox;
+    this.camera.top = halfH + oy;
+    this.camera.bottom = -halfH + oy;
     this.camera.updateProjectionMatrix();
   }
 
@@ -201,14 +335,7 @@ export class TownRenderer {
       this.ghost = null;
     }
     if (mesh) {
-      mesh.traverse((o) => {
-        if (o instanceof THREE.Mesh && o.material instanceof THREE.Material) {
-          const m = (o.material as THREE.MeshLambertMaterial).clone();
-          m.transparent = true;
-          m.opacity = 0.55;
-          o.material = m;
-        }
-      });
+      ghostifyMaterials(mesh, 0.55);
       this.ghost = mesh;
       this.scene.add(mesh);
     }
@@ -216,13 +343,7 @@ export class TownRenderer {
 
   setGhostTint(ok: boolean) {
     if (!this.ghost) return;
-    this.ghost.traverse((o) => {
-      if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshLambertMaterial) {
-        o.material.color.setHex(ok ? 0x76e887 : 0xff7188);
-        o.material.emissive.setHex(ok ? 0x1f8f3a : 0x8f1f32);
-        o.material.emissiveIntensity = 0.55;
-      }
-    });
+    tintGhostOk(this.ghost, ok);
   }
 
   /** Bright outline for existing furniture that can be selected/moved. */
@@ -391,8 +512,8 @@ export class TownRenderer {
 
   /**
    * Pick the first of `objects` under the cursor. Ground-plane hit testing
-   * misplaces clicks on anything tall — the plane point lands behind the object
-   * — so props are hit tested against their real geometry.
+   * misplaces clicks on anything tall - the plane point lands behind the object
+   * - so props are hit tested against their real geometry.
    */
   pickFrom(
     clientX: number,
@@ -433,42 +554,50 @@ export class TownRenderer {
 
   setDayTime(t: number) {
     // 0 night → morning → day → evening → night
-    let sunIntensity = 1.05;
-    let hemiIntensity = 0.85;
-    let sunColor = new THREE.Color(0xfff0d0);
+    let sunIntensity = 1.2;
+    let hemiIntensity = 0.95;
+    let sunColor = new THREE.Color(0xffe4b8);
     let clear = new THREE.Color(Palette.sky);
     let fogCol = new THREE.Color(Palette.sky);
+    let warmth = 0.06;
+    let vignette = 0.35;
 
     if (t < 0.2 || t >= 0.88) {
-      // night
-      sunIntensity = 0.15;
-      hemiIntensity = 0.25;
+      sunIntensity = 0.18;
+      hemiIntensity = 0.28;
       sunColor.set(0x6a7ec8);
       clear.set(0x1b2a5c);
       fogCol.set(0x1b2a5c);
+      warmth = 0;
+      vignette = 0.5;
     } else if (t < 0.3) {
       const k = (t - 0.2) / 0.1;
-      sunIntensity = 0.15 + k * 0.9;
-      hemiIntensity = 0.25 + k * 0.6;
+      sunIntensity = 0.18 + k * 1.0;
+      hemiIntensity = 0.28 + k * 0.65;
       sunColor.set(0x6a7ec8).lerp(new THREE.Color(0xffc090), k);
       clear.set(0x1b2a5c).lerp(new THREE.Color(Palette.sky), k);
       fogCol.copy(clear);
+      warmth = k * 0.08;
+      vignette = 0.5 - k * 0.15;
     } else if (t < 0.72) {
-      sunIntensity = 1.05;
-      hemiIntensity = 0.85;
+      sunIntensity = 1.2;
+      hemiIntensity = 0.95;
     } else if (t < 0.82) {
       const k = (t - 0.72) / 0.1;
-      sunIntensity = 1.05 - k * 0.5;
-      sunColor.set(0xfff0d0).lerp(new THREE.Color(0xd06a4a), k);
+      sunIntensity = 1.2 - k * 0.55;
+      sunColor.set(0xffe4b8).lerp(new THREE.Color(0xd06a4a), k);
       clear.set(Palette.sky).lerp(new THREE.Color(0xd06a4a), k * 0.4);
       fogCol.copy(clear);
+      warmth = 0.06 + k * 0.1;
     } else {
       const k = (t - 0.82) / 0.06;
-      sunIntensity = 0.55 - k * 0.4;
-      hemiIntensity = 0.85 - k * 0.6;
+      sunIntensity = 0.65 - k * 0.45;
+      hemiIntensity = 0.95 - k * 0.65;
       sunColor.set(0xd06a4a).lerp(new THREE.Color(0x6a7ec8), k);
       clear.set(0xd06a4a).lerp(new THREE.Color(0x1b2a5c), k);
       fogCol.copy(clear);
+      warmth = 0.08 * (1 - k);
+      vignette = 0.35 + k * 0.15;
     }
 
     this.sun.intensity = sunIntensity;
@@ -478,13 +607,26 @@ export class TownRenderer {
     if (this.scene.fog instanceof THREE.Fog) {
       this.scene.fog.color.copy(fogCol);
     }
+    this.gradePass.uniforms.warmth!.value = warmth;
+    this.gradePass.uniforms.vignette!.value = vignette;
 
     const angle = (t - 0.25) * Math.PI * 2;
-    this.sun.position.set(
+    this.sunOffset.set(
       Math.cos(angle) * 280,
       180 + Math.sin(angle) * 260,
       Math.sin(angle) * 180,
     );
+  }
+
+  /** Keep the shadow frustum glued to the player for sharp local shadows. */
+  private placeSun(playerX: number, playerZ: number) {
+    this.sun.target.position.set(playerX, 0, playerZ);
+    this.sun.position.set(
+      playerX + this.sunOffset.x,
+      this.sunOffset.y,
+      playerZ + this.sunOffset.z,
+    );
+    this.sun.target.updateMatrixWorld();
   }
 
   resize(width: number, height: number) {
@@ -492,35 +634,66 @@ export class TownRenderer {
     this.viewWidth = width;
     this.viewHeight = height;
     this.renderer.setSize(width, height, false);
+    this.composer.setSize(width, height);
     this.applyFrustum();
   }
 
   update(dt: number, playerX: number, playerZ: number) {
-    // Hard-lock to the player — no lag, no damp overshoot, no rubber-band on turns.
+    // Hard-lock to the player - no lag, no damp overshoot, no rubber-band on turns.
     this.follow.set(playerX, 0, playerZ);
     this.followTarget.copy(this.follow);
 
-    // Smooth zoom toward target frustum (pinch / +/- only)
+    // Smooth zoom toward target frustum (pinch / focus zoom)
+    let frustumDirty = false;
     if (Math.abs(this.frustumSize - this.frustumTarget) > 0.05) {
       this.frustumSize = THREE.MathUtils.damp(
         this.frustumSize,
         this.frustumTarget,
-        28,
+        this.zoomDamp,
         dt,
       );
-      this.applyFrustum();
+      frustumDirty = true;
     } else if (this.frustumSize !== this.frustumTarget) {
       this.frustumSize = this.frustumTarget;
-      this.applyFrustum();
+      frustumDirty = true;
+      this.zoomDamp = 28;
     }
+
+    // Ease focus framing (character lower-center → headroom for thoughts)
+    const frameDamp = this.focusRestore !== null ? 10 : 8;
+    if (
+      Math.abs(this.frameShiftX - this.frameShiftXTarget) > 0.001 ||
+      Math.abs(this.frameShiftY - this.frameShiftYTarget) > 0.001
+    ) {
+      this.frameShiftX = THREE.MathUtils.damp(
+        this.frameShiftX,
+        this.frameShiftXTarget,
+        frameDamp,
+        dt,
+      );
+      this.frameShiftY = THREE.MathUtils.damp(
+        this.frameShiftY,
+        this.frameShiftYTarget,
+        frameDamp,
+        dt,
+      );
+      frustumDirty = true;
+    } else if (
+      this.frameShiftX !== this.frameShiftXTarget ||
+      this.frameShiftY !== this.frameShiftYTarget
+    ) {
+      this.frameShiftX = this.frameShiftXTarget;
+      this.frameShiftY = this.frameShiftYTarget;
+      frustumDirty = true;
+    }
+
+    if (frustumDirty) this.applyFrustum();
 
     this.camera.position.copy(this.follow).add(this.camOffset);
     this.camera.quaternion.copy(this.camQuat);
+    this.placeSun(playerX, playerZ);
 
-    this.sun.target.position.copy(this.follow);
-    this.sun.target.updateMatrixWorld();
-
-    // Fade / lift the roof only when the player is inside — never hide the
+    // Fade / lift the roof only when the player is inside - never hide the
     // whole shell based on camera XZ (that made cafés vanish on approach).
     if (this.buildings.length > 0) {
       const inside = playerInsideBuilding(playerX, playerZ, this.buildings);
@@ -538,7 +711,7 @@ export class TownRenderer {
       mat.opacity = Math.max(0, 0.95 - this.clock * 1.2);
     }
 
-    this.renderer.render(this.scene, this.camera);
+    this.composer.render();
   }
 
   add(obj: THREE.Object3D) {

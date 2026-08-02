@@ -30,7 +30,7 @@ export class App {
 
     const resize = () => this.fit();
     window.addEventListener("resize", resize);
-    // Only react to visualViewport when page-zoom is actually on — scroll
+    // Only react to visualViewport when page-zoom is actually on - scroll
     // events at 100% zoom are noise and were resizing the canvas mid-walk.
     const onVv = () => {
       const scale = window.visualViewport?.scale ?? 1;

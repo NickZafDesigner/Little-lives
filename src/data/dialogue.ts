@@ -34,7 +34,7 @@ type ToneLines = Record<DialogueTone, string[]>;
 const LINES: Record<ChatNpcId, ToneLines> = {
   mabel: {
     friendly: [
-      "Oh honey, come in — kettle's on!",
+      "Oh honey, come in - kettle's on!",
       "You always brighten my kitchen.",
     ],
     polite: [
@@ -52,16 +52,16 @@ const LINES: Record<ChatNpcId, ToneLines> = {
   },
   jun: {
     friendly: [
-      "Hey! Perfect timing — fresh pour-over?",
+      "Hey! Perfect timing - fresh pour-over?",
       "Always good to see a familiar face.",
     ],
     polite: [
       "Welcome in. What can I get started for you?",
-      "Appreciate the courtesy — rare these days!",
+      "Appreciate the courtesy - rare these days!",
     ],
     flirty: [
       "Is it warm in here, or is that just you?",
-      "Careful — charm like that gets free foam art.",
+      "Careful - charm like that gets free foam art.",
     ],
     rude: [
       "Whoa. Save the attitude for the espresso machine.",
@@ -75,10 +75,10 @@ const LINES: Record<ChatNpcId, ToneLines> = {
     ],
     polite: [
       "Oh! Hello. The park thanks you for visiting.",
-      "Such nice manners — even the ducks approve.",
+      "Such nice manners - even the ducks approve.",
     ],
     flirty: [
-      "Hehe — are you flirting with me or the sunflowers?",
+      "Hehe - are you flirting with me or the sunflowers?",
       "Stop that, you're making me blush greener.",
     ],
     rude: [
@@ -88,7 +88,7 @@ const LINES: Record<ChatNpcId, ToneLines> = {
   },
   vera: {
     friendly: [
-      "Customer and friend — my favorite combo.",
+      "Customer and friend - my favorite combo.",
       "Got a deal with your name on it.",
     ],
     polite: [
@@ -106,7 +106,7 @@ const LINES: Record<ChatNpcId, ToneLines> = {
   },
   theo: {
     friendly: [
-      "Shh— oh, it's you. Hello.",
+      "Shh -  oh, it's you. Hello.",
       "I set aside a book I thought you'd like.",
     ],
     polite: [
@@ -125,7 +125,7 @@ const LINES: Record<ChatNpcId, ToneLines> = {
   sage: {
     friendly: [
       "Good to see you upright and smiling.",
-      "How are you feeling today — honestly?",
+      "How are you feeling today - honestly?",
     ],
     polite: [
       "Please, have a seat. I'm glad you came by.",
@@ -142,7 +142,7 @@ const LINES: Record<ChatNpcId, ToneLines> = {
   },
 };
 
-/** Branching chats — player choices build (or bruise) the relationship. */
+/** Branching chats - player choices build (or bruise) the relationship. */
 export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
   mabel: {
     npcId: "mabel",
@@ -152,7 +152,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
         id: "hello",
         npcLines: [
           "Well look who wandered into my kitchen!",
-          "Sit a spell — what's on your mind, dear?",
+          "Sit a spell - what's on your mind, dear?",
         ],
         choices: [
           {
@@ -165,7 +165,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "ask_bake",
             label: "What are you baking?",
-            playerLine: "Something smells amazing — what are you baking?",
+            playerLine: "Something smells amazing - what are you baking?",
             affinity: 8,
             next: "bake",
           },
@@ -179,7 +179,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "leave",
             label: "Just saying hi",
-            playerLine: "Just popping in to say hi — talk soon!",
+            playerLine: "Just popping in to say hi - talk soon!",
             affinity: 2,
             next: null,
           },
@@ -188,7 +188,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       day: {
         id: "day",
         npcLines: [
-          "Busy in the best way — dough rising, kettle singing.",
+          "Busy in the best way - dough rising, kettle singing.",
           "Though I could use a hand tasting the jam… for science.",
         ],
         choices: [
@@ -209,7 +209,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "busy",
             label: "I should run",
-            playerLine: "Wish I could stay — next time for sure.",
+            playerLine: "Wish I could stay - next time for sure.",
             affinity: 1,
             next: null,
           },
@@ -240,7 +240,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "bye_bake",
             label: "Save me one!",
-            playerLine: "Save me a corner piece — the crispy one!",
+            playerLine: "Save me a corner piece - the crispy one!",
             affinity: 6,
             next: null,
           },
@@ -256,7 +256,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "deal",
             label: "Deal!",
-            playerLine: "Deal. Cookie first, then dishes — priorities.",
+            playerLine: "Deal. Cookie first, then dishes - priorities.",
             affinity: 9,
             next: "warm",
           },
@@ -286,7 +286,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "hug",
             label: "Group hug (with the oven)",
-            playerLine: "Group hug — you, me, and the warm oven.",
+            playerLine: "Group hug - you, me, and the warm oven.",
             affinity: 9,
             next: null,
             minScore: 25,
@@ -303,14 +303,14 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       hello: {
         id: "hello",
         npcLines: [
-          "Hey! Pull up a stool — steam's on me.",
+          "Hey! Pull up a stool - steam's on me.",
           "What's the vibe today?",
         ],
         choices: [
           {
             id: "coffee_talk",
             label: "Recommend a drink",
-            playerLine: "Surprise me — what should I drink?",
+            playerLine: "Surprise me - what should I drink?",
             affinity: 7,
             next: "drink",
           },
@@ -324,14 +324,14 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "flirt_light",
             label: "You look good today",
-            playerLine: "Not gonna lie — that apron is working for you.",
+            playerLine: "Not gonna lie - that apron is working for you.",
             affinity: 5,
             next: "flirt",
           },
           {
             id: "leave",
             label: "Just passing through",
-            playerLine: "Just waving hello — catch you on the flip!",
+            playerLine: "Just waving hello - catch you on the flip!",
             affinity: 2,
             next: null,
           },
@@ -340,7 +340,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       drink: {
         id: "drink",
         npcLines: [
-          "Oat lavender latte. Floral, cozy, slightly chaotic — like this town.",
+          "Oat lavender latte. Floral, cozy, slightly chaotic - like this town.",
           "Unless you want rocket fuel. Then espresso, no mercy.",
         ],
         choices: [
@@ -363,7 +363,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       cafe: {
         id: "cafe",
         npcLines: [
-          "Morning rush was a blur — someone ordered 'the vibe.'",
+          "Morning rush was a blur - someone ordered 'the vibe.'",
           "I gave them a smile and a cappuccino. Nailed it.",
         ],
         choices: [
@@ -386,7 +386,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       flirt: {
         id: "flirt",
         npcLines: [
-          "Ohhh? Foam heart incoming — don't melt.",
+          "Ohhh? Foam heart incoming - don't melt.",
           "Keep talking like that and I'll rename the special after you.",
         ],
         choices: [
@@ -400,7 +400,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "shy",
             label: "Too smooth!",
-            playerLine: "Okay okay — you're smoother than the foam.",
+            playerLine: "Okay okay - you're smoother than the foam.",
             affinity: 6,
             next: "bond",
           },
@@ -409,7 +409,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       bond: {
         id: "bond",
         npcLines: [
-          "For real though — I like when you stop by.",
+          "For real though - I like when you stop by.",
           "Café feels more like a hangout than a job then.",
         ],
         choices: [
@@ -423,7 +423,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "later",
             label: "Hang after close?",
-            playerLine: "We should hang after close sometime — no espresso required.",
+            playerLine: "We should hang after close sometime - no espresso required.",
             affinity: 11,
             next: null,
             minScore: 20,
@@ -440,7 +440,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       hello: {
         id: "hello",
         npcLines: [
-          "Hi hi! You're just in time — the ducks are holding court.",
+          "Hi hi! You're just in time - the ducks are holding court.",
           "Wanna join the park committee? Membership is free. Payment is giggles.",
         ],
         choices: [
@@ -461,7 +461,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "race",
             label: "Race you to the pond!",
-            playerLine: "Race you to the pond — loser feeds the ducks!",
+            playerLine: "Race you to the pond - loser feeds the ducks!",
             affinity: 6,
             next: "race",
           },
@@ -477,7 +477,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       cool: {
         id: "cool",
         npcLines: [
-          "Okay okay — see that sunflower? It turned toward YOU.",
+          "Okay okay - see that sunflower? It turned toward YOU.",
           "Science? Magic? Friendship? I vote all three.",
         ],
         choices: [
@@ -524,7 +524,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
         id: "race",
         npcLines: [
           "YOU CHEATED with kindness! I tripped on a compliment!",
-          "Fine — ducks get snacks either way. Rematch tomorrow?",
+          "Fine - ducks get snacks either way. Rematch tomorrow?",
         ],
         choices: [
           {
@@ -577,14 +577,14 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       hello: {
         id: "hello",
         npcLines: [
-          "Browsing or buying? Don't make me guess — I'm not psychic.",
+          "Browsing or buying? Don't make me guess - I'm not psychic.",
           "…Though I am very good at reading faces.",
         ],
         choices: [
           {
             id: "browse",
             label: "Just browsing",
-            playerLine: "Just browsing — your stall's half the fun.",
+            playerLine: "Just browsing - your stall's half the fun.",
             affinity: 5,
             next: "browse",
           },
@@ -605,7 +605,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "leave",
             label: "Maybe later",
-            playerLine: "Maybe later — don't sell out of the good jam.",
+            playerLine: "Maybe later - don't sell out of the good jam.",
             affinity: 1,
             next: null,
           },
@@ -621,7 +621,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "honest",
             label: "I like your taste",
-            playerLine: "You've got great taste — stall always feels sharp.",
+            playerLine: "You've got great taste - stall always feels sharp.",
             affinity: 9,
             next: "soft",
           },
@@ -696,7 +696,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           },
           {
             id: "mush",
-            label: "Too late — we're friends",
+            label: "Too late - we're friends",
             playerLine: "Too late. I already filed us under friends.",
             affinity: 10,
             next: null,
@@ -714,7 +714,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       hello: {
         id: "hello",
         npcLines: [
-          "Oh — hello. I was mid-sentence with a footnote.",
+          "Oh - hello. I was mid-sentence with a footnote.",
           "You may speak. Softly.",
         ],
         choices: [
@@ -728,7 +728,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "quiet",
             label: "I'll keep quiet",
-            playerLine: "I'll keep quiet — just wanted to say hi.",
+            playerLine: "I'll keep quiet - just wanted to say hi.",
             affinity: 6,
             next: "quiet",
           },
@@ -742,7 +742,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "leave",
             label: "Sorry to interrupt",
-            playerLine: "Sorry to interrupt — enjoy the footnote.",
+            playerLine: "Sorry to interrupt - enjoy the footnote.",
             affinity: 2,
             next: null,
           },
@@ -812,7 +812,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "help_shelve",
             label: "I can help shelve",
-            playerLine: "I can help shelve — carefully, quietly.",
+            playerLine: "I can help shelve - carefully, quietly.",
             affinity: 10,
             next: "trust",
           },
@@ -852,7 +852,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       hello: {
         id: "hello",
         npcLines: [
-          "Hello. No clipboard this time — unless you want one.",
+          "Hello. No clipboard this time - unless you want one.",
           "How are you feeling? And don't say 'fine' on autopilot.",
         ],
         choices: [
@@ -880,7 +880,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "leave",
             label: "Just checking in",
-            playerLine: "Just checking in on you — doctor needs care too.",
+            playerLine: "Just checking in on you - doctor needs care too.",
             affinity: 5,
             next: null,
           },
@@ -889,7 +889,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       well: {
         id: "well",
         npcLines: [
-          "Good. Hold onto that — joy is preventive medicine.",
+          "Good. Hold onto that - joy is preventive medicine.",
           "What have you been caring for lately? Besides yourself, hopefully.",
         ],
         choices: [
@@ -912,7 +912,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       care: {
         id: "care",
         npcLines: [
-          "Thank you for saying so. Exhaustion lies — it says you're alone.",
+          "Thank you for saying so. Exhaustion lies - it says you're alone.",
           "You're not. Rest is productive. Hydrate. Then rest again.",
         ],
         choices: [
@@ -965,7 +965,7 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
           {
             id: "salute",
             label: "Yes, doctor",
-            playerLine: "Yes, doctor. Healthy visits only — mostly.",
+            playerLine: "Yes, doctor. Healthy visits only - mostly.",
             affinity: 8,
             next: null,
           },
@@ -995,7 +995,23 @@ export function friendUnlockLine(npcId: ChatNpcId): string {
     pip: "Best park pals forever!!",
     vera: "Alright, you're on the friends-and-family list.",
     theo: "I… consider you a friend. That's rare.",
-    sage: "I'm glad we connected. Take care of yourself — and visit.",
+    sage: "I'm glad we connected. Take care of yourself - and visit.",
+  };
+  return lines[npcId];
+}
+
+/** Flavour when the player's favourite food comes up. */
+export function favouriteFoodNpcLine(
+  npcId: ChatNpcId,
+  food: string,
+): string {
+  const lines: Record<ChatNpcId, string> = {
+    mabel: `Someone with taste! I could bake something like ${food}…`,
+    jun: `${food}? Bold order. I respect it.`,
+    pip: `Ooh ${food}! Can flowers taste like that? Asking for a friend.`,
+    vera: `${food} sells. Bring coin if you want the good batch.`,
+    theo: `There's a slim volume on the history of ${food}. Riveting, actually.`,
+    sage: `${food} in moderation. Doctor's gentle advice.`,
   };
   return lines[npcId];
 }

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "assets": "node scripts/export-assets.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",

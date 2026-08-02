@@ -25,13 +25,16 @@ export const Tile = {
 
 export type TileCode = (typeof Tile)[keyof typeof Tile];
 
-export const MAP_W = 72;
-export const MAP_H = 52;
+export const MAP_W = 96;
+export const MAP_H = 68;
 
 export interface TownMapData {
   ground: number[][];
   collision: boolean[][];
   doors: Array<{ tx: number; ty: number; label: string }>;
+  /** Decorative world props placed on top of grass (not tile codes). */
+  rocks: Array<[number, number]>;
+  fencePosts: Array<[number, number]>;
 }
 
 function fillRect(
@@ -123,86 +126,44 @@ export function createTownMap(): TownMapData {
     collision[y][MAP_W - 1] = true;
   }
 
-  // Path network around lots (see LOTS footprints).
-  // Main spine between west lots and the park.
-  fillRect(ground, 18, 2, 2, MAP_H - 4, Tile.path);
-  // Northern belt above the park / houses.
-  fillRect(ground, 18, 2, 50, 1, Tile.path);
+  // Path network around the spread-out lots.
+  // Main west spine between home / café and the park.
+  fillRect(ground, 20, 2, 2, 58, Tile.path);
+  // Northern belt above houses.
+  fillRect(ground, 20, 2, 72, 1, Tile.path);
   // Home frontage.
-  fillRect(ground, 2, 14, 18, 2, Tile.path);
+  fillRect(ground, 2, 14, 20, 2, Tile.path);
   // Far-east lane past market / library.
-  fillRect(ground, 66, 2, 2, 46, Tile.path);
+  fillRect(ground, 90, 2, 2, 52, Tile.path);
   // Mid-east lane between shelter and library gap.
-  fillRect(ground, 50, 2, 2, 34, Tile.path);
-  // Neighbor + market frontage (south of both).
-  fillRect(ground, 36, 13, 32, 2, Tile.path);
-  // West lane.
-  fillRect(ground, 2, 16, 2, 18, Tile.path);
+  fillRect(ground, 68, 2, 2, 44, Tile.path);
+  // Neighbor + market frontage.
+  fillRect(ground, 50, 13, 42, 2, Tile.path);
+  // West lane by café.
+  fillRect(ground, 2, 16, 2, 28, Tile.path);
   // South of park / between café & shelter.
-  fillRect(ground, 18, 24, 18, 2, Tile.path);
-  // Park entrance.
-  fillRect(ground, 20, 18, 2, 2, Tile.path);
+  fillRect(ground, 20, 30, 30, 2, Tile.path);
+  // Park west entrance from spine.
+  fillRect(ground, 22, 20, 2, 2, Tile.path);
   // Café / shelter / library frontage.
-  fillRect(ground, 2, 34, 66, 2, Tile.path);
+  fillRect(ground, 2, 44, 90, 2, Tile.path);
   // Connector east to library/market gap.
-  fillRect(ground, 50, 24, 16, 2, Tile.path);
-  // Clinic approach — south spine + frontage.
-  fillRect(ground, 18, 36, 2, 14, Tile.path);
-  fillRect(ground, 18, 48, 20, 2, Tile.path);
-  fillRect(ground, 2, 48, 16, 2, Tile.path);
+  fillRect(ground, 68, 30, 24, 2, Tile.path);
+  // Clinic approach - south spine + frontage.
+  fillRect(ground, 20, 46, 2, 16, Tile.path);
+  fillRect(ground, 20, 60, 30, 2, Tile.path);
+  fillRect(ground, 2, 60, 18, 2, Tile.path);
+  // Beach promenade (walkable sand corridor later painted sand).
+  fillRect(ground, 2, 62, 92, 2, Tile.path);
 
   // Door welcome mats
   fillRect(ground, 9, 14, 3, 2, Tile.path); // home
-  fillRect(ground, 40, 13, 3, 2, Tile.path); // neighbor
-  fillRect(ground, 59, 13, 3, 2, Tile.path); // market
-  fillRect(ground, 9, 34, 3, 2, Tile.path); // café
-  fillRect(ground, 41, 34, 3, 2, Tile.path); // shelter
-  fillRect(ground, 59, 34, 3, 2, Tile.path); // library
-  fillRect(ground, 25, 48, 3, 2, Tile.path); // clinic
-
-  // Pond in park
-  fillRect(ground, 26, 16, 4, 3, Tile.water);
-  fillRect(ground, 25, 17, 6, 1, Tile.sand);
-  for (let y = 16; y < 19; y++) {
-    for (let x = 26; x < 30; x++) collision[y][x] = true;
-  }
-
-  // South cove / beach accent
-  fillRect(ground, 40, 48, 8, 2, Tile.sand);
-  fillRect(ground, 42, 49, 4, 1, Tile.water);
-  for (let x = 42; x < 46; x++) collision[49][x] = true;
-
-  const decorSpots = [
-    [6, 16],
-    [12, 16],
-    [22, 6],
-    [30, 10],
-    [33, 22],
-    [22, 30],
-    [40, 18],
-    [48, 16],
-    [62, 16],
-    [28, 36],
-    [10, 40],
-  ];
-  for (const [x, y] of decorSpots) {
-    if (ground[y]?.[x] === Tile.path) continue;
-    set(ground, x, y, Tile.flower);
-  }
-  const bushSpots = [
-    [6, 15],
-    [21, 10],
-    [34, 10],
-    [6, 28],
-    [45, 20],
-    [62, 20],
-    [16, 42],
-  ];
-  for (const [x, y] of bushSpots) {
-    if (ground[y]?.[x] === Tile.path) continue;
-    set(ground, x, y, Tile.bush);
-    collision[y][x] = true;
-  }
+  fillRect(ground, 54, 13, 3, 2, Tile.path); // neighbor
+  fillRect(ground, 79, 13, 3, 2, Tile.path); // market
+  fillRect(ground, 9, 44, 3, 2, Tile.path); // café
+  fillRect(ground, 55, 44, 3, 2, Tile.path); // shelter
+  fillRect(ground, 79, 44, 3, 2, Tile.path); // library
+  fillRect(ground, 33, 60, 3, 2, Tile.path); // clinic
 
   const home = LOTS.find((l) => l.id === "home")!;
   drawBuildingShell(
@@ -264,9 +225,17 @@ export function createTownMap(): TownMapData {
   clearInterior(collision, market.tx, market.ty, market.tw, market.th);
 
   const park = LOTS.find((l) => l.id === "park")!;
-  fillRect(ground, park.tx + 2, park.ty + 2, park.tw - 4, park.th - 4, Tile.parkPath);
-  fillRect(ground, 26, 16, 4, 3, Tile.water);
-  fillRect(ground, 25, 17, 6, 1, Tile.sand);
+  fillRect(ground, park.tx + 2, park.ty + 7, 16, 2, Tile.parkPath);
+  fillRect(ground, park.tx + 9, park.ty + 2, 2, 10, Tile.parkPath);
+  fillRect(ground, park.tx + 2, park.ty + 2, 2, 2, Tile.parkPath);
+  fillRect(ground, park.tx + 16, park.ty + 2, 2, 2, Tile.parkPath);
+  fillRect(ground, park.tx + 2, park.ty + 10, 2, 2, Tile.parkPath);
+  fillRect(ground, park.tx + 16, park.ty + 10, 2, 2, Tile.parkPath);
+  fillRect(ground, park.tx + 7, park.ty + 5, 6, 3, Tile.water);
+  fillRect(ground, park.tx + 6, park.ty + 6, 8, 1, Tile.sand);
+  for (let y = park.ty + 5; y < park.ty + 8; y++) {
+    for (let x = park.tx + 7; x < park.tx + 13; x++) collision[y][x] = true;
+  }
 
   const cafe = LOTS.find((l) => l.id === "cafe")!;
   drawBuildingShell(
@@ -349,6 +318,37 @@ export function createTownMap(): TownMapData {
   );
   clearInterior(collision, clinic.tx, clinic.ty, clinic.tw, clinic.th);
 
+  // South beach strip — sand above deep water, walkable promenade.
+  fillRect(ground, 2, 62, 92, 4, Tile.sand);
+  fillRect(ground, 2, 65, 92, 2, Tile.water);
+  for (let x = 2; x < 94; x++) {
+    collision[65][x] = true;
+    collision[66][x] = true;
+  }
+  // Keep a dry walk band on sand (overwrite water collision on y=64).
+  for (let x = 2; x < 94; x++) {
+    collision[62][x] = false;
+    collision[63][x] = false;
+    collision[64][x] = false;
+  }
+  // Soft wave line
+  fillRect(ground, 10, 64, 8, 1, Tile.water);
+  fillRect(ground, 30, 64, 10, 1, Tile.water);
+  fillRect(ground, 55, 64, 12, 1, Tile.water);
+  fillRect(ground, 78, 64, 8, 1, Tile.water);
+  for (const [x0, w] of [
+    [10, 8],
+    [30, 10],
+    [55, 12],
+    [78, 8],
+  ] as Array<[number, number]>) {
+    for (let x = x0; x < x0 + w; x++) collision[64][x] = true;
+  }
+  // Path down to beach from clinic / west
+  fillRect(ground, 33, 60, 2, 3, Tile.path);
+  fillRect(ground, 20, 60, 2, 3, Tile.path);
+  fillRect(ground, 55, 60, 2, 3, Tile.path);
+
   for (const { tx, ty } of allStructuralWallTiles()) {
     if (ty >= 0 && ty < MAP_H && tx >= 0 && tx < MAP_W) {
       collision[ty][tx] = true;
@@ -365,7 +365,220 @@ export function createTownMap(): TownMapData {
     { tx: clinic.tx + 6, ty: clinic.ty + clinic.th - 1, label: "Clinic" },
   ];
 
-  return { ground, collision, doors };
+  const isPlantable = (x: number, y: number) => {
+    const t = ground[y]?.[x];
+    return t === Tile.grass || t === Tile.grassVar;
+  };
+
+  const decorSpots: Array<[number, number]> = [
+    // Park flower beds
+    [28, 16],
+    [29, 16],
+    [38, 16],
+    [39, 16],
+    [28, 25],
+    [29, 25],
+    [38, 25],
+    [39, 25],
+    [26, 18],
+    [26, 22],
+    [41, 18],
+    [41, 22],
+    [32, 15],
+    [35, 15],
+    [32, 26],
+    [35, 26],
+    // Home garden
+    [6, 15],
+    [12, 15],
+    [16, 15],
+    [4, 15],
+    // Between home & park
+    [22, 10],
+    [24, 10],
+    [30, 10],
+    [36, 10],
+    [22, 6],
+    [32, 6],
+    // Neighbor / market frontage
+    [52, 15],
+    [58, 15],
+    [64, 15],
+    [78, 15],
+    [84, 15],
+    [88, 14],
+    // Café block
+    [3, 32],
+    [8, 32],
+    [14, 32],
+    [3, 46],
+    [12, 46],
+    [16, 46],
+    // Shelter / library
+    [52, 46],
+    [60, 46],
+    [70, 46],
+    [78, 46],
+    [84, 46],
+    [88, 32],
+    // Clinic + beach approach
+    [24, 48],
+    [30, 48],
+    [38, 48],
+    [42, 58],
+    [48, 58],
+    [16, 58],
+    [60, 58],
+    [70, 58],
+    // Far lanes
+    [92, 8],
+    [92, 20],
+    [92, 40],
+    [8, 8],
+    [14, 8],
+  ];
+  for (const [x, y] of decorSpots) {
+    if (!isPlantable(x, y)) continue;
+    set(ground, x, y, Tile.flower);
+  }
+
+  const bushSpots: Array<[number, number]> = [
+    // Park hedge frame
+    [25, 14],
+    [28, 14],
+    [40, 14],
+    [43, 14],
+    [25, 27],
+    [43, 27],
+    [25, 18],
+    [43, 20],
+    // Home & café yards
+    [6, 14],
+    [16, 14],
+    [2, 28],
+    [6, 38],
+    [17, 38],
+    [2, 42],
+    // Neighbor / market / east lane
+    [50, 14],
+    [62, 14],
+    [72, 14],
+    [86, 14],
+    [58, 20],
+    [82, 20],
+    [90, 14],
+    [90, 38],
+    // Shelter / library / clinic
+    [48, 38],
+    [66, 38],
+    [88, 38],
+    [50, 46],
+    [66, 46],
+    [88, 46],
+    [22, 52],
+    [26, 52],
+    [42, 52],
+    [42, 58],
+    [58, 58],
+    // Beach dunes (grass just above sand)
+    [12, 61],
+    [24, 61],
+    [40, 61],
+    [52, 61],
+    [68, 61],
+    [82, 61],
+    // North belt accents
+    [24, 4],
+    [36, 4],
+    [56, 4],
+    [76, 4],
+  ];
+  for (const [x, y] of bushSpots) {
+    if (!isPlantable(x, y)) continue;
+    set(ground, x, y, Tile.bush);
+    collision[y][x] = true;
+  }
+
+  const canHostProp = (x: number, y: number) => {
+    const t = ground[y]?.[x];
+    return (
+      t === Tile.grass ||
+      t === Tile.grassVar ||
+      t === Tile.flower ||
+      t === Tile.sand
+    );
+  };
+
+  const rockCandidates: Array<[number, number]> = [
+    [31, 19],
+    [38, 19],
+    [30, 24],
+    [39, 24],
+    [34, 18],
+    [28, 20],
+    [42, 20],
+    [14, 63],
+    [36, 63],
+    [58, 63],
+    [80, 63],
+    [22, 28],
+    [46, 32],
+    [70, 18],
+    [92, 22],
+    [8, 56],
+    [40, 48],
+    [3, 22],
+  ];
+  const rocks: Array<[number, number]> = [];
+  for (const [x, y] of rockCandidates) {
+    if (!canHostProp(x, y)) continue;
+    rocks.push([x, y]);
+    collision[y][x] = true;
+  }
+
+  const fenceCandidates: Array<[number, number]> = [
+    // Park south edge
+    [25, 28],
+    [28, 28],
+    [32, 28],
+    [36, 28],
+    [40, 28],
+    [43, 28],
+    // Park north
+    [25, 15],
+    [28, 15],
+    [40, 15],
+    [43, 15],
+    // Home side garden
+    [18, 5],
+    [18, 7],
+    [18, 9],
+    [18, 11],
+    // South of home frontage
+    [5, 16],
+    [8, 16],
+    [12, 16],
+    [15, 16],
+    // Café patio
+    [4, 45],
+    [7, 45],
+    [11, 45],
+    [15, 45],
+    // Beach lookout posts
+    [18, 61],
+    [32, 61],
+    [46, 61],
+    [60, 61],
+    [74, 61],
+  ];
+  const fencePosts: Array<[number, number]> = [];
+  for (const [x, y] of fenceCandidates) {
+    if (!canHostProp(x, y)) continue;
+    fencePosts.push([x, y]);
+    collision[y][x] = true;
+  }
+
+  return { ground, collision, doors, rocks, fencePosts };
 }
 
 export const SOLID_TILES = new Set<number>([Tile.water, Tile.wall, Tile.bush]);

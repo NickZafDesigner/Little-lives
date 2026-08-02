@@ -17,6 +17,10 @@ import {
   FACE_OPTIONS,
   applyClothingStyle,
 } from "../data/character";
+import { AssetLibrary } from "../render/AssetLibrary";
+import { matSmooth } from "../mesh/materials";
+
+await AssetLibrary.preload();
 
 const params = new URLSearchParams(location.search);
 const mode = params.get("mode") ?? "actors";
@@ -114,12 +118,13 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.setClearColor(0xf3ece0, 1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.setScissorTest(true);
 renderer.autoClear = false;
 
 const scene = new THREE.Scene();
-scene.add(new THREE.HemisphereLight(0xfff2dd, 0xd8c9ae, 0.8));
-const sun = new THREE.DirectionalLight(0xfff4e2, 1);
+scene.add(new THREE.HemisphereLight(0xfff4e0, 0x6b9a55, 0.95));
+const sun = new THREE.DirectionalLight(0xffe4b8, 1.2);
 sun.position.set(160, 300, 220);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
@@ -134,13 +139,12 @@ scene.add(fill);
 
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(400, 400),
-  new THREE.MeshLambertMaterial({ color: 0xe6d9c0 }),
+  matSmooth(0xe6d9c0),
 );
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
 
-// One subject in the scene at a time keeps shadows and framing clean
 const holder = new THREE.Group();
 scene.add(holder);
 
@@ -149,7 +153,7 @@ const camOffset = front
   : new THREE.Vector3(120, 300, 250);
 
 const overlay = document.createElement("div");
-overlay.style.cssText = `position:absolute;left:0;top:0;width:${canvasW}px;height:${canvasH}px;pointer-events:none;font:700 12px system-ui;color:#4a3428`;
+overlay.style.cssText = `position:absolute;left:0;top:0;width:${canvasW}px;height:${canvasH}px;pointer-events:none;font:700 12px system-ui;color:#3a2818`;
 document.body.style.margin = "0";
 document.body.style.position = "relative";
 document.body.appendChild(overlay);

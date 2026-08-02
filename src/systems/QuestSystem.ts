@@ -173,8 +173,8 @@ export class QuestSystem {
     if (q.active.includes(def.id) || q.completed.includes(def.id)) return;
     q.active.push(def.id);
     q.stepCounts[def.id] = {};
-    // Side quests stay quiet until the player talks to the giver.
-    if (!def.side) {
+    // Side / silent quests stay quiet until gameplay surfaces the beat.
+    if (!def.side && !def.silentStart) {
       this.state.showDialogue("player", this.state.playerName, def.journalLine);
     }
   }

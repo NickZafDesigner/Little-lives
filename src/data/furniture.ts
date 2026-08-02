@@ -342,6 +342,66 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
       },
     ],
   },
+  // Collection / cozy-score fillers (reuse existing meshes via AssetLibrary aliases)
+  {
+    id: "fern",
+    name: "Leafy Fern",
+    category: "decor",
+    price: 35,
+    width: 1,
+    height: 1,
+    color: Palette.leaf,
+    accent: Palette.wood,
+    blocksMovement: false,
+    interactions: [
+      {
+        id: "admire",
+        label: "Admire",
+        durationMs: 600,
+        needDeltas: { fun: 10 },
+      },
+    ],
+  },
+  {
+    id: "storybook",
+    name: "Storybook Stack",
+    category: "decor",
+    price: 40,
+    width: 1,
+    height: 1,
+    color: Palette.lavender,
+    accent: Palette.cream,
+    blocksMovement: true,
+    interactions: [
+      {
+        id: "read",
+        label: "Read a story",
+        durationMs: 1300,
+        needDeltas: { fun: 22, energy: -4 },
+      },
+    ],
+  },
+  {
+    id: "yarn_ball",
+    name: "Yarn Ball",
+    category: "pet",
+    price: 18,
+    width: 1,
+    height: 1,
+    color: Palette.rose,
+    accent: Palette.cream,
+    blocksMovement: false,
+    petRequired: true,
+    interactions: [
+      {
+        id: "play_pet",
+        label: "Chase yarn",
+        durationMs: 1000,
+        needDeltas: { fun: 16, social: 8, energy: -6 },
+        petNeedDeltas: { fun: 35, bond: 12, energy: -8 },
+      },
+    ],
+  },
 ];
 
 export const furnitureById = Object.fromEntries(

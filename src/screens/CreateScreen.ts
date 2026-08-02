@@ -12,6 +12,7 @@ import {
   HEIGHT_OPTIONS,
   MAX_ANIMALS,
   MAX_TRAITS,
+  NAME_OPTIONS,
   SEX_OPTIONS,
   SKIN_TONES,
   TRAIT_OPTIONS,
@@ -30,11 +31,15 @@ import { createActor } from "../mesh/actors";
 import { Audio } from "../audio/AudioManager";
 import { muteButtonHtml, wireMute } from "../ui/mute";
 import { mountPageZoomBanner } from "../ui/pageZoom";
+import { matSmooth } from "../mesh/materials";
 import * as THREE from "three";
 
 export function createCreateScreen(
   app: App,
-  goto: (id: "title" | "world", data?: { profile?: PlayerProfile }) => void,
+  goto: (
+    id: "title" | "world",
+    data?: { profile?: PlayerProfile; fresh?: boolean },
+  ) => void,
 ): Screen {
   let unMute: (() => void) | null = null;
   let unZoomBanner: (() => void) | null = null;
@@ -58,6 +63,8 @@ export function createCreateScreen(
     return arr[n];
   };
 
+  const hex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
+
   return {
     id: "create",
     mount(root) {
@@ -65,33 +72,46 @@ export function createCreateScreen(
       Audio.playMusic("create");
       root.innerHTML = `
         <div class="ll-screen ll-create">
+          <div class="ll-create-sky" aria-hidden="true">
+            <span class="ll-cloud ll-cloud-a"></span>
+            <span class="ll-cloud ll-cloud-b"></span>
+            <span class="ll-cloud ll-cloud-c"></span>
+          </div>
+          <div class="ll-create-hills" aria-hidden="true"></div>
           <header class="ll-create-title">
+            <p class="ll-create-eyebrow">New neighbor</p>
             <h2>Create your little life</h2>
             <p>Shape how they look, feel, and who they adore.</p>
           </header>
           <div class="ll-create-layout">
-            <aside class="ll-create-preview">
-              <div class="ll-preview-stage">
-                <canvas class="ll-preview-canvas"></canvas>
-              </div>
-              <div class="ll-preview-meta">
-                <p class="ll-preview-name" data-plate>${name}</p>
-                <p class="ll-preview-caption" data-summary></p>
-                <p class="ll-preview-hint">Drag to turn</p>
-              </div>
-            </aside>
             <div class="ll-create-form">
               <div class="ll-create-scroll">
                 <section class="ll-section ll-section-name">
                   <label class="ll-field-label" for="ll-name">Name</label>
                   <div class="ll-name-row">
                     <input id="ll-name" class="ll-input" maxlength="12" value="${name}" data-field="name" aria-label="Name" />
-                    <button type="button" class="ll-dice" data-act="random">Surprise me</button>
+                    <button type="button" class="ll-dice" data-act="random" title="Randomize look, name &amp; favourites">Surprise me</button>
                   </div>
                 </section>
                 <section class="ll-section">
                   <h3>Appearance</h3>
+                  <div class="ll-look-block">
+                    <p class="ll-look-label">Identity</p>
+                    <div class="ll-seg" data-identity></div>
+                  </div>
                   <div class="ll-cycle-grid" data-cycles></div>
+                  <div class="ll-look-block">
+                    <p class="ll-look-label">Skin</p>
+                    <div class="ll-swatch-row" data-skin></div>
+                  </div>
+                  <div class="ll-look-block">
+                    <p class="ll-look-label">Hair color</p>
+                    <div class="ll-swatch-row" data-hair-color></div>
+                  </div>
+                  <div class="ll-look-block">
+                    <p class="ll-look-label">Outfit</p>
+                    <div class="ll-outfit-row" data-outfit></div>
+                  </div>
                 </section>
                 <section class="ll-section">
                   <h3>Traits <em>up to ${MAX_TRAITS}</em></h3>
@@ -112,6 +132,17 @@ export function createCreateScreen(
                 </section>
               </div>
             </div>
+            <aside class="ll-create-preview">
+              <div class="ll-preview-stage">
+                <canvas class="ll-preview-canvas"></canvas>
+                <div class="ll-preview-pedestal" aria-hidden="true"></div>
+              </div>
+              <div class="ll-preview-meta">
+                <p class="ll-preview-name" data-plate>${name}</p>
+                <p class="ll-preview-caption" data-summary></p>
+                <p class="ll-preview-hint">Drag to turn</p>
+              </div>
+            </aside>
           </div>
           <footer class="ll-create-foot">
             <button type="button" class="ll-btn" data-act="back">Back</button>
@@ -125,14 +156,17 @@ export function createCreateScreen(
 
       const canvas = root.querySelector(".ll-preview-canvas") as HTMLCanvasElement;
       const stage = canvas.parentElement as HTMLElement;
+      const previewEl = root.querySelector(".ll-create-preview") as HTMLElement;
       previewRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
       previewRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
       previewRenderer.shadowMap.enabled = true;
       previewRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+      previewRenderer.toneMappingExposure = 1.05;
       previewScene = new THREE.Scene();
       // Match TownRenderer day ratios so create preview matches in-world look
-      previewScene.add(new THREE.HemisphereLight(0xfff2dd, 0x7a9e6a, 0.85));
-      const sun = new THREE.DirectionalLight(0xfff0d0, 1.05);
+      previewScene.add(new THREE.HemisphereLight(0xfff4e0, 0x6b9a55, 0.95));
+      const sun = new THREE.DirectionalLight(0xffe4b8, 1.2);
       sun.position.set(40, 70, 50);
       sun.castShadow = true;
       sun.shadow.mapSize.set(1024, 1024);
@@ -143,6 +177,7 @@ export function createCreateScreen(
       sun.shadow.camera.top = 40;
       sun.shadow.camera.bottom = -40;
       sun.shadow.bias = -0.001;
+      sun.shadow.normalBias = 0.4;
       previewScene.add(sun);
       const fill = new THREE.DirectionalLight(0xffffff, 0.35);
       fill.position.set(-15, 25, 80);
@@ -154,7 +189,7 @@ export function createCreateScreen(
       // Soft ground plane for contact shadow (actor doesn't float)
       const ground = new THREE.Mesh(
         new THREE.CircleGeometry(28, 32),
-        new THREE.MeshLambertMaterial({ color: 0xe8dfc8 }),
+        matSmooth(0xe8dfc8),
       );
       ground.rotation.x = -Math.PI / 2;
       ground.position.y = -0.05;
@@ -234,29 +269,19 @@ export function createCreateScreen(
       raf = requestAnimationFrame(tick);
 
       const cyclesEl = root.querySelector("[data-cycles]")!;
+      const identityEl = root.querySelector("[data-identity]")!;
+      const skinEl = root.querySelector("[data-skin]")!;
+      const hairColorEl = root.querySelector("[data-hair-color]")!;
+      const outfitEl = root.querySelector("[data-outfit]")!;
 
       type Field = {
         label: string;
         value: () => string;
-        /** Optional colour dot, for skin and hair pickers. */
-        swatch?: () => number;
         left: () => void;
         right: () => void;
       };
 
       const fields: Field[] = [
-        {
-          label: "Identity",
-          value: () => SEX_LABELS[look.sex],
-          left: () => {
-            const sex = cycle(SEX_OPTIONS, look.sex, -1);
-            look = { ...look, sex, hairStyle: hairForSex(sex) };
-          },
-          right: () => {
-            const sex = cycle(SEX_OPTIONS, look.sex, 1);
-            look = { ...look, sex, hairStyle: hairForSex(sex) };
-          },
-        },
         {
           label: "Height",
           value: () => HEIGHT_LABELS[look.height],
@@ -297,68 +322,38 @@ export function createCreateScreen(
             look = { ...look, hairStyle: cycle(HAIR_OPTIONS, look.hairStyle, 1) };
           },
         },
-        {
-          label: "Skin",
-          value: () =>
-            SKIN_TONES.find((s) => s.skin === look.skin)?.label ?? "Skin",
-          swatch: () => look.skin,
-          left: () => {
-            const i = Math.max(0, SKIN_TONES.findIndex((s) => s.skin === look.skin));
-            const s = SKIN_TONES[(i - 1 + SKIN_TONES.length) % SKIN_TONES.length];
-            look = { ...look, skin: s.skin };
-          },
-          right: () => {
-            const i = Math.max(0, SKIN_TONES.findIndex((s) => s.skin === look.skin));
-            const s = SKIN_TONES[(i + 1) % SKIN_TONES.length];
-            look = { ...look, skin: s.skin };
-          },
-        },
-        {
-          label: "Hair color",
-          value: () =>
-            HAIR_COLORS.find((h) => h.color === look.hair)?.label ?? "Hair",
-          swatch: () => look.hair,
-          left: () => {
-            const i = Math.max(0, HAIR_COLORS.findIndex((h) => h.color === look.hair));
-            const h = HAIR_COLORS[(i - 1 + HAIR_COLORS.length) % HAIR_COLORS.length];
-            look = { ...look, hair: h.color };
-          },
-          right: () => {
-            const i = Math.max(0, HAIR_COLORS.findIndex((h) => h.color === look.hair));
-            const h = HAIR_COLORS[(i + 1) % HAIR_COLORS.length];
-            look = { ...look, hair: h.color };
-          },
-        },
-        {
-          label: "Style",
-          value: () => CLOTHING_PALETTES[look.clothing].label,
-          left: () => {
-            look = applyClothingStyle(
-              look,
-              cycle(CLOTHING_OPTIONS, look.clothing, -1),
-            );
-          },
-          right: () => {
-            look = applyClothingStyle(
-              look,
-              cycle(CLOTHING_OPTIONS, look.clothing, 1),
-            );
-          },
-        },
       ];
+
+      const pulsePreview = () => {
+        previewEl.classList.remove("is-pulse");
+        // Restart CSS animation
+        void previewEl.offsetWidth;
+        previewEl.classList.add("is-pulse");
+      };
+
+      const renderIdentity = () => {
+        identityEl.innerHTML = "";
+        for (const sex of SEX_OPTIONS) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "ll-seg-btn" + (look.sex === sex ? " is-on" : "");
+          b.textContent = SEX_LABELS[sex];
+          b.addEventListener("click", () => {
+            if (look.sex === sex) return;
+            Audio.sfx("ui");
+            look = { ...look, sex, hairStyle: hairForSex(sex) };
+            refreshLook();
+          });
+          identityEl.appendChild(b);
+        }
+      };
 
       const renderCycles = () => {
         cyclesEl.innerHTML = "";
         for (const f of fields) {
           const row = document.createElement("div");
           row.className = "ll-cycle";
-          const dot = f.swatch
-            ? `<i class="ll-swatch" style="background:#${f
-                .swatch()
-                .toString(16)
-                .padStart(6, "0")}"></i>`
-            : "";
-          row.innerHTML = `<span class="ll-cycle-label">${f.label}</span><div class="ll-cycle-control"><button type="button" data-dir="-1" aria-label="Previous ${f.label}">‹</button><strong>${dot}${f.value()}</strong><button type="button" data-dir="1" aria-label="Next ${f.label}">›</button></div>`;
+          row.innerHTML = `<span class="ll-cycle-label">${f.label}</span><div class="ll-cycle-control"><button type="button" data-dir="-1" aria-label="Previous ${f.label}">‹</button><strong>${f.value()}</strong><button type="button" data-dir="1" aria-label="Next ${f.label}">›</button></div>`;
           row.querySelectorAll("button").forEach((btn) => {
             btn.addEventListener("click", () => {
               Audio.sfx("ui");
@@ -371,11 +366,66 @@ export function createCreateScreen(
         }
       };
 
+      const renderSwatches = () => {
+        skinEl.innerHTML = "";
+        for (const s of SKIN_TONES) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "ll-swatch-btn" + (look.skin === s.skin ? " is-on" : "");
+          b.style.setProperty("--swatch", hex(s.skin));
+          b.title = s.label;
+          b.setAttribute("aria-label", `Skin ${s.label}`);
+          b.addEventListener("click", () => {
+            if (look.skin === s.skin) return;
+            Audio.sfx("ui");
+            look = { ...look, skin: s.skin };
+            refreshLook();
+          });
+          skinEl.appendChild(b);
+        }
+
+        hairColorEl.innerHTML = "";
+        for (const h of HAIR_COLORS) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "ll-swatch-btn" + (look.hair === h.color ? " is-on" : "");
+          b.style.setProperty("--swatch", hex(h.color));
+          b.title = h.label;
+          b.setAttribute("aria-label", `Hair ${h.label}`);
+          b.addEventListener("click", () => {
+            if (look.hair === h.color) return;
+            Audio.sfx("ui");
+            look = { ...look, hair: h.color };
+            refreshLook();
+          });
+          hairColorEl.appendChild(b);
+        }
+      };
+
+      const renderOutfit = () => {
+        outfitEl.innerHTML = "";
+        for (const style of CLOTHING_OPTIONS) {
+          const pal = CLOTHING_PALETTES[style];
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "ll-outfit" + (look.clothing === style ? " is-on" : "");
+          b.innerHTML = `<span class="ll-outfit-swatches"><i style="background:${hex(pal.shirt)}"></i><i style="background:${hex(pal.pants)}"></i></span><span>${pal.label}</span>`;
+          b.addEventListener("click", () => {
+            if (look.clothing === style) return;
+            Audio.sfx("ui");
+            look = applyClothingStyle(look, style);
+            refreshLook();
+          });
+          outfitEl.appendChild(b);
+        }
+      };
+
       const traitsEl = root.querySelector("[data-traits]")!;
       const foodEl = root.querySelector("[data-food]")!;
       const animalsEl = root.querySelector("[data-animals]")!;
       const summaryEl = root.querySelector("[data-summary]") as HTMLElement;
       const plateEl = root.querySelector("[data-plate]") as HTMLElement;
+      const nameInput = root.querySelector('[data-field="name"]') as HTMLInputElement;
 
       const updateSummary = () => {
         plateEl.textContent = name.trim() || "Someone";
@@ -388,7 +438,7 @@ export function createCreateScreen(
           traits.length ? traits.join(" · ") : "no traits yet",
           `loves ${food}`,
           animals.length ? animals.join(" & ") : "any animal",
-        ].join(" — ");
+        ].join(" · ");
         summaryEl.textContent = `${looks}\n${likes}`;
       };
 
@@ -396,8 +446,12 @@ export function createCreateScreen(
       const refreshLook = () => {
         previewActor.rebuild(look);
         frameActor();
+        renderIdentity();
         renderCycles();
+        renderSwatches();
+        renderOutfit();
         updateSummary();
+        pulsePreview();
       };
 
       const renderChips = () => {
@@ -445,12 +499,25 @@ export function createCreateScreen(
         updateSummary();
       };
       renderChips();
+      renderIdentity();
       renderCycles();
+      renderSwatches();
+      renderOutfit();
+      updateSummary();
 
       root.querySelector('[data-act="random"]')!.addEventListener("click", () => {
         Audio.sfx("confirm");
         const pick = <T>(arr: readonly T[]): T =>
           arr[Math.floor(Math.random() * arr.length)];
+        const pickN = <T>(arr: readonly T[], n: number): T[] => {
+          const pool = [...arr];
+          const out: T[] = [];
+          while (out.length < n && pool.length) {
+            const i = Math.floor(Math.random() * pool.length);
+            out.push(pool.splice(i, 1)[0]);
+          }
+          return out;
+        };
         const sex = pick(SEX_OPTIONS);
         const skin = pick(SKIN_TONES).skin;
         const luma = (c: number) =>
@@ -472,16 +539,19 @@ export function createCreateScreen(
           },
           pick(CLOTHING_OPTIONS),
         );
+        name = pick(NAME_OPTIONS);
+        nameInput.value = name;
+        traits = pickN(TRAIT_OPTIONS, 2 + Math.floor(Math.random() * 2));
+        food = pick(FOOD_OPTIONS);
+        animals = pickN(ANIMAL_OPTIONS, 1 + Math.floor(Math.random() * MAX_ANIMALS));
+        renderChips();
         refreshLook();
       });
 
-      (root.querySelector('[data-field="name"]') as HTMLInputElement).addEventListener(
-        "input",
-        (e) => {
-          name = (e.target as HTMLInputElement).value.slice(0, 12);
-          updateSummary();
-        },
-      );
+      nameInput.addEventListener("input", (e) => {
+        name = (e.target as HTMLInputElement).value.slice(0, 12);
+        updateSummary();
+      });
 
       root.querySelector('[data-act="back"]')!.addEventListener("click", () => {
         Audio.sfx("ui");
@@ -496,6 +566,7 @@ export function createCreateScreen(
         if (animals.length === 0) animals = ["Cats"];
         Audio.sfx("confirm");
         goto("world", {
+          fresh: true,
           profile: {
             name: name.trim(),
             look: structuredClone(look),

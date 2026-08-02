@@ -3,6 +3,14 @@ import { Palette } from "../game/palette";
 import { TILE } from "../game/constants";
 import { Tile, MAP_H, MAP_W, type TownMapData } from "../world/townMap";
 import { matSmooth, matFlat } from "./materials";
+import {
+  grassTexture,
+  pathTexture,
+  woodFloorTexture,
+  waterTexture,
+} from "./terrainTextures";
+import { AssetLibrary } from "../render/AssetLibrary";
+import { addOutline } from "../render/outline";
 
 const TILE_COLORS: Record<number, number> = {
   [Tile.grass]: Palette.grass,
@@ -39,15 +47,6 @@ const INTERIOR_FLOOR = new Set<number>([
 
 function shadeFloor(color: number): number {
   const f = 0.93;
-  return (
-    (Math.round(((color >> 16) & 0xff) * f) << 16) |
-    (Math.round(((color >> 8) & 0xff) * f) << 8) |
-    Math.round((color & 0xff) * f)
-  );
-}
-
-function tintPathEdge(color: number): number {
-  const f = 0.88;
   return (
     (Math.round(((color >> 16) & 0xff) * f) << 16) |
     (Math.round(((color >> 8) & 0xff) * f) << 8) |
@@ -173,10 +172,14 @@ export function buildTerrain(map: TownMapData): THREE.Group {
       const cz = ty * TILE + TILE / 2;
 
       if (code === Tile.water) {
-        // Deep bed + flat translucent surface (smooth, not chunky stacked boxes)
-        addBox(matFlat(Palette.waterDeep), cx, -2.2, cz, TILE, 4, TILE);
+        // Deep bed + painted translucent surface
+        addBox(matFlat(Palette.waterDeep, { map: waterTexture() }), cx, -2.2, cz, TILE, 4, TILE);
         addProp(
-          matSmooth(Palette.water, { transparent: true, opacity: 0.72 }),
+          matSmooth(0xffffff, {
+            transparent: true,
+            opacity: 0.78,
+            map: waterTexture(),
+          }),
           diskGeo(TILE * 0.48, 0.55),
           cx,
           0.15,
@@ -184,7 +187,7 @@ export function buildTerrain(map: TownMapData): THREE.Group {
         );
         if (noise(tx + 0.4, ty + 2.1) > 0.55) {
           addProp(
-            matSmooth(Palette.water, { transparent: true, opacity: 0.35 }),
+            matSmooth(Palette.waterFoam, { transparent: true, opacity: 0.35 }),
             diskGeo(TILE * 0.28, 0.2),
             cx + (noise(tx, ty) - 0.5) * 6,
             0.45,
@@ -202,22 +205,23 @@ export function buildTerrain(map: TownMapData): THREE.Group {
 
       let height = 2;
       let y = 0;
-      let size = TILE * 0.98;
+      // Exact tile size — overlap caused crawling z-fight seams while walking.
+      let size = TILE;
       if (code === Tile.grass || code === Tile.grassVar || code === Tile.flower) {
-        height = 2 + noise(tx, ty) * 1.2;
+        // Uniform height - per-tile height jitter draws a dark grid of side faces.
+        height = 2.2;
         y = height / 2 - 1;
-        // Soft green variation so the grid doesn't read as one flat sheet
         const n = noise(tx * 1.7, ty * 2.3);
         if (code === Tile.grass && n > 0.62) color = Palette.grassLight;
         if (code === Tile.grassVar && n < 0.35) color = Palette.grassDark;
       } else if (code === Tile.path || code === Tile.parkPath) {
-        height = 1.6;
+        height = 2.0;
         y = height / 2 - 1;
       } else if (code === Tile.sand) {
-        height = 1.4;
+        height = 1.8;
         y = height / 2 - 1;
       } else if (INTERIOR_FLOOR.has(code)) {
-        // Continuous slabs under walls — top at y=0, full tile so no colour gaps.
+        // Continuous slabs under walls - top at y=0, full tile so no colour gaps.
         height = 1.2;
         y = -height / 2;
         size = TILE;
@@ -226,91 +230,88 @@ export function buildTerrain(map: TownMapData): THREE.Group {
         y = -height / 2;
       }
 
+      const isGrass =
+        code === Tile.grass || code === Tile.grassVar || code === Tile.flower;
+      const isPath = code === Tile.path || code === Tile.parkPath;
+      const isWood =
+        code === Tile.floor ||
+        code === Tile.floorAlt ||
+        code === Tile.cafeFloor ||
+        code === Tile.shelterFloor ||
+        code === Tile.marketFloor ||
+        code === Tile.libraryFloor ||
+        code === Tile.clinicFloor;
+      const tex = isGrass
+        ? grassTexture()
+        : isPath
+          ? pathTexture()
+          : isWood
+            ? woodFloorTexture()
+            : undefined;
       const tileMat =
-        code === Tile.grass || code === Tile.grassVar || code === Tile.flower || code === Tile.sand
-          ? matSmooth(color)
-          : matFlat(color);
+        code === Tile.grass ||
+        code === Tile.grassVar ||
+        code === Tile.flower ||
+        code === Tile.sand
+          ? matSmooth(tex ? 0xffffff : color, { map: tex })
+          : matFlat(tex ? 0xffffff : color, { map: tex });
       addBox(tileMat, cx, y, cz, size, height, size);
 
-      // Thin skirt under grass/path edges so lots don't look like floating slabs
-      if (
-        (code === Tile.grass || code === Tile.grassVar || code === Tile.path || code === Tile.parkPath) &&
-        noise(tx * 4.1, ty * 3.7) > 0.4
-      ) {
-        addBox(
-          matFlat(shadeFloor(color)),
-          cx,
-          y - height / 2 - 0.35,
-          cz,
-          size * 1.04,
-          0.7,
-          size * 1.04,
-        );
-      }
-
-      // Path edge contrast
-      if (code === Tile.path || code === Tile.parkPath) {
-        addBox(
-          matFlat(tintPathEdge(color)),
-          cx,
-          y + height / 2 + 0.15,
-          cz,
-          size * 0.92,
-          0.3,
-          size * 0.92,
-        );
-      }
-
       if (code === Tile.flower) {
-        const n = noise(tx * 3.1 + 0.7, ty * 5.7);
-        const petalCol = [Palette.rose, Palette.lavender, Palette.sunflower, Palette.white][
-          Math.floor(n * 4) % 4
-        ];
-        addProp(matSmooth(Palette.leaf), stemGeo(0.45, 0.65, 4.5), cx, height + 1.2, cz);
-        for (let i = 0; i < 5; i++) {
-          const a = (i / 5) * Math.PI * 2 + n * 6;
-          addProp(
-            matSmooth(petalCol),
-            blobGeo(1.55, 12),
-            cx + Math.cos(a) * 1.7,
-            height + 3.9,
-            cz + Math.sin(a) * 1.7,
-            0.55,
-          );
+        const flower = AssetLibrary.cloneWorldProp("Flower");
+        if (flower) {
+          flower.position.set(cx, height - 0.5, cz);
+          flower.rotation.y = noise(tx, ty) * Math.PI * 2;
+          flower.scale.setScalar(0.85 + noise(ty, tx) * 0.3);
+          addOutline(flower, 1.05);
+          root.add(flower);
         }
-        addProp(matSmooth(Palette.sunflowerDark), blobGeo(1.05, 10), cx, height + 4.4, cz, 0.65);
-        addProp(
-          matSmooth(Palette.leafLight),
-          blobGeo(1.5, 12),
-          cx + 2.2,
-          height + 1.0,
-          cz - 1.4,
-          0.32,
-        );
       }
       if (code === Tile.bush) {
         const n = noise(tx * 7.3, ty * 2.9 + 1.3);
         if (n > 0.72) {
-          // Occasional small tree — smooth leafy canopy clumps
           addProp(matFlat(Palette.woodDark), stemGeo(2.0, 3.0, 14), cx, 6.5, cz);
           addProp(matSmooth(Palette.leaf), blobGeo(9.5, 16), cx, 20, cz, 0.92);
           addProp(matSmooth(Palette.leafLight), blobGeo(6.5, 14), cx + 4.2, 24.5, cz - 2.8, 0.9);
           addProp(matSmooth(Palette.leaf), blobGeo(6.0, 14), cx - 4.5, 23, cz + 3.2, 0.9);
           addProp(matSmooth(Palette.leaf), blobGeo(5.0, 12), cx + 1.5, 26, cz + 2, 0.85);
         } else {
-          // Soft multi-sphere bush (not one harsh blob)
-          const baseY = 5.5 + n * 1.5;
-          addProp(matSmooth(Palette.leaf), blobGeo(7.5, 14), cx - 1.8, baseY, cz + 0.8, 0.82);
-          addProp(matSmooth(Palette.leafLight), blobGeo(6.2, 14), cx + 3.2, baseY + 1.8, cz - 2.0, 0.8);
-          addProp(matSmooth(Palette.leaf), blobGeo(5.4, 12), cx + 1.0, baseY - 0.4, cz - 3.5, 0.78);
-          addProp(matSmooth(Palette.leaf), blobGeo(4.8, 12), cx - 3.5, baseY + 0.6, cz - 1.2, 0.8);
-          if (n > 0.45) {
-            addProp(matSmooth(Palette.rose), blobGeo(1.25, 10), cx + 1.8, baseY + 6.2, cz - 0.8);
-            addProp(matSmooth(Palette.rose), blobGeo(1.15, 10), cx - 3.2, baseY + 5.0, cz + 2.0);
+          const bush = AssetLibrary.cloneWorldProp("Bush");
+          if (bush) {
+            bush.position.set(cx, 0, cz);
+            bush.rotation.y = n * Math.PI * 2;
+            bush.scale.setScalar(0.9 + n * 0.35);
+            addOutline(bush, 1.04);
+            root.add(bush);
           }
         }
       }
     }
+  }
+
+  // Scattered rocks & fence posts from the town layout.
+  for (const [tx, ty] of map.rocks) {
+    const rock = AssetLibrary.cloneWorldProp("Rock");
+    if (!rock) continue;
+    const cx = tx * TILE + TILE / 2;
+    const cz = ty * TILE + TILE / 2;
+    const n = noise(tx * 3.1, ty * 5.7);
+    rock.position.set(cx, 0, cz);
+    rock.rotation.y = n * Math.PI * 2;
+    rock.scale.setScalar(0.75 + n * 0.45);
+    addOutline(rock, 1.04);
+    root.add(rock);
+  }
+  for (const [tx, ty] of map.fencePosts) {
+    const post = AssetLibrary.cloneWorldProp("FencePost");
+    if (!post) continue;
+    const cx = tx * TILE + TILE / 2;
+    const cz = ty * TILE + TILE / 2;
+    post.position.set(cx, 0, cz);
+    post.rotation.y = noise(tx, ty) > 0.5 ? Math.PI * 0.5 : 0;
+    post.scale.setScalar(0.9 + noise(ty, tx) * 0.15);
+    addOutline(post, 1.03);
+    root.add(post);
   }
 
   // Merge meshes sharing materials for fewer draw calls
@@ -327,7 +328,8 @@ export function buildTerrain(map: TownMapData): THREE.Group {
     if (merged) {
       const mesh = new THREE.Mesh(merged, material);
       mesh.receiveShadow = true;
-      mesh.castShadow = true;
+      // Ground must not cast — coplanar tops stripe themselves with shadow acne.
+      mesh.castShadow = false;
       mesh.userData.tilePick = true;
       root.add(mesh);
     }
@@ -351,6 +353,7 @@ function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry | n
 
   const positions = new Float32Array(vertCount * 3);
   const normals = new Float32Array(vertCount * 3);
+  const uvs = new Float32Array(vertCount * 2);
   const indices = new Uint32Array(idxCount);
   let vOffset = 0;
   let iOffset = 0;
@@ -359,6 +362,7 @@ function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry | n
   for (const g of geos) {
     const pos = g.getAttribute("position");
     const nor = g.getAttribute("normal");
+    const uv = g.getAttribute("uv");
     for (let i = 0; i < pos.count; i++) {
       positions[(vOffset + i) * 3] = pos.getX(i);
       positions[(vOffset + i) * 3 + 1] = pos.getY(i);
@@ -367,6 +371,10 @@ function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry | n
         normals[(vOffset + i) * 3] = nor.getX(i);
         normals[(vOffset + i) * 3 + 1] = nor.getY(i);
         normals[(vOffset + i) * 3 + 2] = nor.getZ(i);
+      }
+      if (uv) {
+        uvs[(vOffset + i) * 2] = uv.getX(i);
+        uvs[(vOffset + i) * 2 + 1] = uv.getY(i);
       }
     }
     const idx = g.getIndex();
@@ -388,6 +396,7 @@ function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry | n
   const merged = new THREE.BufferGeometry();
   merged.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   merged.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  merged.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
   merged.setIndex(new THREE.BufferAttribute(indices, 1));
   return merged;
 }

@@ -4,16 +4,23 @@ import { createTitleScreen } from "./screens/TitleScreen";
 import { createCreateScreen } from "./screens/CreateScreen";
 import { createWorldScreen } from "./screens/WorldScreen";
 import type { PlayerProfile } from "./data/character";
+import { AssetLibrary } from "./render/AssetLibrary";
 import "./styles.css";
 
 const gameRoot = document.getElementById("game-root");
 const uiRoot = document.getElementById("ui-root");
 if (!gameRoot || !uiRoot) throw new Error("Missing #game-root or #ui-root");
 
+uiRoot.innerHTML = `<div class="ll-boot"><p>Loading Little Lives…</p></div>`;
+
+await AssetLibrary.preload();
+uiRoot.innerHTML = "";
+
 const app = new App(gameRoot, uiRoot);
 
 type NavData = {
   continue?: boolean;
+  fresh?: boolean;
   profile?: PlayerProfile;
 };
 

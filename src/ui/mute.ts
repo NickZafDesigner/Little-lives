@@ -10,7 +10,13 @@ export function wireMute(btn: HTMLElement) {
   };
   btn.addEventListener("click", () => {
     Audio.unlock();
-    Audio.toggleMute();
+    if (Audio.isMuted()) {
+      Audio.toggleMute();
+      Audio.sfx("ui");
+    } else {
+      Audio.sfx("ui");
+      Audio.toggleMute();
+    }
     sync();
   });
   return Audio.onMuteChange(sync);

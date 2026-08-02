@@ -5,8 +5,8 @@ import { LOTS } from "./lots";
  * Internal partition walls. Coordinates are relative to the lot origin
  * (lot.tx / lot.ty). Each run sits on grid tiles; door offsets stay open.
  *
- * `axis: "x"` → wall runs east–west (thin in Z).
- * `axis: "y"` → wall runs north–south (thin in X).
+ * `axis: "x"` → wall runs east-west (thin in Z).
+ * `axis: "y"` → wall runs north-south (thin in X).
  */
 export interface InternalWallRun {
   rx: number;
@@ -32,34 +32,37 @@ export interface LotInterior {
 /**
  * Home (14×11): bedroom NW, bathroom NE, living south-west, kitchen south-east.
  *
- *     1·····6 7 8····12
- *   1 BEDROOM │ BATH
- *   3         │
- *   4 ───·───────·───   doors at cols 7 & 10
- *   5 LIVING    │ KIT
- *   9      door │
+ *     1····5 6 7·····12
+ *   1 BEDROOM│  BATH
+ *   3        │
+ *   4 ──··────────··──   2-tile doors at cols 5-6 (bed) & 10-11 (bath)
+ *   5 LIVING   │  KIT    divider at col 8 (one open tile from bed wall)
+ *   7        ··│         2-tile door mid-run
+ *
+ * Vertical runs may include the junction tile shared with an EW run; the mesh
+ * builder lets EW own that tile and butts the NS wall to its face.
  */
 const HOME: LotInterior = {
   walls: [
-    { rx: 7, ry: 1, length: 3, axis: "y" },
-    { rx: 1, ry: 4, length: 12, axis: "x", doors: [6, 9] },
-    { rx: 8, ry: 5, length: 5, axis: "y", doors: [4] },
+    { rx: 6, ry: 1, length: 4, axis: "y" },
+    { rx: 1, ry: 4, length: 12, axis: "x", doors: [3, 4, 8, 9] },
+    { rx: 8, ry: 4, length: 6, axis: "y", doors: [2, 3] },
   ],
   furniture: [
     { defId: "bed", rx: 2, ry: 1, uid: "start_bed" },
-    { defId: "plant", rx: 5, ry: 2, uid: "start_plant" },
-    { defId: "shower", rx: 9, ry: 1, uid: "start_shower" },
-    { defId: "toilet", rx: 11, ry: 1, uid: "start_toilet" },
-    { defId: "sofa", rx: 2, ry: 7, uid: "start_sofa" },
+    { defId: "plant", rx: 4, ry: 2, uid: "start_plant" },
+    { defId: "shower", rx: 10, ry: 1, uid: "start_shower" },
+    { defId: "toilet", rx: 12, ry: 1, uid: "start_toilet" },
+    // No starter sofa — the wake-up intro / make_it_home quest asks you to buy one.
     { defId: "tv", rx: 5, ry: 6, uid: "start_tv" },
     { defId: "fridge", rx: 11, ry: 5, uid: "start_fridge" },
-    { defId: "table", rx: 9, ry: 7, uid: "start_table" },
+    { defId: "table", rx: 10, ry: 7, uid: "start_table" },
   ],
 };
 
 /** Neighbor (12×10): bedroom north, living south. */
 const NEIGHBOR: LotInterior = {
-  walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [5] }],
+  walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
   furniture: [
     { defId: "bed", rx: 2, ry: 1, uid: "n_bed" },
     { defId: "sofa", rx: 2, ry: 6, uid: "n_sofa" },
@@ -69,7 +72,7 @@ const NEIGHBOR: LotInterior = {
 
 /** Café (14×10): service counter west, seating east. */
 const CAFE: LotInterior = {
-  walls: [{ rx: 7, ry: 1, length: 8, axis: "y", doors: [6] }],
+  walls: [{ rx: 7, ry: 1, length: 8, axis: "y", doors: [3, 4] }],
   furniture: [
     { defId: "counter", rx: 3, ry: 3, uid: "c_counter" },
     { defId: "table", rx: 9, ry: 5, uid: "c_table" },
@@ -79,7 +82,7 @@ const CAFE: LotInterior = {
 
 /** Shelter (14×10): office north, pet floor south. */
 const SHELTER: LotInterior = {
-  walls: [{ rx: 1, ry: 4, length: 12, axis: "x", doors: [6] }],
+  walls: [{ rx: 1, ry: 4, length: 12, axis: "x", doors: [5, 6] }],
   furniture: [
     { defId: "shelter_desk", rx: 5, ry: 1, uid: "s_desk" },
     { defId: "pet_bed", rx: 2, ry: 6, uid: "s_bed" },
@@ -89,7 +92,7 @@ const SHELTER: LotInterior = {
 
 /** Market (12×10): counter north, stock south. */
 const MARKET: LotInterior = {
-  walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [5] }],
+  walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
   furniture: [
     { defId: "counter", rx: 4, ry: 2, uid: "m_counter" },
     { defId: "table", rx: 2, ry: 6, uid: "m_table" },
@@ -99,7 +102,7 @@ const MARKET: LotInterior = {
 
 /** Library (12×10): desk north, reading south. */
 const LIBRARY: LotInterior = {
-  walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [5] }],
+  walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
   furniture: [
     { defId: "library_desk", rx: 4, ry: 1, uid: "l_desk" },
     { defId: "table", rx: 2, ry: 6, uid: "l_table" },
@@ -109,7 +112,7 @@ const LIBRARY: LotInterior = {
 
 /** Clinic (14×10): reception north, care south. */
 const CLINIC: LotInterior = {
-  walls: [{ rx: 1, ry: 4, length: 12, axis: "x", doors: [6] }],
+  walls: [{ rx: 1, ry: 4, length: 12, axis: "x", doors: [5, 6] }],
   furniture: [
     { defId: "clinic_desk", rx: 5, ry: 1, uid: "k_desk" },
     { defId: "sofa", rx: 2, ry: 6, uid: "k_sofa" },

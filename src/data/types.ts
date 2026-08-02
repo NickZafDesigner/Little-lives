@@ -105,7 +105,7 @@ export interface NpcDef {
 export interface PetDef {
   id: string;
   name: string;
-  species: "cat" | "dog" | "bunny";
+  species: "cat" | "dog" | "bunny" | "fox" | "bird";
   color: number;
   accent: number;
   traits: string[];
@@ -123,11 +123,30 @@ export interface JobDef {
   shiftTasks: number;
   durationMs: number;
   closedMessage: string;
+  /** Per-task flavour labels during a shift. */
+  taskLabels?: string[];
 }
 
 export interface RelationshipState {
   score: number;
   met: boolean;
+}
+
+export interface DailyStatsSave {
+  moneyEarned: number;
+  friendsMade: number;
+  petBondGain: number;
+  shiftsDone: number;
+}
+
+export interface AspirationSave {
+  selected: string | null;
+  progress: Record<string, number>;
+  completed: string[];
+  unlocks: string[];
+  weeklyBeatsDone: number;
+  totalShifts: number;
+  petTricks: number;
 }
 
 export type {
@@ -152,10 +171,22 @@ export interface SaveData {
   version: number;
   money: number;
   dayTime: number;
+  /** Calendar days lived (increments on sleep-to-morning). */
+  dayIndex: number;
   hiredAtCafe: boolean;
   /** Job ids the player has been hired for (café, market, library, clinic…). */
   hiredJobs: string[];
+  /** Completed shifts per job id. */
+  jobShiftCounts: Record<string, number>;
+  /** Promoted job ids. */
+  jobPromoted: string[];
   quests: QuestSaveData;
+  aspirations: AspirationSave;
+  dailyStats: DailyStatsSave;
+  flirtCounts: Record<string, number>;
+  weeklyBeatDay: number;
+  lastPetCareDay: number;
+  petCareStreak: number;
   player: {
     x: number;
     y: number;

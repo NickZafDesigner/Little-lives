@@ -113,6 +113,26 @@ export const ANIMAL_OPTIONS = [
 export const MAX_TRAITS = 3;
 export const MAX_ANIMALS = 2;
 
+/** Fun defaults for the create-screen “Surprise me” button. */
+export const NAME_OPTIONS = [
+  "Pippin",
+  "Maple",
+  "Juniper",
+  "Clover",
+  "Pepper",
+  "Basil",
+  "Sunny",
+  "Mochi",
+  "Nori",
+  "Pebble",
+  "Wren",
+  "Fig",
+  "Biscuit",
+  "Lumen",
+  "Theo",
+  "Nova",
+] as const;
+
 export const SEX_LABELS: Record<Sex, string> = {
   boy: "Male",
   girl: "Female",
