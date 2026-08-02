@@ -1,10 +1,10 @@
 /** Cozy pastel palette, tuned to read like a sunny valley afternoon. */
 export const Palette = {
   // Nature
-  grass: 0x8ec44f,
-  grassDark: 0x6ea63c,
-  grassDeep: 0x54832d,
-  grassLight: 0xaad86a,
+  grass: 0x9dd15c,
+  grassDark: 0x7db84a,
+  grassDeep: 0x649938,
+  grassLight: 0xbce67c,
   leaf: 0x4e9b3a,
   leafLight: 0x76c153,
 

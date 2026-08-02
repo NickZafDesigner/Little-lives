@@ -77,7 +77,13 @@ export function isNeedCritical(needs: NeedsState, id: NeedId): boolean {
   return needs[id] < NEED_CRITICAL;
 }
 
-export function criticalNeedThoughts(needs: NeedsState): string | null {
+export function criticalNeedThoughts(
+  needs: NeedsState,
+  isWet = false,
+): string | null {
+  if (isWet) {
+    return "Ugh. Still damp. Shower. Please.";
+  }
   if (needs.energy < NEED_CRITICAL) {
     return "Eyes… heavy… floor looks comfy…";
   }
@@ -99,11 +105,17 @@ export function criticalNeedThoughts(needs: NeedsState): string | null {
   return null;
 }
 
-export function canHangOut(needs: NeedsState): boolean {
-  return needs.energy >= NEED_CRITICAL && needs.bladder >= 5;
+export function canHangOut(needs: NeedsState, isWet = false): boolean {
+  return (
+    !isWet && needs.energy >= NEED_CRITICAL && needs.bladder >= 5
+  );
 }
 
-export function socialBlockedReason(needs: NeedsState): string | null {
+export function socialBlockedReason(
+  needs: NeedsState,
+  isWet = false,
+): string | null {
+  if (isWet) return "You're wet — shower first!";
   if (needs.energy < NEED_CRITICAL) return "Too exhausted to hang out.";
   if (needs.bladder < 5) return "Bathroom emergency - social later!";
   if (needs.hygiene < 8) return "Maybe shower before company…";

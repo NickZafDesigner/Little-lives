@@ -166,6 +166,7 @@ export function socialOutcomeMultiplier(
   hygiene: number,
   mood: number,
   tone?: string,
+  isWet = false,
 ): { mult: number; toast?: string } {
   let mult = 1;
   let toast: string | undefined;
@@ -187,7 +188,10 @@ export function socialOutcomeMultiplier(
     // joke path
     mult *= 1.25;
   }
-  if (hygiene < 15) {
+  if (isWet) {
+    mult *= 0.35;
+    toast = "Still damp… this is so awkward.";
+  } else if (hygiene < 15) {
     mult *= 0.55;
     toast = "Eep - maybe shower first next time…";
   } else if (hygiene < 30) {

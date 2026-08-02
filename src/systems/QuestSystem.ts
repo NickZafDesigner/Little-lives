@@ -5,6 +5,10 @@ import {
   type QuestEvent,
 } from "../data/quests";
 import type { GameState } from "./GameState";
+import {
+  completedUnlockTaskIds,
+  toastNewUnlocks,
+} from "./unlockProgress";
 
 export interface QuestTrackerInfo {
   title: string;
@@ -32,7 +36,13 @@ export class QuestSystem {
     }
   }
 
-  emit(event: QuestEvent, _payload?: Record<string, unknown>) {
+  emit(
+    event: QuestEvent,
+    _payload?: Record<string, unknown>,
+    opts?: { unlockToast?: boolean },
+  ) {
+    const unlockToast = opts?.unlockToast !== false;
+    const unlockBefore = completedUnlockTaskIds(this.state);
     const q = this.state.quests;
     let changed = false;
 
@@ -56,7 +66,10 @@ export class QuestSystem {
       }
     }
 
-    if (changed) this.tryUnlockQuests();
+    if (changed) {
+      this.tryUnlockQuests();
+      if (unlockToast) toastNewUnlocks(this.state, unlockBefore);
+    }
   }
 
   getTracker(): QuestTrackerInfo | null {

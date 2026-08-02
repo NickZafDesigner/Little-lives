@@ -16,6 +16,7 @@ export type LotId =
   | "home"
   | "neighbor"
   | "park"
+  | "playpark"
   | "cafe"
   | "shelter"
   | "market"
@@ -70,6 +71,8 @@ export interface FurnitureDef {
   interactions: InteractionDef[];
   blocksMovement?: boolean;
   petRequired?: boolean;
+  /** When set, catalog item stays locked until this unlock task completes. */
+  unlockTaskId?: string;
 }
 
 export interface InteractionDef {
@@ -112,18 +115,32 @@ export interface PetDef {
   fee: number;
 }
 
+export type WorkMiniKind = "timing" | "sequence" | "hold";
+
+export interface JobTaskDef {
+  id: string;
+  label: string;
+  /** Placed furniture uid in the workplace lot. */
+  furnitureUid: string;
+  mini: WorkMiniKind;
+}
+
 export interface JobDef {
   id: string;
   name: string;
   lotId: LotId;
-  /** Furniture defId that opens this job's shift menu. */
+  /** Furniture defId that clocks you in for this job. */
   stationDefId: string;
   hireNpcId: string;
   pay: number;
-  shiftTasks: number;
-  durationMs: number;
+  /** Ordered station-hop tasks for a shift. */
+  tasks: JobTaskDef[];
   closedMessage: string;
-  /** Per-task flavour labels during a shift. */
+  /** @deprecated use tasks.length */
+  shiftTasks?: number;
+  /** @deprecated busy-bar duration; minigames replace this */
+  durationMs?: number;
+  /** @deprecated use tasks[].label */
   taskLabels?: string[];
 }
 
@@ -173,6 +190,8 @@ export interface SaveData {
   dayTime: number;
   /** Calendar days lived (increments on sleep-to-morning). */
   dayIndex: number;
+  /** True after a bladder accident until the player showers. */
+  isWet?: boolean;
   hiredAtCafe: boolean;
   /** Job ids the player has been hired for (café, market, library, clinic…). */
   hiredJobs: string[];
@@ -185,6 +204,8 @@ export interface SaveData {
   dailyStats: DailyStatsSave;
   flirtCounts: Record<string, number>;
   weeklyBeatDay: number;
+  /** dayIndex when a shift was last completed (−1 = never). */
+  lastShiftDay?: number;
   lastPetCareDay: number;
   petCareStreak: number;
   player: {

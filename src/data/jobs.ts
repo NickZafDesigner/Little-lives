@@ -8,10 +8,13 @@ export const JOBS: JobDef[] = [
     stationDefId: "counter",
     hireNpcId: "jun",
     pay: 55,
-    shiftTasks: 2,
-    durationMs: 1800,
     closedMessage: "Café's closed - come back 9 to 5.",
-    taskLabels: ["Brew a drink", "Wipe the counter"],
+    tasks: [
+      { id: "brew", label: "Brew a drink", furnitureUid: "c_counter", mini: "timing" },
+      { id: "wipe", label: "Wipe a table", furnitureUid: "c_table", mini: "sequence" },
+      { id: "plant", label: "Water the plant", furnitureUid: "c_plant", mini: "hold" },
+      { id: "ring", label: "Ring up a sale", furnitureUid: "c_counter", mini: "timing" },
+    ],
   },
   {
     id: "market_clerk",
@@ -20,10 +23,13 @@ export const JOBS: JobDef[] = [
     stationDefId: "counter",
     hireNpcId: "vera",
     pay: 48,
-    shiftTasks: 2,
-    durationMs: 1600,
     closedMessage: "Market's closed - come back 9 to 5.",
-    taskLabels: ["Restock a shelf", "Ring up a sale"],
+    tasks: [
+      { id: "restock", label: "Restock a shelf", furnitureUid: "m_table", mini: "sequence" },
+      { id: "ring", label: "Ring up a sale", furnitureUid: "m_counter", mini: "timing" },
+      { id: "sweep", label: "Sweep near the plants", furnitureUid: "m_plant", mini: "hold" },
+      { id: "bag", label: "Bag a purchase", furnitureUid: "m_counter", mini: "timing" },
+    ],
   },
   {
     id: "library_aide",
@@ -32,10 +38,13 @@ export const JOBS: JobDef[] = [
     stationDefId: "library_desk",
     hireNpcId: "theo",
     pay: 42,
-    shiftTasks: 2,
-    durationMs: 1700,
     closedMessage: "Library's closed - come back 9 to 5.",
-    taskLabels: ["Shelve returns", "Whisper-help a patron"],
+    tasks: [
+      { id: "help", label: "Help a patron", furnitureUid: "l_desk", mini: "timing" },
+      { id: "shelve", label: "Shelve returns", furnitureUid: "l_table", mini: "sequence" },
+      { id: "dust", label: "Dust the plant", furnitureUid: "l_plant", mini: "hold" },
+      { id: "tip", label: "Quiet tip at the desk", furnitureUid: "l_desk", mini: "timing" },
+    ],
   },
   {
     id: "clinic_aide",
@@ -44,10 +53,13 @@ export const JOBS: JobDef[] = [
     stationDefId: "clinic_desk",
     hireNpcId: "sage",
     pay: 60,
-    shiftTasks: 2,
-    durationMs: 1900,
     closedMessage: "Clinic's closed - come back 9 to 5.",
-    taskLabels: ["Fetch a kit", "Tidy the waiting chairs"],
+    tasks: [
+      { id: "checkin", label: "Check in a patient", furnitureUid: "k_desk", mini: "timing" },
+      { id: "tidy", label: "Tidy waiting chairs", furnitureUid: "k_sofa", mini: "sequence" },
+      { id: "water", label: "Water the plant", furnitureUid: "k_plant", mini: "hold" },
+      { id: "kit", label: "Fetch a kit", furnitureUid: "k_desk", mini: "hold" },
+    ],
   },
 ];
 
@@ -101,6 +113,19 @@ export function jobPay(jobId: string, promoted: boolean): number {
   const job = jobById[jobId];
   if (!job) return 0;
   const bonus = promoted ? (JOB_PROMOTIONS[jobId]?.payBonus ?? 0) : 0;
-  const trusted = 0; // applied by caller via unlocks
-  return job.pay + bonus + trusted;
+  return job.pay + bonus;
+}
+
+export function jobTaskCount(job: JobDef): number {
+  return job.tasks?.length ?? job.shiftTasks ?? 2;
+}
+
+export function lotNameForJob(jobId: string): string {
+  const job = jobById[jobId];
+  if (!job) return "work";
+  if (job.lotId === "cafe") return "café";
+  if (job.lotId === "market") return "market";
+  if (job.lotId === "library") return "library";
+  if (job.lotId === "clinic") return "clinic";
+  return "work";
 }

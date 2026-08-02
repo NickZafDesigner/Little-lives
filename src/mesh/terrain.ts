@@ -59,6 +59,42 @@ function noise(x: number, y: number): number {
   return n - Math.floor(n);
 }
 
+function lerpHex(a: number, b: number, t: number): number {
+  const u = Math.min(1, Math.max(0, t));
+  const ar = (a >> 16) & 0xff;
+  const ag = (a >> 8) & 0xff;
+  const ab = a & 0xff;
+  const br = (b >> 16) & 0xff;
+  const bg = (b >> 8) & 0xff;
+  const bb = b & 0xff;
+  const r = Math.round(ar + (br - ar) * u);
+  const g = Math.round(ag + (bg - ag) * u);
+  const bl = Math.round(ab + (bb - ab) * u);
+  return (r << 16) | (g << 8) | bl;
+}
+
+/**
+ * Low-frequency shade 0..1 across the map (0 = cloud shadow, 1 = sun).
+ * Quantized by callers so materials still batch.
+ */
+function cloudShadow(tx: number, ty: number): number {
+  const n1 = noise(tx * 0.065 + 3.1, ty * 0.058 + 1.7);
+  const n2 = noise(tx * 0.12 - 2.4, ty * 0.11 + 4.2);
+  const n3 = noise(tx * 0.24 + 8.0, ty * 0.22 - 3.5);
+  let v = n1 * 0.52 + n2 * 0.33 + n3 * 0.15;
+  // Soften into broad pools rather than speckles
+  v = (v - 0.28) / 0.55;
+  return Math.min(1, Math.max(0, v));
+}
+
+/** Tint for textured grass — quantized so merge batches stay healthy. */
+function grassCloudTint(tx: number, ty: number): number {
+  const sun = cloudShadow(tx, ty);
+  const band = Math.round(sun * 5) / 5; // 6 buckets
+  // Cool deep green in shade → near-white multiply in sun (texture carries hue)
+  return lerpHex(0x6f8c56, 0xffffff, 0.48 + band * 0.52);
+}
+
 /** Build merged terrain mesh + decorative props for the town. */
 export function buildTerrain(map: TownMapData): THREE.Group {
   const root = new THREE.Group();
@@ -89,15 +125,6 @@ export function buildTerrain(map: TownMapData): THREE.Group {
     let g = geoCache.get(key);
     if (!g) {
       g = new THREE.CylinderGeometry(rTop, rBottom, h, 10);
-      geoCache.set(key, g);
-    }
-    return g;
-  };
-  const diskGeo = (r: number, h: number) => {
-    const key = `d${r}_${h}`;
-    let g = geoCache.get(key);
-    if (!g) {
-      g = new THREE.CylinderGeometry(r, r, h, 16);
       geoCache.set(key, g);
     }
     return g;
@@ -172,28 +199,32 @@ export function buildTerrain(map: TownMapData): THREE.Group {
       const cz = ty * TILE + TILE / 2;
 
       if (code === Tile.water) {
-        // Deep bed + painted translucent surface
-        addBox(matFlat(Palette.waterDeep, { map: waterTexture() }), cx, -2.2, cz, TILE, 4, TILE);
-        addProp(
-          matSmooth(0xffffff, {
+        // Continuous square water — no per-tile discs (those read as blue pads).
+        addBox(
+          matSmooth(Palette.waterDeep, { map: waterTexture() }),
+          cx,
+          -2.4,
+          cz,
+          TILE,
+          4.2,
+          TILE,
+        );
+        // Slightly varied surface tint so large ponds aren't one flat slab.
+        const shimmer = 0.85 + noise(tx * 0.7, ty * 0.7) * 0.15;
+        const surface = lerpHex(Palette.waterDeep, Palette.water, shimmer);
+        addBox(
+          matSmooth(surface, {
             transparent: true,
-            opacity: 0.78,
+            opacity: 0.88,
             map: waterTexture(),
           }),
-          diskGeo(TILE * 0.48, 0.55),
           cx,
-          0.15,
+          0.05,
           cz,
+          TILE,
+          0.35,
+          TILE,
         );
-        if (noise(tx + 0.4, ty + 2.1) > 0.55) {
-          addProp(
-            matSmooth(Palette.waterFoam, { transparent: true, opacity: 0.35 }),
-            diskGeo(TILE * 0.28, 0.2),
-            cx + (noise(tx, ty) - 0.5) * 6,
-            0.45,
-            cz + (noise(ty, tx) - 0.5) * 6,
-          );
-        }
         continue;
       }
 
@@ -248,12 +279,14 @@ export function buildTerrain(map: TownMapData): THREE.Group {
           : isWood
             ? woodFloorTexture()
             : undefined;
+      // Grass: multiply texture by large-scale cloud-shadow tint (batched buckets).
+      const grassColor = isGrass ? grassCloudTint(tx, ty) : color;
       const tileMat =
         code === Tile.grass ||
         code === Tile.grassVar ||
         code === Tile.flower ||
         code === Tile.sand
-          ? matSmooth(tex ? 0xffffff : color, { map: tex })
+          ? matSmooth(tex ? grassColor : color, { map: tex })
           : matFlat(tex ? 0xffffff : color, { map: tex });
       addBox(tileMat, cx, y, cz, size, height, size);
 

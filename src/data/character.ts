@@ -28,7 +28,7 @@ export interface PlayerProfile {
   favouriteAnimals: string[];
 }
 
-export const SEX_OPTIONS: Sex[] = ["boy", "girl", "enby"];
+export const SEX_OPTIONS: Sex[] = ["girl", "boy", "enby"];
 export const HEIGHT_OPTIONS: Height[] = ["short", "average", "tall"];
 export const BUILD_OPTIONS: Build[] = ["slim", "average", "stocky"];
 export const FACE_OPTIONS: FaceStyle[] = ["round", "soft", "sharp", "freckled"];
@@ -163,21 +163,22 @@ export const HAIR_LABELS: Record<HairStyle, string> = {
   bun: "Bun",
   long: "Long",
   wavy: "Wavy",
-  cap: "Cap",
+  cap: "Bangs",
 };
 
 export function defaultPlayerLook(): PlayerLook {
+  const clothing = CLOTHING_PALETTES.cozy;
   return {
-    sex: "boy",
+    sex: "girl",
     height: "average",
     build: "average",
     face: "soft",
-    clothing: "casual",
-    hairStyle: "short",
+    clothing: "cozy",
+    hairStyle: "long",
     skin: Palette.skin,
     hair: 0x8d5a3b,
-    shirt: CLOTHING_PALETTES.casual.shirt,
-    pants: CLOTHING_PALETTES.casual.pants,
+    shirt: clothing.shirt,
+    pants: clothing.pants,
   };
 }
 
@@ -201,9 +202,13 @@ export function applyClothingStyle(look: PlayerLook, style: ClothingStyle): Play
   };
 }
 
-/** Sensible hair defaults when sex changes (player can still override). */
+/** Sensible defaults when identity changes (player can still override). */
+export function lookDefaultsForSex(sex: Sex): Pick<PlayerLook, "hairStyle" | "face" | "clothing"> {
+  if (sex === "girl") return { hairStyle: "long", face: "soft", clothing: "cozy" };
+  if (sex === "boy") return { hairStyle: "short", face: "sharp", clothing: "sporty" };
+  return { hairStyle: "wavy", face: "round", clothing: "casual" };
+}
+
 export function hairForSex(sex: Sex): HairStyle {
-  if (sex === "girl") return "long";
-  if (sex === "boy") return "short";
-  return "wavy";
+  return lookDefaultsForSex(sex).hairStyle;
 }

@@ -60,6 +60,17 @@ export const LOTS: LotBounds[] = [
     color: 0xc8e6c9,
   },
   {
+    id: "playpark",
+    name: "Playpark",
+    tx: 26,
+    ty: 30,
+    tw: 16,
+    th: 8,
+    owned: false,
+    buildable: false,
+    color: 0xa5d6a7,
+  },
+  {
     id: "cafe",
     name: "Sunny Café",
     tx: 4,

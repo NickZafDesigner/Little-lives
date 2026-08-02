@@ -47,7 +47,14 @@ export class HintArrow {
     this.marker.classList.remove("is-in");
     void this.marker.offsetWidth;
     this.marker.classList.add("is-in");
-    this.hideTimer = window.setTimeout(() => this.hide(), ms);
+    if (ms > 0) {
+      this.hideTimer = window.setTimeout(() => this.hide(), ms);
+    }
+  }
+
+  /** Keep pointing until hide() — used for mid-shift station hops. */
+  pinAt(worldX: number, worldZ: number, label = "") {
+    this.showAt(worldX, worldZ, label, 0);
   }
 
   hide() {

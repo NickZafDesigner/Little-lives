@@ -8,6 +8,10 @@ import {
 import { RELATIONSHIP_CLOSE } from "../data/npcs";
 import type { GameState } from "./GameState";
 import { computeCozyScore } from "./cozyScore";
+import {
+  completedUnlockTaskIds,
+  toastNewUnlocks,
+} from "./unlockProgress";
 
 export interface AspirationTrackerInfo {
   title: string;
@@ -94,13 +98,17 @@ export class AspirationSystem {
   }
 
   noteWeeklyBeat() {
+    const before = completedUnlockTaskIds(this.state);
     this.state.aspirations.weeklyBeatsDone += 1;
     this.refresh();
+    toastNewUnlocks(this.state, before);
   }
 
   notePetTrick() {
+    const before = completedUnlockTaskIds(this.state);
     this.state.aspirations.petTricks += 1;
     this.refresh();
+    toastNewUnlocks(this.state, before);
   }
 
   private closeFriendCount(): number {

@@ -17,7 +17,7 @@ import {
   SKIN_TONES,
   TRAIT_OPTIONS,
   ANIMAL_OPTIONS,
-  hairForSex,
+  lookDefaultsForSex,
   type PlayerLook,
   type PlayerProfile,
   SEX_LABELS,
@@ -31,7 +31,6 @@ import { createActor } from "../mesh/actors";
 import { Audio } from "../audio/AudioManager";
 import { muteButtonHtml, wireMute } from "../ui/mute";
 import { mountPageZoomBanner } from "../ui/pageZoom";
-import { matSmooth } from "../mesh/materials";
 import * as THREE from "three";
 
 export function createCreateScreen(
@@ -79,9 +78,7 @@ export function createCreateScreen(
           </div>
           <div class="ll-create-hills" aria-hidden="true"></div>
           <header class="ll-create-title">
-            <p class="ll-create-eyebrow">New neighbor</p>
             <h2>Create your little life</h2>
-            <p>Shape how they look, feel, and who they adore.</p>
           </header>
           <div class="ll-create-layout">
             <div class="ll-create-form">
@@ -135,7 +132,6 @@ export function createCreateScreen(
             <aside class="ll-create-preview">
               <div class="ll-preview-stage">
                 <canvas class="ll-preview-canvas"></canvas>
-                <div class="ll-preview-pedestal" aria-hidden="true"></div>
               </div>
               <div class="ll-preview-meta">
                 <p class="ll-preview-name" data-plate>${name}</p>
@@ -159,25 +155,13 @@ export function createCreateScreen(
       const previewEl = root.querySelector(".ll-create-preview") as HTMLElement;
       previewRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
       previewRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-      previewRenderer.shadowMap.enabled = true;
-      previewRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
       previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
       previewRenderer.toneMappingExposure = 1.05;
       previewScene = new THREE.Scene();
       // Match TownRenderer day ratios so create preview matches in-world look
       previewScene.add(new THREE.HemisphereLight(0xfff4e0, 0x6b9a55, 0.95));
       const sun = new THREE.DirectionalLight(0xffe4b8, 1.2);
-      sun.position.set(40, 70, 50);
-      sun.castShadow = true;
-      sun.shadow.mapSize.set(1024, 1024);
-      sun.shadow.camera.near = 5;
-      sun.shadow.camera.far = 200;
-      sun.shadow.camera.left = -40;
-      sun.shadow.camera.right = 40;
-      sun.shadow.camera.top = 40;
-      sun.shadow.camera.bottom = -40;
-      sun.shadow.bias = -0.001;
-      sun.shadow.normalBias = 0.4;
+      sun.position.set(18, 90, 22);
       previewScene.add(sun);
       const fill = new THREE.DirectionalLight(0xffffff, 0.35);
       fill.position.set(-15, 25, 80);
@@ -186,24 +170,22 @@ export function createCreateScreen(
       rim.position.set(-50, 35, -40);
       previewScene.add(rim);
 
-      // Soft ground plane for contact shadow (actor doesn't float)
-      const ground = new THREE.Mesh(
-        new THREE.CircleGeometry(28, 32),
-        matSmooth(0xe8dfc8),
+      // One soft contact blob — no platform disc + cast shadow (that read as two circles)
+      const blob = new THREE.Mesh(
+        new THREE.CircleGeometry(14, 48),
+        new THREE.MeshBasicMaterial({
+          color: 0x5a4630,
+          transparent: true,
+          opacity: 0.22,
+          depthWrite: false,
+        }),
       );
-      ground.rotation.x = -Math.PI / 2;
-      ground.position.y = -0.05;
-      ground.receiveShadow = true;
-      previewScene.add(ground);
+      blob.rotation.x = -Math.PI / 2;
+      blob.position.y = 0.02;
+      previewScene.add(blob);
 
       previewCam = new THREE.PerspectiveCamera(32, 1, 0.1, 400);
       previewActor = createActor(look);
-      previewActor.root.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
-          obj.castShadow = true;
-          obj.receiveShadow = true;
-        }
-      });
       previewScene.add(previewActor.root);
 
       /** Fit the whole body in frame regardless of height/hair choices. */
@@ -243,6 +225,8 @@ export function createCreateScreen(
 
       let dragging = false;
       let lastX = 0;
+      let flourishAt = 1.4;
+      let flourishClock = 0;
       canvas.addEventListener("pointerdown", (e) => {
         dragging = true;
         lastX = e.clientX;
@@ -262,6 +246,15 @@ export function createCreateScreen(
       const tick = () => {
         if (!dragging) spin += 0.012;
         previewActor.root.rotation.y = dragYaw + Math.sin(spin) * 0.35;
+
+        flourishClock += 1 / 60;
+        if (flourishClock >= flourishAt) {
+          flourishClock = 0;
+          flourishAt = 3.8 + Math.random() * 2.4;
+          previewActor.playWave();
+          previewActor.playSmile();
+        }
+
         previewActor.update(1 / 60);
         previewRenderer?.render(previewScene!, previewCam!);
         raf = requestAnimationFrame(tick);
@@ -341,7 +334,11 @@ export function createCreateScreen(
           b.addEventListener("click", () => {
             if (look.sex === sex) return;
             Audio.sfx("ui");
-            look = { ...look, sex, hairStyle: hairForSex(sex) };
+            const defaults = lookDefaultsForSex(sex);
+            look = applyClothingStyle(
+              { ...look, sex, hairStyle: defaults.hairStyle, face: defaults.face },
+              defaults.clothing,
+            );
             refreshLook();
           });
           identityEl.appendChild(b);

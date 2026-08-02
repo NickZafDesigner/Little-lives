@@ -702,7 +702,7 @@ export function buildBuildings(): {
   const buildings: BuildingHandle[] = [];
 
   for (const lot of LOTS) {
-    if (lot.id === "park") continue;
+    if (lot.id === "park" || lot.id === "playpark") continue;
     const b = buildHouse(lot);
     group.add(b.group);
     buildings.push(b);

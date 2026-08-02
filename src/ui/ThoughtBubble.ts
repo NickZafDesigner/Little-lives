@@ -96,14 +96,17 @@ export class ThoughtBubble {
     viewH = 0,
   ) {
     if (!this.visible && this.bubble.hidden) return;
-    // Focus framing leaves sky above the head - anchor higher when zoomed.
-    const worldY = this.zoomed ? 38 : 42;
+    // Actor root is 1.2×; head center ≈31.5, hair crown ~46–52 world.
+    // Anchor just above the crown so the tail sits near the head.
+    const worldY = this.zoomed ? 50 : 48;
     const screen = project(worldX, worldY, worldZ);
     let x = screen.x;
-    let y = screen.y - (this.zoomed ? 14 : 18);
+    // Tiny screen lift so the cloud clears hair without floating away.
+    let y = screen.y - (this.zoomed ? 8 : 4);
     if (viewW > 0 && viewH > 0) {
       const padX = this.zoomed ? 100 : 70;
-      const padTop = this.zoomed ? 56 : 36;
+      // Keep padTop low so focus sky headroom isn't clamped onto the face.
+      const padTop = this.zoomed ? 20 : 28;
       const padBot = this.zoomed ? 180 : 80;
       x = Math.min(viewW - padX, Math.max(padX, x));
       y = Math.min(viewH - padBot, Math.max(padTop, y));

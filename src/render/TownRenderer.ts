@@ -75,6 +75,9 @@ export class TownRenderer {
   private zoomDamp = 28;
   /** Thought / dialogue close-up (below FRUSTUM_MIN). Soft enough to avoid hard cuts. */
   static readonly FRUSTUM_FOCUS = 260;
+  /** Extra-tight face close-up (bladder accident / embarrassment). */
+  static readonly FRUSTUM_FACE = 150;
+  static readonly FACE_FRAME_Y = 0.55;
   /**
    * Focus framing: shift the ortho window so the follow point sits lower-center,
    * leaving headroom above for thought bubbles. Values are fractions of half-frustum.
@@ -257,7 +260,10 @@ export class TownRenderer {
    * Remembers the current zoom and restores it via endFocusZoom().
    * Idempotent while already focused - safe to call every frame.
    */
-  beginFocusZoom(frustum = TownRenderer.FRUSTUM_FOCUS) {
+  beginFocusZoom(
+    frustum = TownRenderer.FRUSTUM_FOCUS,
+    frameY = TownRenderer.FOCUS_FRAME_Y,
+  ) {
     if (this.focusRestore === null) {
       this.focusRestore = this.frustumTarget;
       this.frustumTarget = frustum;
@@ -266,7 +272,8 @@ export class TownRenderer {
       this.frustumTarget = frustum;
     }
     // Character lower-center → clear sky above the head for thought bubbles.
-    this.frameShiftYTarget = TownRenderer.FOCUS_FRAME_Y;
+    // Face close-ups push the character further down so the face fills the frame.
+    this.frameShiftYTarget = frameY;
     this.frameShiftXTarget = TownRenderer.FOCUS_FRAME_X;
   }
 

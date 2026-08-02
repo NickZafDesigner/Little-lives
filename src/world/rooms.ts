@@ -76,6 +76,7 @@ const CAFE: LotInterior = {
   furniture: [
     { defId: "counter", rx: 3, ry: 3, uid: "c_counter" },
     { defId: "table", rx: 9, ry: 5, uid: "c_table" },
+    { defId: "table", rx: 10, ry: 7, uid: "c_table2" },
     { defId: "plant", rx: 11, ry: 2, uid: "c_plant" },
   ],
 };

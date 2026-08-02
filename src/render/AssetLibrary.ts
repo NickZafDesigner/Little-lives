@@ -8,7 +8,7 @@ import type {
 } from "../data/character";
 
 // Bump when re-exporting GLBs so browsers don't keep a stale hair/body kit.
-const ASSET_VER = "20260802z";
+const ASSET_VER = "20260802ac";
 const assetUrl = (path: string) => `/assets/${path}?v=${ASSET_VER}`;
 
 const CHARACTER_PATHS = {
@@ -51,6 +51,8 @@ const FURNITURE_IDS = [
   "toy_ball",
   "counter",
   "park_bench",
+  "swing_set",
+  "slide",
   "shelter_desk",
   "library_desk",
   "clinic_desk",
@@ -179,6 +181,44 @@ class AssetLibraryImpl {
       fern: "plant",
       storybook: "bookshelf",
       yarn_ball: "toy_ball",
+      coffee_machine: "fridge",
+      microwave: "fridge",
+      lounge_chair: "sofa",
+      bean_bag: "sofa",
+      reading_lamp: "bookshelf",
+      radio: "tv",
+      dresser: "table",
+      nightstand: "table",
+      kitchen_cart: "table",
+      wall_art: "plant",
+      jukebox: "tv",
+      aquarium: "bookshelf",
+      cat_tree: "pet_bed",
+      nest_basket: "pet_bowl",
+      picnic_set: "park_bench",
+      footstool: "table",
+      floor_cushion: "sofa",
+      side_table: "table",
+      spice_rack: "bookshelf",
+      welcome_mat: "plant",
+      smoothie_blender: "fridge",
+      mini_fridge: "fridge",
+      plush_sofa: "sofa",
+      love_seat: "sofa",
+      writing_desk: "table",
+      grand_bookshelf: "bookshelf",
+      market_crate: "table",
+      jam_shelf: "bookshelf",
+      medicine_cabinet: "bookshelf",
+      healing_plant: "plant",
+      canopy_bed: "bed",
+      vanity: "shower",
+      dog_house: "pet_bed",
+      scratching_post: "pet_bed",
+      telescope: "bookshelf",
+      party_lights: "plant",
+      arcade_cabinet: "tv",
+      hammock: "park_bench",
     };
     const meshId = alias[defId] ?? defId;
     const url = assetUrl(`furniture/${meshId}.glb`);

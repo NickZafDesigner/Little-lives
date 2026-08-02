@@ -237,6 +237,19 @@ export function createTownMap(): TownMapData {
     for (let x = park.tx + 7; x < park.tx + 13; x++) collision[y][x] = true;
   }
 
+  // Playpark south of Town Park — mulch paths + spur from the park road.
+  const playpark = LOTS.find((l) => l.id === "playpark")!;
+  fillRect(
+    ground,
+    playpark.tx + 1,
+    playpark.ty + 1,
+    playpark.tw - 2,
+    playpark.th - 2,
+    Tile.parkPath,
+  );
+  fillRect(ground, park.tx + 9, park.ty + park.th - 1, 2, 3, Tile.path);
+  fillRect(ground, playpark.tx + 6, playpark.ty, 4, 1, Tile.path);
+
   const cafe = LOTS.find((l) => l.id === "cafe")!;
   drawBuildingShell(
     ground,

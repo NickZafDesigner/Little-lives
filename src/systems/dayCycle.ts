@@ -1,6 +1,6 @@
 /** Day / business-hours helpers and daily summary. */
 
-export const MORNING_TIME = 7 / 24; // 7:00 AM wake time
+export const MORNING_TIME = 8 / 24; // 8:00 AM wake time
 export const EVENING_START = 18 / 24; // 6 PM
 export const NIGHT_START = 21 / 24; // 9 PM
 

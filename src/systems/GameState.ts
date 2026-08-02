@@ -115,6 +115,37 @@ function parkOutdoorFurniture(): PlacedFurniture[] {
   ];
 }
 
+/** Swing set + slide south of Town Park. */
+function playparkOutdoorFurniture(): PlacedFurniture[] {
+  const play = LOTS.find((l) => l.id === "playpark")!;
+  return [
+    {
+      uid: "pp_swing",
+      defId: "swing_set",
+      tx: play.tx + 2,
+      ty: play.ty + 3,
+      lotId: "playpark",
+      rot: "down",
+    },
+    {
+      uid: "pp_slide",
+      defId: "slide",
+      tx: play.tx + 11,
+      ty: play.ty + 2,
+      lotId: "playpark",
+      rot: "down",
+    },
+    {
+      uid: "pp_bench",
+      defId: "park_bench",
+      tx: play.tx + 6,
+      ty: play.ty + 6,
+      lotId: "playpark",
+      rot: "up",
+    },
+  ];
+}
+
 /** Beach benches along the south sand strip. */
 function beachOutdoorFurniture(): PlacedFurniture[] {
   return [
@@ -187,6 +218,12 @@ export class GameState {
   jobActive = false;
   /** Active job id while on a shift (cafe_barista, market_clerk, …). */
   activeJobId: string | null = null;
+  /** Per-task quality scores (0–1) for the active shift. */
+  jobQualityScores: number[] = [];
+  /** True if this shift was clocked in after WORK_LATE. */
+  shiftLate = false;
+  /** dayIndex of the last completed shift (−1 = never). One shift per day. */
+  lastShiftDay = -1;
   hiredJobs: string[] = [];
   jobShiftCounts: Record<string, number> = {};
   jobPromoted: string[] = [];
@@ -201,6 +238,8 @@ export class GameState {
   lastCriticalThoughtAt = 0;
   lastCollapseAt = 0;
   lastBladderAccidentAt = 0;
+  /** Wet after a bladder accident until shower clears it. */
+  isWet = false;
   /** Null until the player picks something from the catalog. */
   selectedBuildItem: string | null = null;
   buildTool: "furniture" | "wall" | "floor" | "sell" = "furniture";
@@ -251,14 +290,19 @@ export class GameState {
       ...interiorFurniture("library"),
       ...interiorFurniture("clinic"),
       ...parkOutdoorFurniture(),
+      ...playparkOutdoorFurniture(),
       ...beachOutdoorFurniture(),
     ];
   }
 
-  /** Bring older saves up to the current park / beach scenery set. */
+  /** Bring older saves up to the current park / beach / playpark scenery set. */
   ensureParkFurniture() {
     const byUid = new Map(this.furniture.map((f) => [f.uid, f]));
-    for (const piece of [...parkOutdoorFurniture(), ...beachOutdoorFurniture()]) {
+    for (const piece of [
+      ...parkOutdoorFurniture(),
+      ...playparkOutdoorFurniture(),
+      ...beachOutdoorFurniture(),
+    ]) {
       const existing = byUid.get(piece.uid);
       if (existing) {
         existing.tx = piece.tx;
@@ -267,6 +311,25 @@ export class GameState {
         existing.defId = piece.defId;
       } else {
         this.furniture.push({ ...piece });
+      }
+    }
+    this.ensureWorkplaceFurniture();
+  }
+
+  /** Ensure workplace hop-stations exist for job tasks (older saves). */
+  ensureWorkplaceFurniture() {
+    const byUid = new Map(this.furniture.map((f) => [f.uid, f]));
+    for (const lotId of ["cafe", "market", "library", "clinic"] as const) {
+      for (const piece of interiorFurniture(lotId)) {
+        if (byUid.has(piece.uid)) continue;
+        this.furniture.push({
+          uid: piece.uid,
+          defId: piece.defId,
+          tx: piece.tx,
+          ty: piece.ty,
+          lotId: piece.lotId,
+        });
+        byUid.set(piece.uid, this.furniture[this.furniture.length - 1]);
       }
     }
   }
@@ -381,6 +444,7 @@ export class GameState {
       money: this.money,
       dayTime: this.dayTime,
       dayIndex: this.dayIndex,
+      isWet: this.isWet,
       hiredAtCafe: this.hiredAtCafe,
       hiredJobs: [...this.hiredJobs],
       jobShiftCounts: { ...this.jobShiftCounts },
@@ -403,6 +467,7 @@ export class GameState {
       dailyStats: { ...this.dailyStats },
       flirtCounts: { ...this.flirtCounts },
       weeklyBeatDay: this.weeklyBeatDay,
+      lastShiftDay: this.lastShiftDay,
       lastPetCareDay: this.lastPetCareDay,
       petCareStreak: this.petCareStreak,
       player: {
@@ -481,8 +546,10 @@ export class GameState {
       : emptyDailyStats();
     this.flirtCounts = { ...(data.flirtCounts ?? {}) };
     this.weeklyBeatDay = data.weeklyBeatDay ?? -1;
+    this.lastShiftDay = data.lastShiftDay ?? -1;
     this.lastPetCareDay = data.lastPetCareDay ?? -1;
     this.petCareStreak = data.petCareStreak ?? 0;
+    this.isWet = data.isWet ?? false;
     this.playerName = data.player.name;
     const fallback = defaultPlayerProfile();
     this.playerLook = data.player.look

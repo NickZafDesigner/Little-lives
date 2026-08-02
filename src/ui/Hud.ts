@@ -11,9 +11,11 @@ import {
 } from "../data/needs";
 import { computeCozyScore } from "../systems/cozyScore";
 import { beatForDay } from "../systems/dayCycle";
+import { jobById, jobDisplayName, jobTaskCount } from "../data/jobs";
 import { lotAtTile } from "../world/lots";
 import { TILE } from "../game/constants";
 import { drawPortrait } from "./portraits";
+import { PlayerStatusModal } from "./PlayerStatusModal";
 
 const BOOST_PULSE_MS = 1000;
 const FLOAT_LIFE_MS = 2500;
@@ -46,7 +48,6 @@ export class Hud {
   private busyEl: HTMLElement;
   private busyLabelEl: HTMLElement;
   private busyBarEl: HTMLElement;
-  private bottomInfo: HTMLElement;
   private state: GameState;
   private getTracker: () => QuestTrackerInfo | null;
   private getAspiration: () => AspirationTrackerInfo | null;
@@ -56,7 +57,7 @@ export class Hud {
   private busyVisible = false;
   private lastObjectiveKey = "";
   private pulseUntil = 0;
-  private needsOpen = false;
+  private statusModal: PlayerStatusModal;
   private lastPortraitKey = "";
   private prevNeeds: NeedsState | null = null;
   private boostUntil = 0;
@@ -86,20 +87,14 @@ export class Hud {
     this.floatHost.setAttribute("aria-hidden", "true");
     this.el.append(this.panel, this.floatHost);
     parent.appendChild(this.el);
+    this.statusModal = new PlayerStatusModal(parent, state);
 
     this.el.addEventListener("click", (e) => {
       const t = e.target as HTMLElement | null;
       if (!t) return;
       if (t.closest("[data-hud-avatar]")) {
         e.stopPropagation();
-        this.needsOpen = !this.needsOpen;
-        this.lastStructureKey = ""; // force structural rebuild
-        this.update();
-        return;
-      }
-      if (t.closest("[data-hud-needs-close]")) {
-        e.stopPropagation();
-        this.needsOpen = false;
+        this.statusModal.toggle();
         this.lastStructureKey = "";
         this.update();
       }
@@ -121,21 +116,12 @@ export class Hud {
     busyBarWrap.appendChild(this.busyBarEl);
     this.busyEl.append(this.busyLabelEl, busyBarWrap);
     parent.appendChild(this.busyEl);
-
-    this.bottomInfo = document.createElement("div");
-    this.bottomInfo.className = "ll-hud-hints";
-    this.bottomInfo.textContent =
-      "Click walk/use · pinch/+- zoom · E interact · B build · Q save · Esc menu";
-    parent.appendChild(this.bottomInfo);
-  }
-
-  setBottomInfoVisible(v: boolean) {
-    this.bottomInfo.hidden = !v;
   }
 
   containsHudCluster(clientX: number, clientY: number): boolean {
+    if (this.statusModal.containsPoint(clientX, clientY)) return true;
     const clusters = this.panel.querySelectorAll(
-      ".ll-hud-top, .ll-hud-left > *, .ll-hud-right > *",
+      ".ll-hud-top, .ll-hud-objectives > *, .ll-hud-left > *",
     );
     for (const cluster of clusters) {
       const r = cluster.getBoundingClientRect();
@@ -149,6 +135,14 @@ export class Hud {
       }
     }
     return false;
+  }
+
+  isStatusOpen(): boolean {
+    return this.statusModal.isOpen();
+  }
+
+  closeStatus() {
+    this.statusModal.close();
   }
 
   update() {
@@ -194,16 +188,23 @@ export class Hud {
     }
 
     const showBeat = !!(beat && !beatClaimed);
+    const shiftActive = s.jobActive && !!s.activeJobId;
+    const shiftJob = shiftActive ? jobById[s.activeJobId!] : null;
+    const shiftTotal = shiftJob ? jobTaskCount(shiftJob) : 0;
+    const shiftLabel = shiftJob
+      ? shiftJob.tasks[s.jobTasksDone]?.label ?? "Working"
+      : "";
     // Structural only — value ticks must NOT remount DOM (kills :hover tooltips
     // and retriggers the needs-panel entrance animation).
     // Urgency is patched onto the avatar so need recovery doesn't wipe floats.
     const structureKey = [
-      this.needsOpen ? "1" : "0",
+      this.statusModal.isOpen() ? "1" : "0",
       s.mode,
       s.playerName,
       s.adoptedPet ? "pet" : "",
       showBeat ? beat!.title : "",
       shown ? `${shown.kind}|${shown.title}|${shown.side ? 1 : 0}` : "",
+      shiftActive ? `shift|${s.activeJobId}|${s.jobTasksDone}` : "",
     ].join("|");
 
     if (structureKey !== this.lastStructureKey) {
@@ -221,6 +222,14 @@ export class Hud {
         beatTitle: beat?.title ?? "",
         beatPlace: beat?.place ?? "",
         shown,
+        shiftActive,
+        shiftProgress: shiftActive
+          ? `${s.jobTasksDone}/${shiftTotal}`
+          : "",
+        shiftTask: shiftLabel,
+        shiftName: shiftJob
+          ? jobDisplayName(shiftJob.id, s.isPromoted(shiftJob.id))
+          : "",
       });
       this.lastPortraitKey = "";
     }
@@ -353,18 +362,13 @@ export class Hud {
       side: boolean;
       kind: "quest" | "goal";
     } | null;
+    shiftActive?: boolean;
+    shiftProgress?: string;
+    shiftTask?: string;
+    shiftName?: string;
   }): string {
-    const { s, mood, cozy, urgency, place, timeTip, modeTip, clock, showBeat, shown } =
+    const { s, cozy, urgency, place, timeTip, modeTip, clock, showBeat, shown } =
       opts;
-
-    const needsHtml = NEED_IDS.map((id) => {
-      const v = Math.round(s.needs[id]);
-      const cls =
-        v < NEED_CRITICAL ? "bad is-critical" : v < NEED_LOW ? "warn" : "ok";
-      const rowCls =
-        v < NEED_CRITICAL ? " is-critical" : v < NEED_LOW ? " is-warn" : "";
-      return `<div class="ll-need${rowCls}" data-need="${id}"><span>${NEED_LABELS[id]}</span><div class="ll-bar"><i class="${cls}" data-need-bar="${id}" style="width:${v}%"></i></div><b data-need-val="${id}">${v}</b></div>`;
-    }).join("");
 
     const pet = s.adoptedPet
       ? `<div class="ll-pet-chip" title="Pet bond"><strong data-pet-name>${escapeHtml(s.adoptedPetName)}</strong><span data-pet-bond>${Math.round(s.adoptedPet.needs.bond)}${s.petCareStreak > 1 ? ` · ${s.petCareStreak}d` : ""}</span></div>`
@@ -382,52 +386,55 @@ export class Hud {
       ? `<div class="ll-beat"><small>Today</small><strong>${escapeHtml(opts.beatTitle)}</strong><span>${escapeHtml(opts.beatPlace)}</span></div>`
       : "";
 
+    const shiftHtml = opts.shiftActive
+      ? `<div class="ll-shift-chip" data-shift>
+          <small>Shift</small>
+          <strong>${escapeHtml(opts.shiftName ?? "Work")}</strong>
+          <span data-shift-progress>${escapeHtml(opts.shiftProgress ?? "")} · ${escapeHtml(opts.shiftTask ?? "")}</span>
+        </div>`
+      : "";
+
     const modeCls = s.mode === "build" ? " is-build" : "";
     const modeIcon =
       s.mode === "build"
         ? `<svg viewBox="0 0 16 16" width="11" height="11"><path d="M9.2 2.4 13.6 6.8 7.4 13H3v-4.4L9.2 2.4z" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/><path d="M8 3.8 12.2 8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
         : `<svg viewBox="0 0 16 16" width="11" height="11"><circle cx="8" cy="5.2" r="2.2" fill="none" stroke="currentColor" stroke-width="1.45"/><path d="M3.6 13.2c.6-2.4 2.2-3.6 4.4-3.6s3.8 1.2 4.4 3.6" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/></svg>`;
 
+    const statusOpen = this.statusModal.isOpen();
     const urgencyTip =
       urgency === "critical"
-        ? "Needs urgent — click for details"
+        ? "Needs urgent — click for status"
         : urgency === "warn"
-          ? "Needs getting low — click for details"
-          : "Click for needs & mood";
-
-    const needsPanel = this.needsOpen
-      ? `<div class="ll-needs-pop" role="dialog" aria-label="Needs">
-          <div class="ll-needs-pop-head">
-            <strong>Needs</strong>
-            <span class="ll-pill" data-mood>Mood ${mood}</span>
-            <button type="button" class="ll-needs-close" data-hud-needs-close aria-label="Close needs">✕</button>
-          </div>
-          ${needsHtml}
-        </div>`
-      : "";
+          ? "Needs getting low — click for status"
+            : "Click for status, tasks, pets & guide";
 
     return `
+      <div class="ll-hud-objectives">
+        ${objectiveHtml}
+        ${shiftHtml}
+        ${beatHtml}
+      </div>
       <div class="ll-hud-top" role="status">
         <div class="ll-stat" data-stat="money" data-tip="Money · $${s.money}" aria-label="Money: $${s.money}">
           <span class="ll-stat-ico" aria-hidden="true">
-            <svg viewBox="0 0 16 16" width="11" height="11"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><text x="8" y="11.2" text-anchor="middle" font-size="9.5" font-weight="700" fill="currentColor" font-family="Fredoka,Nunito,sans-serif">$</text></svg>
+            <svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><text x="8" y="11.2" text-anchor="middle" font-size="9.5" font-weight="700" fill="currentColor" font-family="Fredoka,Nunito,sans-serif">$</text></svg>
           </span>
           <b data-stat-val="money">$${s.money}</b>
         </div>
         <div class="ll-stat" data-stat="time" data-tip="${escapeHtml(timeTip)}" aria-label="${escapeHtml(timeTip)}">
           <span class="ll-stat-ico" aria-hidden="true">
-            <svg viewBox="0 0 16 16" width="11" height="11"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.2V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.2V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           </span>
           <b data-stat-val="time">${clock}</b>
         </div>
         <div class="ll-stat ll-stat-icon" data-stat="place" data-tip="Place · ${escapeHtml(place)}" aria-label="Place: ${escapeHtml(place)}">
           <span class="ll-stat-ico" aria-hidden="true">
-            <svg viewBox="0 0 16 16" width="11" height="11"><path d="M8 1.8c-2.5 0-4.5 1.9-4.5 4.3 0 3.2 4.5 8.1 4.5 8.1s4.5-4.9 4.5-8.1C12.5 3.7 10.5 1.8 8 1.8z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="6" r="1.6" fill="currentColor"/></svg>
+            <svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 1.8c-2.5 0-4.5 1.9-4.5 4.3 0 3.2 4.5 8.1 4.5 8.1s4.5-4.9 4.5-8.1C12.5 3.7 10.5 1.8 8 1.8z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="6" r="1.6" fill="currentColor"/></svg>
           </span>
         </div>
         <div class="ll-stat" data-stat="cozy" data-tip="Cozy · ${cozy}" aria-label="Cozy score: ${cozy}">
           <span class="ll-stat-ico" aria-hidden="true">
-            <svg viewBox="0 0 16 16" width="11" height="11"><path d="M2.5 7.2 8 2.8l5.5 4.4V13a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V7.2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 16 16" width="12" height="12"><path d="M2.5 7.2 8 2.8l5.5 4.4V13a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V7.2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           </span>
           <b data-stat-val="cozy">${cozy}</b>
         </div>
@@ -439,9 +446,9 @@ export class Hud {
         <div class="ll-avatar-stack">
           <button
             type="button"
-            class="ll-avatar-btn is-${urgency}${this.needsOpen ? " is-open" : ""}"
+            class="ll-avatar-btn is-${urgency}${statusOpen ? " is-open" : ""}"
             data-hud-avatar
-            aria-expanded="${this.needsOpen ? "true" : "false"}"
+            aria-expanded="${statusOpen ? "true" : "false"}"
             aria-label="${escapeHtml(urgencyTip)}"
             title="${escapeHtml(urgencyTip)}"
           >
@@ -449,12 +456,7 @@ export class Hud {
           </button>
           <span class="ll-avatar-name">${escapeHtml(s.playerName)}</span>
           ${pet}
-          ${needsPanel}
         </div>
-      </div>
-      <div class="ll-hud-right">
-        ${beatHtml}
-        ${objectiveHtml}
       </div>
     `;
   }
@@ -500,50 +502,27 @@ export class Hud {
     const modeEl = this.panel.querySelector("[data-stat='mode']");
     if (modeEl) modeEl.classList.toggle("is-build", v.isBuild);
 
-    const moodEl = this.panel.querySelector("[data-mood]");
-    if (moodEl) {
-      const text = `Mood ${v.mood}`;
-      if (moodEl.textContent !== text) moodEl.textContent = text;
-    }
-
     const avatar = this.panel.querySelector(
       "[data-hud-avatar]",
     ) as HTMLElement | null;
     if (avatar) {
       avatar.classList.toggle("is-warn", v.urgency === "warn");
       avatar.classList.toggle("is-critical", v.urgency === "critical");
-      avatar.classList.toggle("is-open", this.needsOpen);
+      avatar.classList.toggle("is-open", this.statusModal.isOpen());
       const tip =
         v.urgency === "critical"
-          ? "Needs urgent — click for details"
+          ? "Needs urgent — click for status"
           : v.urgency === "warn"
-            ? "Needs getting low — click for details"
-            : "Click for needs & mood";
+            ? "Needs getting low — click for status"
+            : "Click for status, tasks, pets & guide";
       if (avatar.getAttribute("aria-label") !== tip) {
         avatar.setAttribute("aria-label", tip);
         avatar.setAttribute("title", tip);
       }
-    }
-
-    for (const id of NEED_IDS) {
-      const need = Math.round(this.state.needs[id]);
-      const bar = this.panel.querySelector(
-        `[data-need-bar="${id}"]`,
-      ) as HTMLElement | null;
-      const val = this.panel.querySelector(`[data-need-val="${id}"]`);
-      const row = this.panel.querySelector(`[data-need="${id}"]`);
-      if (bar) {
-        const w = `${need}%`;
-        if (bar.style.width !== w) bar.style.width = w;
-        const cls =
-          need < NEED_CRITICAL ? "bad is-critical" : need < NEED_LOW ? "warn" : "ok";
-        if (bar.className !== cls) bar.className = cls;
-      }
-      if (val && val.textContent !== String(need)) val.textContent = String(need);
-      if (row) {
-        row.classList.toggle("is-critical", need < NEED_CRITICAL);
-        row.classList.toggle("is-warn", need < NEED_LOW && need >= NEED_CRITICAL);
-      }
+      avatar.setAttribute(
+        "aria-expanded",
+        this.statusModal.isOpen() ? "true" : "false",
+      );
     }
 
     const petBond = this.panel.querySelector("[data-pet-bond]");
@@ -620,10 +599,10 @@ export class Hud {
   }
 
   destroy() {
+    this.statusModal.destroy();
     this.el.remove();
     this.toastEl.remove();
     this.busyEl.remove();
-    this.bottomInfo.remove();
   }
 }
 

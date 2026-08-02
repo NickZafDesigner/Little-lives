@@ -106,7 +106,9 @@ function buildBody() {
   root.add(Leg_R);
 
   // Hip / pelvis — keep narrow so it stays under the shirt hem
-  root.add(mesh(new THREE.SphereGeometry(3.4, 12, 10), pants, 0, 11.2, 0, 1.05, 0.62, 0.78));
+  const hips = mesh(new THREE.SphereGeometry(3.4, 12, 10), pants, 0, 11.2, 0, 1.05, 0.62, 0.78);
+  hips.name = "Hips";
+  root.add(hips);
 
   // Arms pivot at shoulders — hang slightly forward so hands don't
   // read as skin "blocks" poking out of the shirt waist in front view.
@@ -132,68 +134,41 @@ function buildBody() {
   Arm_R.add(mesh(new THREE.SphereGeometry(1.55, 12, 10), skin, 0, -8.4, 0.35));
   root.add(Arm_R);
 
-  // Neck + Head
-  root.add(mesh(new THREE.CylinderGeometry(1.6, 2, 2.4, 10), skin, 0, 26.2, 0));
+  // Neck + Head — skin ball with simple ink features (hair overlays separately).
+  const neck = mesh(new THREE.CylinderGeometry(1.6, 2, 2.4, 10), skin, 0, 26.2, 0);
+  neck.name = "Neck";
+  root.add(neck);
   const Head = new THREE.Group();
   Head.name = "Head";
   Head.position.set(0, 31.5, 0);
-  // Head ball is Hair-tinted — sides/back can never flash skin through style seams.
-  Head.add(
-    mesh(
-      new THREE.SphereGeometry(6.2, 16, 14),
-      namedMat("Hair", 0x8d5a3b),
-      0,
-      0,
-      0,
-      1,
-      1.05,
-      0.95,
-    ),
-  );
-  // Skin face pad on +Z — tight to the face plate so temples stay hair-brown.
-  Head.add(
-    mesh(
-      new THREE.SphereGeometry(3.6, 16, 12),
-      skin,
-      0,
-      0.25,
-      4.7,
-      0.5,
-      0.78,
-      0.4,
-    ),
-  );
-  // Eyes
-  Head.add(mesh(new THREE.SphereGeometry(0.85, 8, 8), namedMat("Accent", 0x2a2018), -2.1, 0.6, 5.2));
-  Head.add(mesh(new THREE.SphereGeometry(0.85, 8, 8), namedMat("Accent", 0x2a2018), 2.1, 0.6, 5.2));
-  Head.add(mesh(new THREE.SphereGeometry(0.28, 6, 6), namedMat("Primary", 0xffffff), -1.85, 0.95, 5.7));
-  Head.add(mesh(new THREE.SphereGeometry(0.28, 6, 6), namedMat("Primary", 0xffffff), 2.35, 0.95, 5.7));
-  // Cheeks on the face pad
-  Head.add(
-    mesh(
-      new THREE.SphereGeometry(0.85, 8, 8),
-      namedMat("Secondary", 0xf49ab6),
-      -2.35,
-      -1.0,
-      5.05,
-      1,
-      0.75,
-      0.55,
-    ),
-  );
-  Head.add(
-    mesh(
-      new THREE.SphereGeometry(0.85, 8, 8),
-      namedMat("Secondary", 0xf49ab6),
-      2.35,
-      -1.0,
-      5.05,
-      1,
-      0.75,
-      0.55,
-    ),
-  );
-  Head.add(mesh(new THREE.BoxGeometry(2.2, 0.35, 0.4), namedMat("Accent", 0xc07060), 0, -2.2, 5.4));
+  const ink = namedMat("Ink", 0x2a2018);
+  const blush = namedMat("Secondary", 0xf49ab6);
+  const highlight = namedMat("Primary", 0xffffff);
+
+  const headBall = mesh(new THREE.SphereGeometry(6.2, 16, 14), skin, 0, 0, 0, 1, 1.05, 0.95);
+  headBall.name = "HeadBall";
+  Head.add(headBall);
+  const eyeL = mesh(new THREE.SphereGeometry(1.05, 8, 8), ink, -1.85, 0.55, 5.55);
+  eyeL.name = "Eye_L";
+  Head.add(eyeL);
+  const eyeR = mesh(new THREE.SphereGeometry(1.05, 8, 8), ink, 1.85, 0.55, 5.55);
+  eyeR.name = "Eye_R";
+  Head.add(eyeR);
+  const hlL = mesh(new THREE.SphereGeometry(0.32, 6, 6), highlight, -1.6, 0.9, 6.15);
+  hlL.name = "Highlight_L";
+  Head.add(hlL);
+  const hlR = mesh(new THREE.SphereGeometry(0.32, 6, 6), highlight, 2.1, 0.9, 6.15);
+  hlR.name = "Highlight_R";
+  Head.add(hlR);
+  const blushL = mesh(new THREE.SphereGeometry(0.9, 8, 8), blush, -2.4, -1.15, 5.35, 1, 0.7, 0.5);
+  blushL.name = "Blush_L";
+  Head.add(blushL);
+  const blushR = mesh(new THREE.SphereGeometry(0.9, 8, 8), blush, 2.4, -1.15, 5.35, 1, 0.7, 0.5);
+  blushR.name = "Blush_R";
+  Head.add(blushR);
+  const mouth = mesh(new THREE.BoxGeometry(2.0, 0.38, 0.35), ink, 0, -2.15, 5.7);
+  mouth.name = "Mouth";
+  Head.add(mouth);
   root.add(Head);
 
   const shadow = mesh(
@@ -251,155 +226,140 @@ function buildTorso(style) {
 
 /**
  * Hair is authored in Head-local space (Head origin = 0,0,0).
- * Base coverage is one oversized sphere pulled back/up so the face
- * protrudes through the front while sides/temples stay fully wrapped.
+ * Simple crown + fringe overlay on the skin head — keep shapes chunky and few.
  */
 function buildHair(style) {
   const g = new THREE.Group();
   g.name = "Hair";
   g.position.set(0, 0, 0);
   const hair = namedMat("Hair", 0x8d5a3b);
-  const accent = namedMat("Accent", 0x5a3a28);
   const R = 6.2;
 
-  /** Soft crown volume — sits snug on the hair-colored head (low lift). */
-  const skull = (scale = 1.06, lift = 0.08, back = 0.08) => {
+  /** Crown wraps top/back so the front face stays visible. */
+  const skull = (lift = 0.55, back = 0.55, scaleY = 0.72) => {
     g.add(
       mesh(
-        new THREE.SphereGeometry(R * scale, 18, 14),
+        new THREE.SphereGeometry(R * 1.08, 16, 12),
         hair,
         0,
         R * lift,
         -R * back,
-        1.03,
-        0.98,
-        1.03,
+        1.05,
+        scaleY,
+        1.0,
       ),
     );
   };
 
-  /** Soft fringe along the brow. */
-  const fringe = (w = 1, h = 0.26) => {
+  /** Single soft fringe across the brow. */
+  const fringe = (w = 1) => {
     g.add(
       mesh(
-        new THREE.SphereGeometry(R * 0.36, 12, 10),
+        new THREE.SphereGeometry(R * 0.42, 12, 10),
         hair,
         0,
-        R * 0.5,
-        R * 0.7,
-        1.3 * w,
-        (h / 0.26) * 0.4,
-        0.5,
+        R * 0.55,
+        R * 0.72,
+        1.35 * w,
+        0.38,
+        0.45,
       ),
     );
-    for (const [du, tilt, size] of [
-      [-0.38, 0.28, 0.28],
-      [0.38, -0.28, 0.28],
-    ]) {
-      const m = mesh(
-        new THREE.SphereGeometry(R * size, 10, 8),
-        hair,
-        du * 0.7 * w * R,
-        R * 0.42,
-        R * 0.62,
-        1.0 * w,
-        (h / 0.26) * 0.5,
-        0.65,
-      );
-      m.rotation.z = tilt;
-      g.add(m);
-    }
   };
 
   if (style === "bun") {
-    skull(1.05, 0.1, 0.1);
-    fringe(0.9, 0.22);
-    g.add(mesh(new THREE.SphereGeometry(R * 0.6, 12, 10), hair, 0, R * 1.12, -R * 0.5));
-    g.add(mesh(new THREE.TorusGeometry(R * 0.33, R * 0.08, 6, 14), accent, 0, R * 0.82, -R * 0.55));
+    skull(0.5, 0.55, 0.7);
+    fringe(0.9);
+    g.add(mesh(new THREE.SphereGeometry(R * 0.55, 12, 10), hair, 0, R * 1.15, -R * 0.55));
   } else if (style === "long") {
-    skull(1.06, 0.08, 0.08);
-    fringe(1.04, 0.28);
-    // Fall down the back + side strands framing the face (below cheek line)
-    for (let i = 0; i < 4; i++) {
+    skull(0.5, 0.5, 0.72);
+    fringe(1);
+    g.add(
+      mesh(
+        new THREE.SphereGeometry(R * 0.95, 12, 10),
+        hair,
+        0,
+        -R * 0.85,
+        -R * 0.55,
+        1.0,
+        1.35,
+        0.65,
+      ),
+    );
+    for (const side of [-1, 1]) {
       g.add(
         mesh(
-          new THREE.SphereGeometry(R * (0.88 - i * 0.11), 12, 10),
+          new THREE.CapsuleGeometry(R * 0.28, R * 1.0, 4, 8),
           hair,
-          0,
-          -R * (0.56 + i * 0.52),
-          -R * (0.5 + i * 0.03),
-          1.06 - i * 0.05,
-          1.15,
-          0.6,
+          side * R * 0.8,
+          -R * 0.65,
+          R * 0.15,
+          1,
+          1,
+          0.85,
         ),
       );
     }
-    for (const side of [-1, 1]) {
-      const strand = mesh(
-        new THREE.CapsuleGeometry(R * 0.25, R * 1.15, 4, 8),
-        hair,
-        side * R * 0.84,
-        -R * 0.72,
-        R * 0.2,
-        1.05,
-        1,
-        0.85,
-      );
-      strand.rotation.z = side * 0.06;
-      g.add(strand);
-    }
   } else if (style === "wavy") {
-    skull(1.07, 0.08, 0.08);
-    fringe(1.06, 0.32);
-    // Side curls fall from the wrap — not separate temple blobs
+    skull(0.52, 0.52, 0.75);
+    fringe(1.05);
     for (const side of [-1, 1]) {
-      for (let i = 0; i < 3; i++) {
-        g.add(
-          mesh(
-            new THREE.SphereGeometry(R * (0.42 - i * 0.05), 10, 8),
-            hair,
-            side * R * (0.78 + i * 0.04),
-            -R * (0.12 + i * 0.4),
-            R * (0.2 - i * 0.14),
-            0.9,
-            1,
-            0.78,
-          ),
-        );
-      }
+      g.add(
+        mesh(
+          new THREE.SphereGeometry(R * 0.48, 10, 8),
+          hair,
+          side * R * 0.85,
+          -R * 0.2,
+          R * 0.1,
+          0.95,
+          1.15,
+          0.8,
+        ),
+      );
+      g.add(
+        mesh(
+          new THREE.SphereGeometry(R * 0.38, 10, 8),
+          hair,
+          side * R * 0.9,
+          -R * 0.7,
+          -R * 0.05,
+          0.9,
+          1.1,
+          0.75,
+        ),
+      );
     }
   } else if (style === "cap") {
-    skull(1.04, 0.06, 0.1);
-    // Crown stops at the hairline — any lower and the face vanishes under the hat
+    skull(0.45, 0.55, 0.65);
     g.add(
       mesh(
-        new THREE.SphereGeometry(R * 1.12, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.42),
-        accent,
+        new THREE.SphereGeometry(R * 1.1, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.42),
+        hair,
         0,
-        R * 0.04,
+        R * 0.08,
         0,
         1,
-        1.02,
+        1.0,
         1,
       ),
     );
-    g.add(mesh(new THREE.CylinderGeometry(R * 1.06, R * 1.06, R * 0.14, 18), accent, 0, R * 0.37, 0, 1, 1, 0.98));
+    g.add(mesh(new THREE.CylinderGeometry(R * 1.05, R * 1.05, R * 0.14, 18), hair, 0, R * 0.4, 0));
     const brim = mesh(
       new THREE.SphereGeometry(R * 0.55, 14, 8),
-      accent,
+      hair,
       0,
-      R * 0.38,
-      R * 0.5,
-      1.2,
-      0.22,
-      1.2,
+      R * 0.4,
+      R * 0.55,
+      1.25,
+      0.2,
+      1.15,
     );
-    brim.rotation.x = 0.3;
+    brim.rotation.x = 0.28;
     g.add(brim);
   } else {
     // short
-    skull(1.06, 0.08, 0.08);
-    fringe(1, 0.26);
+    skull(0.55, 0.55, 0.7);
+    fringe(1);
   }
   return g;
 }
@@ -603,7 +563,8 @@ function buildFurniture(id) {
       g.add(mesh(new THREE.CylinderGeometry(5, 5.5, 4, 12), namedMat("Accent", 0xd6f2fb, true), 0, 10, 2));
       break;
     case "shower":
-      boxM(g, 28, 2, 28, namedMat("Primary", 0xb2dfdb, true), 0, 1, 0);
+      // Pan sits above the home plinth (y=0..2) so the blue floor doesn't z-fight.
+      boxM(g, 28, 1.5, 28, namedMat("Primary", 0xb2dfdb, true), 0, 2.85, 0);
       boxM(g, 2, 36, 28, S, -13, 18, 0);
       boxM(g, 28, 36, 2, S, 0, 18, -13);
       g.add(mesh(new THREE.CylinderGeometry(0.8, 0.8, 12, 8), A, 0, 30, -10));
@@ -661,6 +622,38 @@ function buildFurniture(id) {
       boxM(g, 3, 10, 12, S, -18, 5, 0);
       boxM(g, 3, 10, 12, S, 18, 5, 0);
       break;
+    case "swing_set": {
+      // A-frame posts + crossbar + two seat boards (3×2 footprint).
+      const post = namedMat("Primary", 0x8d6e63, true);
+      const bar = namedMat("Secondary", 0x6d4c41, true);
+      const seat = namedMat("Accent", 0x5fc6e8, true);
+      boxM(g, 4, 36, 4, post, -28, 18, -18);
+      boxM(g, 4, 36, 4, post, -28, 18, 18);
+      boxM(g, 4, 36, 4, post, 28, 18, -18);
+      boxM(g, 4, 36, 4, post, 28, 18, 18);
+      boxM(g, 60, 3, 3, bar, 0, 36, 0);
+      boxM(g, 2, 22, 2, bar, -14, 24, 0);
+      boxM(g, 2, 22, 2, bar, 14, 24, 0);
+      boxM(g, 14, 2, 8, seat, -14, 12, 0);
+      boxM(g, 14, 2, 8, seat, 14, 12, 0);
+      break;
+    }
+    case "slide": {
+      // Ladder tower + chute (2×3 footprint).
+      const frame = namedMat("Primary", 0x5fc6e8, true);
+      const rail = namedMat("Secondary", 0x3d8fb5, true);
+      const chute = namedMat("Accent", 0xffd166, true);
+      boxM(g, 18, 28, 16, frame, 0, 14, -20);
+      boxM(g, 2, 26, 2, rail, -8, 13, -20);
+      boxM(g, 2, 26, 2, rail, 8, 13, -20);
+      for (let i = 0; i < 4; i++) {
+        boxM(g, 14, 1.5, 2, rail, 0, 6 + i * 5, -14);
+      }
+      boxM(g, 16, 3, 40, chute, 0, 8, 8);
+      boxM(g, 2, 6, 38, rail, -8, 12, 8);
+      boxM(g, 2, 6, 38, rail, 8, 12, 8);
+      break;
+    }
     case "shelter_desk":
     case "library_desk":
     case "clinic_desk":
@@ -740,6 +733,8 @@ async function main() {
     "toy_ball",
     "counter",
     "park_bench",
+    "swing_set",
+    "slide",
     "shelter_desk",
     "library_desk",
     "clinic_desk",

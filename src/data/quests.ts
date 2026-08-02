@@ -412,5 +412,7 @@ export const questById = Object.fromEntries(
 /** Work hours as dayTime fractions (9 AM - 5 PM). */
 export const WORK_START = 9 / 24;
 export const WORK_END = 17 / 24;
-/** In-game day fraction advanced when a shift completes (~3.5 hours). */
+/** Clock-in after this counts as late (9:15 AM). */
+export const WORK_LATE = 9.25 / 24;
+/** @deprecated Shift now montages to WORK_END instead of a fixed jump. */
 export const SHIFT_TIME_ADVANCE = 0.145;

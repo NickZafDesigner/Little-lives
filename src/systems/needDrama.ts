@@ -12,42 +12,42 @@ const COLLAPSE_COOLDOWN_MS = 45_000;
 const BLADDER_COOLDOWN_MS = 50_000;
 
 /**
- * Soft need drama: comedy thoughts, collapse nap, bladder oops.
+ * Soft need drama: comedy thoughts, collapse nap, bladder accident.
  * Returns true if a collapse busy action was started.
  */
 export function tickNeedDrama(
   state: GameState,
   now: number,
   onCollapse: (durationMs: number) => void,
+  onBladderAccident?: () => void,
 ): void {
   if (state.mode !== "live" || state.isBusy(now)) return;
 
-  // Comedy thought
+  // Comedy thought (includes wet reminder)
   if (now - state.lastCriticalThoughtAt > THOUGHT_COOLDOWN_MS) {
-    const thought = criticalNeedThoughts(state.needs);
+    const thought = criticalNeedThoughts(state.needs, state.isWet);
     if (thought) {
       state.lastCriticalThoughtAt = now;
       state.showDialogue("player", state.playerName, thought);
     }
   }
 
-  // Bladder emergency - funny hygiene dip, not a hard fail
+  // Bladder emergency — wet yourself with lasting consequences
   if (
     state.needs.bladder <= 0 &&
     now - state.lastBladderAccidentAt > BLADDER_COOLDOWN_MS
   ) {
     state.lastBladderAccidentAt = now;
+    state.isWet = true;
     state.needs = applyNeedDeltas(state.needs, {
-      bladder: 35,
-      hygiene: -25,
-      fun: -8,
+      bladder: 40,
+      hygiene: -40,
+      fun: -15,
     });
-    state.showToast("Oops… dashed for it. Shower recommended!", 2800);
-    state.showDialogue(
-      "player",
-      state.playerName,
-      "Well. That's one way to wake up.",
-    );
+    if (state.needs.hygiene > 20) state.needs.hygiene = 20;
+    state.showToast("You need a shower.", 2800);
+    state.showDialogue("player", state.playerName, "I… I wet myself.");
+    onBladderAccident?.();
   }
 
   // Energy collapse - short nap on the spot + small time skip

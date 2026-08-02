@@ -290,6 +290,7 @@ function drawPlayer(ctx: CanvasRenderingContext2D, look?: PlayerLook) {
   const shirt = hex(look?.shirt ?? 0x7ec8e3);
   const style = look?.hairStyle ?? "short";
   const face = look?.face ?? "soft";
+  const sex = look?.sex ?? "enby";
 
   // Hair by style
   fillRect(ctx, 9, 4, 14, 8, hair);
@@ -308,34 +309,81 @@ function drawPlayer(ctx: CanvasRenderingContext2D, look?: PlayerLook) {
     px(ctx, 8, 10, hair);
     px(ctx, 23, 11, hair);
   }
+  if (sex === "girl") {
+    // Tiny bow
+    fillRect(ctx, 22, 3, 3, 2, hex(Palette.rose));
+    px(ctx, 23, 2, hex(Palette.rose));
+  }
+  if (sex === "enby") {
+    // Asym bang tip
+    px(ctx, 8, 7, hair);
+    px(ctx, 7, 8, hair);
+  }
 
-  // Face
-  fillRect(ctx, 10, 9, 12, 11, skin);
-  fillRect(ctx, 11, 19, 10, 2, shade);
+  // Face silhouette — sex + face style
+  if (face === "round") {
+    fillRect(ctx, 8, 8, 16, 13, skin);
+    fillRect(ctx, 8, 14, 2, 5, skin);
+    fillRect(ctx, 22, 14, 2, 5, skin);
+  } else if (face === "sharp") {
+    fillRect(ctx, 10, 8, 12, 12, skin);
+    fillRect(ctx, 11, 19, 10, 1, shade);
+  } else if (sex === "girl") {
+    fillRect(ctx, 9, 8, 14, 12, skin);
+  } else if (sex === "boy") {
+    fillRect(ctx, 10, 9, 12, 11, skin);
+  } else {
+    fillRect(ctx, 9, 9, 13, 11, skin);
+  }
+  if (face !== "sharp") fillRect(ctx, 11, 19, 10, 2, shade);
 
   if (face === "freckled") {
     px(ctx, 12, 15, hex(Palette.blushDark));
-    px(ctx, 15, 16, hex(Palette.blushDark));
-    px(ctx, 19, 15, hex(Palette.blushDark));
-  }
-  if (face === "round") {
-    fillRect(ctx, 9, 14, 2, 4, skin);
-    fillRect(ctx, 21, 14, 2, 4, skin);
+    px(ctx, 14, 16, hex(Palette.blushDark));
+    px(ctx, 16, 15, hex(Palette.blushDark));
+    px(ctx, 18, 16, hex(Palette.blushDark));
+    px(ctx, 20, 15, hex(Palette.blushDark));
   }
 
-  // Blush
-  fillRect(ctx, 11, 15, 2, 1, hex(Palette.rose));
-  fillRect(ctx, 19, 15, 2, 1, hex(Palette.rose));
+  // Blush — stronger on round/soft
+  if (face === "round" || face === "soft" || (sex !== "boy" && face !== "sharp")) {
+    const h = face === "round" ? 2 : 1;
+    fillRect(ctx, 11, 15, 2, h, hex(Palette.rose));
+    fillRect(ctx, 19, 15, 2, h, hex(Palette.rose));
+  }
 
-  // Eyes
+  // Eyes — face style leads; sex is a mild bias
   if (face === "sharp") {
     fillRect(ctx, 12, 12, 3, 2, hex(Palette.ink));
     fillRect(ctx, 17, 12, 3, 2, hex(Palette.ink));
+    fillRect(ctx, 12, 11, 3, 1, hex(Palette.ink));
+    fillRect(ctx, 17, 11, 3, 1, hex(Palette.ink));
+  } else if (face === "round") {
+    fillRect(ctx, 11, 11, 4, 4, hex(Palette.ink));
+    fillRect(ctx, 17, 11, 4, 4, hex(Palette.ink));
+    px(ctx, 12, 11, "#ffffff");
+    px(ctx, 18, 11, "#ffffff");
+  } else if (face === "soft" || sex === "girl") {
+    fillRect(ctx, 11, 11, 4, 3, hex(Palette.ink));
+    fillRect(ctx, 17, 11, 4, 3, hex(Palette.ink));
+    px(ctx, 12, 11, "#ffffff");
+    px(ctx, 18, 11, "#ffffff");
   } else {
     fillRect(ctx, 12, 12, 3, 3, hex(Palette.ink));
     fillRect(ctx, 17, 12, 3, 3, hex(Palette.ink));
     px(ctx, 13, 12, "#ffffff");
     px(ctx, 18, 12, "#ffffff");
+  }
+
+  if (sex === "boy" && face !== "round") {
+    // Brow
+    fillRect(ctx, 12, 11, 3, 1, hex(Palette.ink));
+    fillRect(ctx, 17, 11, 3, 1, hex(Palette.ink));
+  }
+  if (sex === "enby") {
+    // Gold ear cuff
+    px(ctx, 24, 13, hex(Palette.sunflower));
+    px(ctx, 24, 14, hex(Palette.sunflower));
   }
 
   // Smile
@@ -345,6 +393,10 @@ function drawPlayer(ctx: CanvasRenderingContext2D, look?: PlayerLook) {
 
   // Shirt
   fillRect(ctx, 8, 22, 16, 10, shirt);
+  if (sex === "enby") {
+    px(ctx, 10, 24, hex(Palette.mint));
+    px(ctx, 11, 25, hex(Palette.sunflower));
+  }
 }
 
 function drawAmbient(

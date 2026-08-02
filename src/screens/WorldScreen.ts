@@ -9,6 +9,8 @@ import {
   jobById,
   jobDisplayName,
   jobPay,
+  jobTaskCount,
+  lotNameForJob,
   JOBS,
 } from "../data/jobs";
 import {
@@ -28,6 +30,7 @@ import {
 import {
   DIALOGUE_TONES,
   NPCS,
+  RELATIONSHIP_CLOSE,
   RELATIONSHIP_CRUSH,
   RELATIONSHIP_FRIEND,
   SOCIAL_ACTIONS,
@@ -43,16 +46,31 @@ import {
 } from "../data/dialogue";
 import { petById } from "../data/pets";
 import {
-  SHIFT_TIME_ADVANCE,
   WORK_END,
+  WORK_LATE,
   WORK_START,
   type QuestEvent,
 } from "../data/quests";
-import type { DialogueTone, Dir, LotId, NpcId, PlacedFurniture } from "../data/types";
+import type {
+  DialogueTone,
+  Dir,
+  JobDef,
+  JobTaskDef,
+  LotId,
+  NpcId,
+  PlacedFurniture,
+} from "../data/types";
 import { TILE } from "../game/constants";
 import { hasSave, loadSave, writeSave, clearSave } from "../save/saveLoad";
+import { TownRenderer } from "../render/TownRenderer";
 import { AspirationSystem } from "../systems/AspirationSystem";
-import { beatForDay, isEvening, isNight } from "../systems/dayCycle";
+import {
+  beatForDay,
+  isEvening,
+  isNight,
+  MORNING_TIME,
+  NIGHT_START,
+} from "../systems/dayCycle";
 import { GameState } from "../systems/GameState";
 import {
   applyCollapseRecovery,
@@ -100,7 +118,15 @@ import { NpcNameTags } from "../ui/NpcNameTags";
 import { BuildingNameTags } from "../ui/BuildingNameTags";
 import { ThoughtBubble } from "../ui/ThoughtBubble";
 import { HintArrow } from "../ui/HintArrow";
+import { TimeMontage } from "../ui/TimeMontage";
+import { WorkMinigame, gradeScore, type MiniGrade } from "../ui/WorkMinigame";
+import { PlayMinigame, type PlayMiniGrade } from "../ui/PlayMinigame";
 import { BuildCatalog } from "../ui/BuildCatalog";
+import {
+  completedUnlockTaskIds,
+  isFurnitureUnlocked,
+  toastNewUnlocks,
+} from "../systems/unlockProgress";
 import { InteractionMenu, type MenuOption } from "../ui/InteractionMenu";
 import { muteButtonHtml, wireMute } from "../ui/mute";
 import { Audio } from "../audio/AudioManager";
@@ -168,16 +194,22 @@ export function createWorldScreen(
   let buildingTags!: BuildingNameTags;
   let thoughtBubble!: ThoughtBubble;
   let hintArrow!: HintArrow;
+  let timeMontage!: TimeMontage;
+  let workMini!: WorkMinigame;
+  let playMini!: PlayMinigame;
   /** NPC under the cursor in live mode (for name tooltips). */
   let hoveredNpcId: string | null = null;
   let menu!: InteractionMenu;
   let catalog!: BuildCatalog;
   /** New-game wake-up cutscene — blocks movement / menus until done. */
   let introActive = false;
+  /** Soft post-sleep morning commute thought (hired days). */
+  let morningBeatActive = false;
   /** Edge-detect leaving home / arriving at café for guidance hints. */
   let wasAtCafe = false;
   let guidanceReady = false;
   const firedHints = new Set<string>();
+  let nightNudgeAt = 0;
   let introPhase:
     | "lie"
     | "sit"
@@ -197,6 +229,8 @@ export function createWorldScreen(
   let lastDialogueSeq = 0;
   /** Keep cinematic zoom through brief gaps between chained dialogue lines. */
   let focusHoldUntil = 0;
+  /** Tight face zoom after a bladder accident. */
+  let wetFaceUntil = 0;
   let keyLatch = new Set<string>();
   let onPointerMove: ((e: PointerEvent) => void) | null = null;
   let onWheel: ((e: WheelEvent) => void) | null = null;
@@ -405,6 +439,13 @@ export function createWorldScreen(
   };
 
   const talkToAmbient = (id: string) => {
+    if (nightBlocksLeisure()) {
+      Audio.sfx("deny");
+      state.showToast("Too late for chats — go home and sleep.");
+      const t = buildingHintTarget("home");
+      hintArrow?.showAt(t.x, t.z, "Home", 5000);
+      return;
+    }
     const def = ambientNpcById[id];
     if (!def) return;
     holdNpcStill(id);
@@ -731,7 +772,43 @@ export function createWorldScreen(
   const buildingHintTarget = (lotId: LotId) => lotDoorWorld(lotId)!;
 
   const uiBusy = () =>
-    introActive || !!dialogue?.isOpen() || !!menu?.isOpen();
+    introActive ||
+    morningBeatActive ||
+    !!dialogue?.isOpen() ||
+    !!menu?.isOpen() ||
+    !!timeMontage?.isPlaying() ||
+    !!workMini?.isOpen() ||
+    !!playMini?.isOpen();
+
+  const primaryJobId = (): string | null => {
+    if (state.activeJobId) return state.activeJobId;
+    if (state.hiredJobs.length) return state.hiredJobs[0];
+    return null;
+  };
+
+  const furnitureWorldPos = (uid: string): { x: number; z: number } | null => {
+    const f = state.furniture.find((x) => x.uid === uid);
+    if (!f) return null;
+    const def = furnitureById[f.defId];
+    const w = def?.width ?? 1;
+    const h = def?.height ?? 1;
+    return {
+      x: (f.tx + w / 2) * TILE,
+      z: (f.ty + h / 2) * TILE,
+    };
+  };
+
+  const pinTaskArrow = (job: JobDef) => {
+    const task = job.tasks[state.jobTasksDone];
+    if (!task) {
+      hintArrow?.hide();
+      return;
+    }
+    const pos = furnitureWorldPos(task.furnitureUid);
+    if (pos) hintArrow?.pinAt(pos.x, pos.z, task.label);
+  };
+
+  const nightBlocksLeisure = () => isNight(state.dayTime);
 
   const fireHint = (
     id: string,
@@ -747,24 +824,21 @@ export function createWorldScreen(
   };
 
   const tickGuidanceHints = () => {
-    if (introActive) return;
+    if (introActive || morningBeatActive || timeMontage?.isPlaying()) return;
     const tx = Math.floor(playerX / TILE);
     const ty = Math.floor(playerZ / TILE);
     const lot = playerLotId();
     const ground = map.ground[ty]?.[tx];
-    // Town paths outside your lot (door mat / street) — not the yard
     const onPathOutsideHome =
       lot !== "home" &&
       (ground === Tile.path || ground === Tile.parkPath);
     const atCafe = lot === "cafe";
 
-    // Seed café arrival edge (continue may already be mid-lot).
     if (!guidanceReady) {
       wasAtCafe = atCafe;
       guidanceReady = true;
     }
 
-    // First time stepping onto the path outside home → point at the café
     if (
       onPathOutsideHome &&
       !state.isHired("cafe_barista") &&
@@ -778,7 +852,6 @@ export function createWorldScreen(
       );
     }
 
-    // Arriving at the café before you're hired
     if (!wasAtCafe && atCafe && !state.isHired("cafe_barista")) {
       hintArrow?.hide();
       fireHint(
@@ -787,23 +860,196 @@ export function createWorldScreen(
       );
     }
 
-    // Hired but not yet worked a shift, and it's work hours
+    const jobId = primaryJobId();
+    const job = jobId ? jobById[jobId] : null;
+
+    // Morning commute 8–9
     if (
-      state.isHired("cafe_barista") &&
-      quests.isActive("first_paycheck") &&
-      !atCafe &&
-      state.dayTime >= WORK_START &&
-      state.dayTime < WORK_END
+      job &&
+      state.lastShiftDay !== state.dayIndex &&
+      !state.jobActive &&
+      state.dayTime >= MORNING_TIME &&
+      state.dayTime < WORK_START &&
+      lot !== job.lotId
     ) {
-      const t = buildingHintTarget("cafe");
+      const t = buildingHintTarget(job.lotId);
       fireHint(
-        "shift_time_cafe",
-        "Shift hours! Better head to the café counter.",
+        `commute_${state.dayIndex}_${job.id}`,
+        `I got to get to my new job at the ${lotNameForJob(job.id)} by 9, otherwise I'll be late!`,
+        { x: t.x, z: t.z, label: "Work" },
+      );
+      if (state.needs.hunger < 40) {
+        fireHint(
+          `morning_hunger_${state.dayIndex}`,
+          "Maybe a quick snack before work…",
+        );
+      } else if (state.needs.energy < 45) {
+        fireHint(
+          `morning_energy_${state.dayIndex}`,
+          "Still a bit sleepy — coffee would help.",
+        );
+      }
+    }
+
+    // Work hours / late nudge
+    if (
+      job &&
+      state.lastShiftDay !== state.dayIndex &&
+      !state.jobActive &&
+      state.dayTime >= WORK_START &&
+      state.dayTime < WORK_END &&
+      lot !== job.lotId
+    ) {
+      const t = buildingHintTarget(job.lotId);
+      const late = state.dayTime >= WORK_LATE;
+      fireHint(
+        `shift_time_${state.dayIndex}_${job.id}`,
+        late
+          ? `I'm late for the ${lotNameForJob(job.id)} — hurry!`
+          : `Shift hours! Better head to the ${lotNameForJob(job.id)}.`,
         { x: t.x, z: t.z, label: "Work" },
       );
     }
 
+    // Soft evening after shift
+    if (
+      state.lastShiftDay === state.dayIndex &&
+      !state.jobActive &&
+      state.dayTime >= WORK_END &&
+      state.dayTime < NIGHT_START &&
+      lot !== "home"
+    ) {
+      const t = buildingHintTarget("home");
+      fireHint(
+        `evening_home_${state.dayIndex}`,
+        "Long day — head home when you're ready.",
+        { x: t.x, z: t.z, label: "Home" },
+      );
+    }
+
+    // Hard night bedtime
+    if (nightBlocksLeisure() && lot !== "home") {
+      const now = performance.now();
+      if (now - nightNudgeAt > 9000) {
+        nightNudgeAt = now;
+        const t = buildingHintTarget("home");
+        thoughtBubble?.showText("It's late — go home to bed and sleep until morning.");
+        hintArrow?.showAt(t.x, t.z, "Bed", 6000);
+        Audio.sfx("chime");
+      }
+    } else if (nightBlocksLeisure() && lot === "home") {
+      const now = performance.now();
+      if (now - nightNudgeAt > 12000) {
+        nightNudgeAt = now;
+        const bed = state.furniture.find(
+          (f) => f.lotId === "home" && f.defId === "bed",
+        );
+        const pos = bed ? furnitureWorldPos(bed.uid) : null;
+        thoughtBubble?.showText("Time for bed — sleep until morning.");
+        if (pos) hintArrow?.showAt(pos.x, pos.z, "Sleep", 6000);
+      }
+    }
+
     wasAtCafe = atCafe;
+  };
+
+  const startMorningCommuteBeat = (opts?: { softAudio?: boolean }) => {
+    const jobId = primaryJobId();
+    if (!jobId) return;
+    const job = jobById[jobId];
+    if (!job) return;
+    if (state.lastShiftDay === state.dayIndex) return;
+    morningBeatActive = true;
+    const line = `I got to get to my new job at the ${lotNameForJob(job.id)} by 9, otherwise I'll be late!`;
+    thoughtBubble.showText(line, 5200);
+    const t = buildingHintTarget(job.lotId);
+    hintArrow.showAt(t.x, t.z, "Work", 7000);
+    if (!opts?.softAudio) Audio.sfx("chime");
+    window.setTimeout(() => {
+      morningBeatActive = false;
+    }, 2800);
+  };
+
+  const placePlayerAtHomeBed = () => {
+    const home = LOTS.find((l) => l.id === "home")!;
+    const bedTx = home.tx + 2;
+    const bedTy = home.ty + 1;
+    const land =
+      nearestWalkable(
+        collision,
+        { x: bedTx + 1, y: bedTy + 3 },
+        MAP_W,
+        MAP_H,
+        6,
+      ) ?? { x: bedTx + 1, y: bedTy + 3 };
+    playerPath = [];
+    onArrive = null;
+    playerX = land.x * TILE + TILE / 2;
+    playerZ = land.y * TILE + TILE / 2;
+    player.setPosition(playerX, playerZ);
+    player.setFacing("down");
+    player.setPose("stand");
+    player.setWalking(false);
+  };
+
+  const clearDayScopedHints = () => {
+    for (const id of [...firedHints]) {
+      if (
+        id.startsWith("commute_") ||
+        id.startsWith("shift_time_") ||
+        id.startsWith("evening_home_") ||
+        id.startsWith("morning_")
+      ) {
+        firedHints.delete(id);
+      }
+    }
+  };
+
+  /** Full night→morning montage (bed sleep or post-hire tuck-in). */
+  const runSleepToMorning = (opts?: {
+    caption?: string;
+    alarm?: boolean;
+  }) => {
+    if (timeMontage?.isPlaying()) return;
+    menu?.close();
+    releaseEngagedNpc();
+    const from = state.dayTime;
+    const bonus = sleepEnergyBonus(state.playerTraits, state.dayTime);
+    timeMontage.play({
+      from,
+      to: MORNING_TIME,
+      wrap: true,
+      durationMs: 2600,
+      caption: opts?.caption ?? "Zzz…",
+      theme: "night",
+      onTick: (t) => {
+        state.dayTime = t;
+        app.renderer.setDayTime(t);
+      },
+      onDone: () => {
+        const summary = finishSleepNight(state, 45, bonus);
+        placePlayerAtHomeBed();
+        app.renderer.setDayTime(state.dayTime);
+        if (opts?.alarm) Audio.sfx("alarm");
+        else Audio.sfx("success");
+        state.showToast(summary, 3600);
+        // Keep alarm wakes clear for the commute thought (no trait dialogue pile-up).
+        if (bonus > 0 && !opts?.alarm) {
+          state.showDialogue(
+            "player",
+            state.playerName,
+            hasTrait(state.playerTraits, "Night Owl")
+              ? "Night Owl sleep - peak restoration."
+              : "Early Bird rest - bright-eyed!",
+          );
+        }
+        aspirations.refresh();
+        clearDayScopedHints();
+        if (primaryJobId()) {
+          startMorningCommuteBeat({ softAudio: !!opts?.alarm });
+        }
+      },
+    });
   };
 
   const noteFriendshipGain = (
@@ -831,6 +1077,19 @@ export function createWorldScreen(
       );
     }
     aspirations.refresh();
+    // Relationship already updated — toast only when we just hit the unlock threshold.
+    if (result.becameClose) {
+      let closeCount = 0;
+      for (const rel of Object.values(state.relationships)) {
+        if (rel.score >= RELATIONSHIP_CLOSE) closeCount += 1;
+      }
+      if (closeCount === 2) {
+        const after = completedUnlockTaskIds(state);
+        const before = new Set(after);
+        before.delete("close_friends_2");
+        toastNewUnlocks(state, before);
+      }
+    }
   };
 
   /**
@@ -980,6 +1239,24 @@ export function createWorldScreen(
       return;
     }
 
+    // Mid-shift: only the current task station runs the minigame
+    if (state.jobActive && state.activeJobId) {
+      const active = jobById[state.activeJobId];
+      const task = active?.tasks[state.jobTasksDone];
+      if (active && task) {
+        if (furn.uid === task.furnitureUid) {
+          beginWorkTask(active, task);
+          return;
+        }
+        if (active.tasks.some((t) => t.furnitureUid === furn.uid)) {
+          Audio.sfx("deny");
+          state.showToast("Not that one — follow the arrow.");
+          pinTaskArrow(active);
+          return;
+        }
+      }
+    }
+
     const job = JOBS.find(
       (j) => j.lotId === furn.lotId && j.stationDefId === furn.defId,
     );
@@ -1042,7 +1319,7 @@ export function createWorldScreen(
       const needsPet = petItems.has(furn.defId) && Boolean(i.petNeedDeltas);
       const blocked = needsPet && !state.adoptedPet;
       const sleepLabel =
-        i.id === "sleep" ? "Sleep (wake at 7 AM)" : i.label;
+        i.id === "sleep" ? "Sleep (wake at 8 AM)" : i.label;
       options.push({
         id: i.id,
         label: sleepLabel,
@@ -1059,6 +1336,11 @@ export function createWorldScreen(
       y,
       (id) => {
       if (id === "weekly_beat" && beat) {
+        if (nightBlocksLeisure()) {
+          Audio.sfx("deny");
+          state.showToast("Too late — go home and sleep.");
+          return;
+        }
         Audio.sfx("interact");
         state.startBusy(beat.title, 1400);
         delayed(1400, () => {
@@ -1101,25 +1383,29 @@ export function createWorldScreen(
 
       const interaction = def.interactions.find((i) => i.id === id);
       if (!interaction) return;
+
+      if (interaction.id === "swing" || interaction.id === "slide") {
+        if (nightBlocksLeisure()) {
+          Audio.sfx("deny");
+          state.showToast("Too late — go home and sleep.");
+          return;
+        }
+        if (playMini.isOpen() || workMini.isOpen() || timeMontage.isPlaying()) {
+          return;
+        }
+        beginPlayActivity(interaction.id);
+        return;
+      }
+
       Audio.sfx("interact");
       state.startBusy(interaction.label, interaction.durationMs);
       delayed(interaction.durationMs, () => {
-        // Full sleep advances to morning
+        // Full sleep advances to morning via night montage
         if (interaction.id === "sleep") {
-          const bonus = sleepEnergyBonus(state.playerTraits, state.dayTime);
-          const summary = finishSleepNight(state, 45, bonus);
-          Audio.sfx("success");
-          state.showToast(summary, 3600);
-          if (bonus > 0) {
-            state.showDialogue(
-              "player",
-              state.playerName,
-              hasTrait(state.playerTraits, "Night Owl")
-                ? "Night Owl sleep - peak restoration."
-                : "Early Bird rest - bright-eyed!",
-            );
-          }
-          aspirations.refresh();
+          runSleepToMorning({
+            caption: "Zzz…",
+            alarm: !!primaryJobId(),
+          });
           return;
         }
 
@@ -1133,8 +1419,24 @@ export function createWorldScreen(
         if (interaction.id === "nap") {
           const bonus = sleepEnergyBonus(state.playerTraits, state.dayTime);
           if (bonus) mod.deltas.energy = (mod.deltas.energy ?? 0) + Math.floor(bonus / 2);
+          if (nightBlocksLeisure()) {
+            state.showToast("A nap won't advance the day — use Sleep for morning.", 2800);
+          }
         }
         state.needs = applyNeedDeltas(state.needs, mod.deltas);
+        if (interaction.id === "shower") {
+          if (state.isWet) {
+            state.isWet = false;
+            state.showDialogue(
+              "player",
+              state.playerName,
+              "Clean. Dry. Dignity… mostly restored.",
+            );
+          }
+        } else if (state.isWet && state.needs.hygiene > 20) {
+          state.needs.hygiene = 20;
+        }
+        const unlockBefore = completedUnlockTaskIds(state);
         if (interaction.petNeedDeltas && state.adoptedPet) {
           const pn = state.adoptedPet.needs;
           const beforeBond = pn.bond;
@@ -1170,6 +1472,7 @@ export function createWorldScreen(
           quests.emit("pet_bonded");
         }
         aspirations.refresh();
+        toastNewUnlocks(state, unlockBefore);
       });
       },
       { id: "player", look: state.playerLook },
@@ -1181,6 +1484,148 @@ export function createWorldScreen(
     if (jobId === "library_aide") return "library_shift_complete";
     if (jobId === "clinic_aide") return "clinic_shift_complete";
     return "shift_complete";
+  };
+
+  const completeShift = (job: JobDef) => {
+    const promoted = state.isPromoted(job.id);
+    const basePay =
+      jobPay(job.id, promoted) + (state.hasUnlock("trusted_employee") ? 8 : 0);
+    const mood = moodFromNeeds(state.needs);
+    const payMod = jobPayMultiplier(state.playerTraits, job.id, mood);
+    const scores = state.jobQualityScores;
+    const qualityAvg =
+      scores.length > 0
+        ? scores.reduce((a, b) => a + b, 0) / scores.length
+        : 0.55;
+    const wasLate = state.shiftLate;
+    let pay = Math.round(basePay * payMod.mult * (0.85 + 0.15 * qualityAvg));
+    if (wasLate) pay = Math.round(pay * 0.9);
+
+    const from = state.dayTime;
+    const to = Math.max(from, WORK_END);
+    hintArrow?.hide();
+    thoughtBubble?.showText(
+      "That's a wrap — home and a soft bed sound good.",
+      4200,
+    );
+
+    timeMontage.play({
+      from,
+      to,
+      durationMs: 2000,
+      caption: "Closing time",
+      theme: "dusk",
+      onTick: (t) => {
+        state.dayTime = t;
+        app.renderer.setDayTime(t);
+      },
+      onDone: () => {
+        state.dayTime = to;
+        app.renderer.setDayTime(to);
+        const unlockBefore = completedUnlockTaskIds(state);
+        state.money += pay;
+        state.dailyStats.moneyEarned += pay;
+        state.dailyStats.shiftsDone += 1;
+        state.jobShiftCounts[job.id] =
+          (state.jobShiftCounts[job.id] ?? 0) + 1;
+        state.lastShiftDay = state.dayIndex;
+        state.jobActive = false;
+        state.activeJobId = null;
+        state.jobTasksDone = 0;
+        state.jobQualityScores = [];
+        state.shiftLate = false;
+        Audio.playMusic("world");
+        Audio.sfx("coin");
+        Audio.sfx("success");
+        const tip = payMod.toast ? ` ${payMod.toast}` : "";
+        const lateNote = wasLate ? " (late penalty)" : "";
+        const qualityNote =
+          !wasLate && qualityAvg >= 0.85 ? " Great work today!" : "";
+        state.showToast(
+          `Shift complete! You earned $${pay}.${tip}${lateNote}${qualityNote}`,
+        );
+        quests.emit(jobShiftEvent(job.id), undefined, { unlockToast: false });
+        quests.emit("any_shift_complete", undefined, { unlockToast: false });
+        aspirations.noteShift();
+
+        if (
+          !state.isPromoted(job.id) &&
+          (state.jobShiftCounts[job.id] ?? 0) >= PROMOTION_SHIFTS
+        ) {
+          state.jobPromoted.push(job.id);
+          const promo = JOB_PROMOTIONS[job.id];
+          if (promo) {
+            const boss = NPCS.find((n) => n.id === job.hireNpcId);
+            state.showDialogue(
+              (boss?.id ?? "player") as NpcId,
+              boss?.name ?? "Boss",
+              promo.bossLine,
+            );
+            state.showToast(`Promoted to ${promo.title}!`, 3000);
+          }
+        }
+        toastNewUnlocks(state, unlockBefore);
+
+        const home = buildingHintTarget("home");
+        fireHint(
+          `evening_home_${state.dayIndex}`,
+          "Long day — head home when you're ready.",
+          { x: home.x, z: home.z, label: "Home" },
+        );
+      },
+    });
+  };
+
+  const beginPlayActivity = (kind: "swing" | "slide") => {
+    if (playMini.isOpen() || workMini.isOpen() || timeMontage.isPlaying()) return;
+    Audio.sfx("interact");
+    const label = kind === "swing" ? "Ride the Swings" : "Down the Slide";
+    playMini.play(kind, label, (grade: PlayMiniGrade) => {
+      const fun = grade === "perfect" ? 40 : grade === "ok" ? 24 : 10;
+      const energy = grade === "perfect" ? -6 : grade === "ok" ? -8 : -10;
+      state.needs = applyNeedDeltas(state.needs, { fun, energy });
+      const toast =
+        grade === "perfect"
+          ? kind === "swing"
+            ? "Highest swing!"
+            : "Perfect whoosh!"
+          : grade === "ok"
+            ? "Whee!"
+            : "Oof — dusty knees.";
+      if (grade === "perfect") Audio.sfx("success");
+      else if (grade === "ok") Audio.sfx("chime");
+      else Audio.sfx("deny");
+      state.showToast(toast, 2400);
+      aspirations.refresh();
+    });
+  };
+
+  const beginWorkTask = (job: JobDef, task: JobTaskDef) => {
+    if (workMini.isOpen() || timeMontage.isPlaying()) return;
+    Audio.sfx("interact");
+    workMini.play(task.mini, task.label, (grade: MiniGrade) => {
+      state.jobQualityScores.push(gradeScore(grade));
+      state.jobTasksDone += 1;
+      const energy =
+        grade === "perfect" ? -6 : grade === "ok" ? -8 : -10;
+      const fun = grade === "perfect" ? -2 : -4;
+      state.needs = applyNeedDeltas(state.needs, {
+        energy,
+        fun,
+        social: 6,
+      });
+      const total = jobTaskCount(job);
+      if (state.jobTasksDone >= total) {
+        completeShift(job);
+      } else {
+        if (grade === "perfect") Audio.sfx("success");
+        else Audio.sfx("chime");
+        state.showToast(
+          `${task.label} done! ${state.jobTasksDone}/${total}`,
+        );
+        pinTaskArrow(job);
+      }
+    });
   };
 
   const openJobMenu = (jobId: string, x: number, y: number) => {
@@ -1196,16 +1641,34 @@ export function createWorldScreen(
       );
       return;
     }
-    const hourOk =
-      state.dayTime >= WORK_START && state.dayTime < WORK_END;
-    if (!state.jobActive && !hourOk) {
-      Audio.sfx("deny");
-      state.showToast(job.closedMessage);
+    if (state.jobActive && state.activeJobId === job.id) {
+      const task = job.tasks[state.jobTasksDone];
+      if (task) {
+        pinTaskArrow(job);
+        state.showToast(`Next up: ${task.label}`);
+      }
       return;
     }
     if (state.jobActive && state.activeJobId && state.activeJobId !== job.id) {
       Audio.sfx("deny");
       state.showToast("Finish your current shift first.");
+      return;
+    }
+    if (state.lastShiftDay === state.dayIndex) {
+      Audio.sfx("deny");
+      const anyShifts = Object.values(state.jobShiftCounts).some((n) => n > 0);
+      state.showToast(
+        anyShifts
+          ? "You're done for today — come back tomorrow."
+          : "First shift starts tomorrow — sleep until 8 AM!",
+      );
+      return;
+    }
+    const hourOk =
+      state.dayTime >= WORK_START && state.dayTime < WORK_END;
+    if (!hourOk) {
+      Audio.sfx("deny");
+      state.showToast(job.closedMessage);
       return;
     }
 
@@ -1215,26 +1678,21 @@ export function createWorldScreen(
     const mood = moodFromNeeds(state.needs);
     const payMod = jobPayMultiplier(state.playerTraits, job.id, mood);
     const estPay = Math.round(basePay * payMod.mult);
-
+    const late = state.dayTime >= WORK_LATE;
     const lot = LOTS.find((l) => l.id === job.lotId);
-    const taskIdx = state.jobTasksDone;
-    const taskLabel =
-      job.taskLabels?.[taskIdx] ??
-      (state.jobActive ? "Do a task" : "Clock in");
     const beat = beatForDay(state.dayIndex);
     const options: MenuOption[] = [
       {
         id: "shift",
-        label: state.jobActive ? taskLabel : "Clock in",
-        sub: state.jobActive
-          ? `${state.jobTasksDone}/${job.shiftTasks} tasks · ${jobDisplayName(job.id, promoted)}`
-          : `${jobDisplayName(job.id, promoted)} · ~$${estPay}`,
+        label: late ? "Clock in (late!)" : "Clock in",
+        sub: `${jobDisplayName(job.id, promoted)} · ~$${estPay} · ${jobTaskCount(job)} tasks`,
       },
     ];
     if (
       beat &&
       state.weeklyBeatDay !== state.dayIndex &&
-      beat.lotId === job.lotId
+      beat.lotId === job.lotId &&
+      !nightBlocksLeisure()
     ) {
       options.push({
         id: "weekly_beat",
@@ -1249,92 +1707,76 @@ export function createWorldScreen(
       x,
       y,
       (id) => {
-      if (id === "weekly_beat" && beat) {
-        Audio.sfx("interact");
-        state.startBusy(beat.title, 1400);
-        delayed(1400, () => {
-          state.weeklyBeatDay = state.dayIndex;
-          state.needs = applyNeedDeltas(state.needs, {
-            fun: beat.fun,
-            social: beat.social,
+        if (id === "weekly_beat" && beat) {
+          if (nightBlocksLeisure()) {
+            Audio.sfx("deny");
+            state.showToast("Too late — go home and sleep.");
+            return;
+          }
+          Audio.sfx("interact");
+          state.startBusy(beat.title, 1400);
+          delayed(1400, () => {
+            state.weeklyBeatDay = state.dayIndex;
+            state.needs = applyNeedDeltas(state.needs, {
+              fun: beat.fun,
+              social: beat.social,
+            });
+            Audio.sfx("success");
+            state.showToast(`${beat.title} — lovely!`, 2800);
+            aspirations.noteWeeklyBeat();
           });
-          Audio.sfx("success");
-          state.showToast(`${beat.title} — lovely!`, 2800);
-          aspirations.noteWeeklyBeat();
-        });
-        return;
-      }
-      if (!state.jobActive) {
+          return;
+        }
         if (!(state.dayTime >= WORK_START && state.dayTime < WORK_END)) {
           Audio.sfx("deny");
           state.showToast(job.closedMessage);
           return;
         }
+        if (state.lastShiftDay === state.dayIndex) {
+          Audio.sfx("deny");
+          const anyShifts = Object.values(state.jobShiftCounts).some(
+            (n) => n > 0,
+          );
+          state.showToast(
+            anyShifts
+              ? "You're done for today — come back tomorrow."
+              : "First shift starts tomorrow — sleep until 8 AM!",
+          );
+          return;
+        }
         state.jobActive = true;
         state.activeJobId = job.id;
         state.jobTasksDone = 0;
-        state.showToast("Shift started - keep working!");
-      }
-      const label =
-        job.taskLabels?.[state.jobTasksDone] ?? "Working";
-      Audio.sfx("interact");
-      state.startBusy(label, job.durationMs);
-      delayed(job.durationMs, () => {
-        state.jobTasksDone += 1;
-        state.needs = applyNeedDeltas(state.needs, {
-          energy: -8,
-          fun: -4,
-          social: 6,
-        });
-        if (state.jobTasksDone >= job.shiftTasks) {
-          const pay = Math.round(basePay * payMod.mult);
-          state.money += pay;
-          state.dailyStats.moneyEarned += pay;
-          state.dailyStats.shiftsDone += 1;
-          state.jobShiftCounts[job.id] =
-            (state.jobShiftCounts[job.id] ?? 0) + 1;
-          state.jobActive = false;
-          state.activeJobId = null;
-          state.jobTasksDone = 0;
-          state.dayTime = (state.dayTime + SHIFT_TIME_ADVANCE) % 1;
-          Audio.sfx("coin");
-          Audio.sfx("success");
-          const tip = payMod.toast ? ` ${payMod.toast}` : "";
-          state.showToast(`Shift complete! You earned $${pay}.${tip}`);
-          quests.emit(jobShiftEvent(job.id));
-          quests.emit("any_shift_complete");
-          aspirations.noteShift();
-
-          // Promotion check
-          if (
-            !state.isPromoted(job.id) &&
-            (state.jobShiftCounts[job.id] ?? 0) >= PROMOTION_SHIFTS
-          ) {
-            state.jobPromoted.push(job.id);
-            const promo = JOB_PROMOTIONS[job.id];
-            if (promo) {
-              const boss = NPCS.find((n) => n.id === job.hireNpcId);
-              state.showDialogue(
-                (boss?.id ?? "player") as NpcId,
-                boss?.name ?? "Boss",
-                promo.bossLine,
-              );
-              state.showToast(`Promoted to ${promo.title}!`, 3000);
-            }
-          }
-        } else {
-          Audio.sfx("chime");
+        state.jobQualityScores = [];
+        state.shiftLate = state.dayTime >= WORK_LATE;
+        Audio.playMusic("work");
+        Audio.sfx("interact");
+        if (state.shiftLate) {
+          const boss = NPCS.find((n) => n.id === job.hireNpcId);
           state.showToast(
-            `${label} done! ${state.jobTasksDone}/${job.shiftTasks}`,
+            boss
+              ? `${boss.name}: You're late — let's make up for it.`
+              : "Late clock-in — pay may be lighter.",
+            3200,
           );
+        } else {
+          state.showToast("Shift started — follow the arrow!");
         }
-      });
+        thoughtBubble?.showText("Alright — let's get to work!", 3200);
+        pinTaskArrow(job);
       },
       { id: "player", look: state.playerLook },
     );
   };
 
   const openNpcMenu = (target: Target, x: number, y: number) => {
+    if (nightBlocksLeisure()) {
+      Audio.sfx("deny");
+      state.showToast("Too late for chats — go home and sleep.");
+      const t = buildingHintTarget("home");
+      hintArrow?.showAt(t.x, t.z, "Home", 5000);
+      return;
+    }
     const def = NPCS.find((n) => n.id === target.id)!;
     const rel = state.relationships[def.id];
     rel.met = true;
@@ -1480,7 +1922,7 @@ export function createWorldScreen(
       const minScore = "minScore" in a ? a.minScore : undefined;
       const tooPoor = cost !== undefined && state.money < cost;
       const locked = minScore !== undefined && rel.score < minScore;
-      const socialBlock = socialBlockedReason(state.needs);
+      const socialBlock = socialBlockedReason(state.needs, state.isWet);
       const tired = a.id === "hangout" && socialBlock !== null;
       options.push({
         id: a.id,
@@ -1496,7 +1938,7 @@ export function createWorldScreen(
       });
     }
 
-    const socialBlock = socialBlockedReason(state.needs);
+    const socialBlock = socialBlockedReason(state.needs, state.isWet);
     const tier = tierFromScore(
       rel.score,
       rel.met,
@@ -1533,6 +1975,7 @@ export function createWorldScreen(
               state.needs.hygiene,
               moodFromNeeds(state.needs),
               "friendly",
+              state.isWet,
             );
             const delta = Math.round(6 * mult);
             const result = state.adjustRelationship(
@@ -1559,20 +2002,57 @@ export function createWorldScreen(
           state.startBusy("Asking about work", 1200);
           delayed(1200, () => {
             state.hire(hireJob.id);
+            // First shift is tomorrow — lock out same-day clock-in.
+            state.lastShiftDay = state.dayIndex;
             Audio.sfx("success");
             const hireLines: Record<string, string> = {
-              cafe_barista: "You're hired! Counter's yours - but only 9 to 5!",
+              cafe_barista:
+                "You're hired! Start tomorrow — counter's yours 9 to 5.",
               market_clerk:
-                "Fine. You can clerk - don't break the jam jars. 9 to 5.",
+                "Fine. Be here tomorrow — don't break the jam jars. 9 to 5.",
               library_aide:
-                "Very well. Aide hours are 9 to 5. Soft voices, please.",
+                "Very well. Start tomorrow. Aide hours are 9 to 5.",
               clinic_aide:
-                "I'd welcome the help. Clinic shifts run 9 to 5.",
+                "I'd welcome the help. Come tomorrow — shifts run 9 to 5.",
             };
             state.showDialogue(
               npcId,
               def.name,
-              hireLines[hireJob.id] ?? "You're hired. 9 to 5.",
+              hireLines[hireJob.id] ?? "You're hired. Start tomorrow, 9 to 5.",
+            );
+            dialogue.offerChoices(
+              [
+                {
+                  id: "bed",
+                  label: "Go home to bed",
+                  sub: "Wake at 8 AM · first shift ready",
+                },
+                {
+                  id: "stay",
+                  label: "Stay out a bit",
+                  sub: "Sleep by 9 PM for morning",
+                },
+              ],
+              (choiceId) => {
+                if (choiceId === "bed") {
+                  dialogue.close();
+                  runSleepToMorning({
+                    caption: "Early night before the big day…",
+                    alarm: true,
+                  });
+                  return;
+                }
+                state.showToast(
+                  "First shift is tomorrow — head home by 9 PM to sleep.",
+                  3400,
+                );
+                const t = buildingHintTarget("home");
+                hintArrow?.showAt(t.x, t.z, "Home", 7000);
+                thoughtBubble?.showText(
+                  "New job tomorrow — I should sleep by 9 so I'm up at 8.",
+                  4800,
+                );
+              },
             );
             if (hireJob.id === "cafe_barista") quests.emit("talked_jun_job");
             if (hireJob.id === "market_clerk") quests.emit("talked_vera_job");
@@ -1716,6 +2196,7 @@ export function createWorldScreen(
               state.needs.hygiene,
               moodFromNeeds(state.needs),
               tone,
+              state.isWet,
             );
             const raw = Math.round(toneDef.delta * recept * mult);
             if (tone === "flirty" && raw > 0) {
@@ -1753,7 +2234,7 @@ export function createWorldScreen(
 
         const exclusive = EXCLUSIVE_HANGOUTS[npcId];
         if (id === exclusive.id) {
-          const blockEx = socialBlockedReason(state.needs);
+          const blockEx = socialBlockedReason(state.needs, state.isWet);
           if (blockEx) {
             Audio.sfx("deny");
             state.showToast(blockEx);
@@ -1767,6 +2248,8 @@ export function createWorldScreen(
               state.playerTraits,
               state.needs.hygiene,
               moodFromNeeds(state.needs),
+              undefined,
+              state.isWet,
             );
             const result = state.adjustRelationship(
               npcId,
@@ -1789,7 +2272,7 @@ export function createWorldScreen(
         const action = SOCIAL_ACTIONS.find((a) => a.id === id);
         if (!action) return;
         if (action.id === "hangout") {
-          const block = socialBlockedReason(state.needs);
+          const block = socialBlockedReason(state.needs, state.isWet);
           if (block) {
             Audio.sfx("deny");
             state.showToast(block);
@@ -1810,6 +2293,7 @@ export function createWorldScreen(
             state.needs.hygiene,
             moodFromNeeds(state.needs),
             action.id === "joke" ? undefined : "friendly",
+            state.isWet,
           );
           const goofyBoost =
             action.id === "joke" && hasTrait(state.playerTraits, "Goofy")
@@ -1904,6 +2388,7 @@ export function createWorldScreen(
           Audio.sfx("pet");
           state.startBusy(label, ms);
           delayed(ms, () => {
+            const unlockBefore = completedUnlockTaskIds(state);
             const beforeBond = adopted.needs.bond;
             state.needs = applyNeedDeltas(state.needs, playerDeltas);
             for (const [k, v] of Object.entries(petDeltas)) {
@@ -1928,6 +2413,7 @@ export function createWorldScreen(
             );
             if (bondQuest) quests.emit("pet_bonded");
             aspirations.refresh();
+            toastNewUnlocks(state, unlockBefore);
           });
         };
         if (id === "cuddle")
@@ -2022,6 +2508,7 @@ export function createWorldScreen(
       (id) => {
         const pdef = petById[id];
         if (!pdef || state.money < pdef.fee || !state.hasPetSetup()) return;
+        const unlockBefore = completedUnlockTaskIds(state);
         state.money -= pdef.fee;
         state.adoptPet(id);
         syncPet();
@@ -2042,6 +2529,7 @@ export function createWorldScreen(
         }
         quests.emit("adopted_pet");
         aspirations.refresh();
+        toastNewUnlocks(state, unlockBefore);
       },
       { id: "player", look: state.playerLook },
     );
@@ -2152,6 +2640,11 @@ export function createWorldScreen(
   };
 
   const toggleBuild = () => {
+    if (state.mode === "live" && nightBlocksLeisure()) {
+      Audio.sfx("deny");
+      state.showToast("Too late to build — go home and sleep.");
+      return;
+    }
     const lot = lotAtTile(Math.floor(playerX / TILE), Math.floor(playerZ / TILE));
     if (state.mode === "live") {
       if (!lot?.buildable) {
@@ -2164,10 +2657,11 @@ export function createWorldScreen(
       onArrive = null;
       player.setWalking(false);
       menu.close();
+      hud.closeStatus();
+      catalog.setBuildActive(true);
       catalog.show();
       const home = LOTS.find((l) => l.id === "home")!;
       app.renderer.setGridVisible(true, home);
-      hud.setBottomInfoVisible(false);
       placeRot = "down";
       heldFurniture = null;
       state.selectedBuildItem = null;
@@ -2181,21 +2675,21 @@ export function createWorldScreen(
       updateGhost();
       Audio.sfx("build");
       Audio.playMusic("build");
-      state.showToast("Build mode - click furniture to move, or pick a catalog item");
+      state.showToast("Build mode — pick from the catalog, then click to place");
       quests.emit("opened_build");
       if (quests.isActive("empty_nest")) quests.emit("game_started");
     } else {
       restoreHeldFurniture();
       state.mode = "live";
       catalog.hide();
+      catalog.setBuildActive(false);
       app.renderer.setGridVisible(false);
       buildFeedback?.clear();
       lastBuildTile = null;
       lastBuildPickedUid = null;
-      hud.setBottomInfoVisible(true);
       rebuildCollision();
       Audio.sfx("ui");
-      Audio.playMusic("world");
+      Audio.playMusic(state.jobActive ? "work" : "world");
       state.showToast("Back to live mode");
     }
   };
@@ -2332,11 +2826,17 @@ export function createWorldScreen(
 
     const defId = state.selectedBuildItem;
     if (!defId) {
-      state.showToast("Pick a catalog item, or click furniture to move it.");
+      state.showToast("Open the catalog (Tab) to pick an item, or click furniture to move.");
       return;
     }
     const def = furnitureById[defId];
     if (!def) return;
+    if (!isFurnitureUnlocked(def, state)) {
+      Audio.sfx("deny");
+      state.showToast("That piece is still locked.");
+      state.selectedBuildItem = null;
+      return;
+    }
     if (!canPlace(defId, tx, ty, placeRot)) {
       Audio.sfx("deny");
       state.showToast(
@@ -2344,6 +2844,7 @@ export function createWorldScreen(
       );
       return;
     }
+    const unlockBefore = completedUnlockTaskIds(state);
     state.money -= def.price;
     const placed: PlacedFurniture = {
       uid: `f_${uidCounter++}`,
@@ -2367,6 +2868,7 @@ export function createWorldScreen(
     if (defId === "sofa") quests.emit("placed_sofa");
     if (state.hasPetSetup()) quests.emit("pet_setup");
     aspirations.refresh();
+    toastNewUnlocks(state, unlockBefore);
   };
 
   const overUi = (cx: number, cy: number) => {
@@ -2650,7 +3152,7 @@ export function createWorldScreen(
   return {
     id: "world",
     mount(root) {
-      Audio.playMusic("world");
+      Audio.playMusic(state.jobActive ? "work" : "world");
       root.innerHTML = `<div class="ll-world-ui"></div>${muteButtonHtml()}`;
       const ui = root.querySelector(".ll-world-ui") as HTMLElement;
       unMute = wireMute(root.querySelector(".ll-mute") as HTMLElement);
@@ -2747,6 +3249,9 @@ export function createWorldScreen(
       buildingTags = new BuildingNameTags(ui);
       thoughtBubble = new ThoughtBubble(ui);
       hintArrow = new HintArrow(ui);
+      timeMontage = new TimeMontage(ui);
+      workMini = new WorkMinigame(ui);
+      playMini = new PlayMinigame(ui);
       menu = new InteractionMenu(ui);
       menu.setPlayerLook(state.playerLook);
       menu.setOnDismiss(() => {
@@ -2895,6 +3400,9 @@ export function createWorldScreen(
       buildingTags?.destroy();
       thoughtBubble?.destroy();
       hintArrow?.destroy();
+      timeMontage?.destroy();
+      workMini?.destroy();
+      playMini?.destroy();
       hoveredNpcId = null;
       menu?.destroy();
       catalog?.destroy();
@@ -2921,19 +3429,37 @@ export function createWorldScreen(
     },
 
     update(dt: number) {
-      state.dayTime = (state.dayTime + dt / (14 * 60)) % 1;
+      const freezeClock =
+        introActive ||
+        !!timeMontage?.isPlaying() ||
+        !!workMini?.isOpen() ||
+        !!playMini?.isOpen();
+      if (!freezeClock) {
+        state.dayTime = (state.dayTime + dt / (14 * 60)) % 1;
+      }
       if (introActive) tickWakeIntro(dt);
       if (state.mode === "live") {
         state.needs = decayNeedsWithTraits(
           state.needs,
           state.playerTraits,
           state.dayTime,
-          dt,
+          freezeClock ? 0 : dt,
           playerAtHome(),
         );
-        tickNeedDrama(state, performance.now(), (ms) => {
-          delayed(ms, () => applyCollapseRecovery(state));
-        });
+        if (!freezeClock) {
+          tickNeedDrama(
+            state,
+            performance.now(),
+            (ms) => {
+              delayed(ms, () => applyCollapseRecovery(state));
+            },
+            () => {
+              player.playBlush();
+              wetFaceUntil = performance.now() + 3200;
+              Audio.sfx("deny");
+            },
+          );
+        }
       }
       if (state.adoptedPet) {
         const p = state.adoptedPet;
@@ -2945,12 +3471,28 @@ export function createWorldScreen(
       app.renderer.setDayTime(state.dayTime);
 
       // Hotkeys
-      if (!introActive && justPressed("KeyE") && !dialogue.isOpen()) {
+      if (
+        !introActive &&
+        !timeMontage?.isPlaying() &&
+        !workMini?.isOpen() &&
+        !playMini?.isOpen() &&
+        justPressed("KeyE") &&
+        !dialogue.isOpen()
+      ) {
         const t = nearestTarget(40);
         if (t) approach(t);
         else state.showToast("Nothing to use nearby.");
       }
-      if (!introActive && justPressed("KeyB") && !dialogue.isOpen()) toggleBuild();
+      if (
+        !introActive &&
+        !timeMontage?.isPlaying() &&
+        !workMini?.isOpen() &&
+        !playMini?.isOpen() &&
+        justPressed("KeyB") &&
+        !dialogue.isOpen()
+      ) {
+        toggleBuild();
+      }
       if (!introActive && justPressed("KeyQ") && !dialogue.isOpen()) saveGame();
       if (!introActive && justPressed("Tab") && state.mode === "build") catalog.toggle();
       if (
@@ -2988,8 +3530,13 @@ export function createWorldScreen(
       }
       // Space / Enter / Esc for dialogue are handled inside DialogueBox
       if (!introActive && justPressed("Escape") && !dialogue.isOpen()) {
-        if (menu.isOpen()) {
+        if (hud.isStatusOpen()) {
+          hud.closeStatus();
+        } else if (menu.isOpen()) {
           menu.close();
+        } else if (state.mode === "build" && catalog.isVisible()) {
+          catalog.hide();
+          Audio.sfx("ui");
         } else if (state.mode === "build" && heldFurniture) {
           restoreHeldFurniture();
           buildFeedback?.clear();
@@ -3008,6 +3555,9 @@ export function createWorldScreen(
       // Movement
       if (
         !introActive &&
+        !timeMontage?.isPlaying() &&
+        !workMini?.isOpen() &&
+        !playMini?.isOpen() &&
         state.mode === "live" &&
         !state.isBusy() &&
         !menu.isOpen() &&
@@ -3188,20 +3738,33 @@ export function createWorldScreen(
       // Hold briefly after close so chained lines (quest → thought → reply)
       // don't zoom out and back in between sentences.
       {
+        const nowFocus = performance.now();
+        const wetFace = nowFocus < wetFaceUntil;
         const wantFocus =
+          wetFace ||
           !!thoughtBubble?.isVisible() ||
           dialogue.isOpen() ||
           menu.isOpen() ||
+          !!workMini?.isOpen() ||
+          !!playMini?.isOpen() ||
+          morningBeatActive ||
           !!engagedNpcId ||
           (introActive &&
             (introPhase === "think" ||
               introPhase === "bounce" ||
               introPhase === "speak"));
-        const nowFocus = performance.now();
         if (wantFocus) focusHoldUntil = nowFocus + 450;
         const focus = wantFocus || nowFocus < focusHoldUntil;
-        if (focus) app.renderer.beginFocusZoom();
-        else app.renderer.endFocusZoom();
+        if (focus) {
+          if (wetFace) {
+            app.renderer.beginFocusZoom(
+              TownRenderer.FRUSTUM_FACE,
+              TownRenderer.FACE_FRAME_Y,
+            );
+          } else {
+            app.renderer.beginFocusZoom();
+          }
+        } else app.renderer.endFocusZoom();
         thoughtBubble?.setZoomed(focus);
       }
 
@@ -3209,9 +3772,6 @@ export function createWorldScreen(
 
       dialogue.setPlayerLook(state.playerLook);
       dialogue.update(dt);
-      hud.setBottomInfoVisible(
-        state.mode === "live" && !dialogue.isOpen(),
-      );
       hud.update();
 
       {

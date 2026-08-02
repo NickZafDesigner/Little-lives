@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { PlayerLook } from "../data/character";
+import type { Build, FaceStyle, Height, PlayerLook, Sex } from "../data/character";
 import type { Dir } from "../data/types";
 import { Palette } from "../game/palette";
 import { AssetLibrary } from "../render/AssetLibrary";
@@ -27,6 +27,12 @@ export interface ActorHandle {
   playStretch(): void;
   /** Brief head tilt / mouth yawn, ~0.7s. */
   playYawn(): void;
+  /** Friendly raised-hand wave, ~1.0s. */
+  playWave(): void;
+  /** Big grin + ^ ^ happy eyes, ~0.85s. */
+  playSmile(): void;
+  /** Embarrassed blush bloom + head duck, ~2.4s. */
+  playBlush(): void;
   update(dt: number): void;
   rebuild(look: PlayerLook): void;
   dispose(): void;
@@ -59,10 +65,522 @@ interface Limbs {
   legR: THREE.Object3D;
 }
 
-function scaleForLook(look: PlayerLook): { y: number; xz: number } {
-  const y = look.height === "short" ? 0.86 : look.height === "tall" ? 1.14 : 1;
-  const xz = look.build === "slim" ? 0.9 : look.build === "stocky" ? 1.14 : 1;
-  return { y, xz };
+function scaleForLook(_look: PlayerLook): { y: number; xz: number } {
+  // Height/build are limb proportions (applyHeightStyle / applyBuildStyle).
+  // Uniform body scale made stocky look squashed and tall look like taffy.
+  return { y: 1, xz: 1 };
+}
+
+/**
+ * Slim / stocky via torso + limb bulk, not whole-body XZ squash.
+ * Keeps the head/face from ballooning with the belly.
+ */
+function applyBuildStyle(body: THREE.Object3D, build: Build) {
+  if (build === "average") return;
+
+  const head = AssetLibrary.findNamed(body, "Head");
+  const torso = AssetLibrary.findNamed(body, "Torso");
+  const hips = AssetLibrary.findNamed(body, "Hips");
+  const neck = AssetLibrary.findNamed(body, "Neck");
+  const armL = AssetLibrary.findNamed(body, "Arm_L");
+  const armR = AssetLibrary.findNamed(body, "Arm_R");
+  const legL = AssetLibrary.findNamed(body, "Leg_L");
+  const legR = AssetLibrary.findNamed(body, "Leg_R");
+  const legs = [legL, legR].filter(Boolean) as THREE.Object3D[];
+  const arms = [armL, armR].filter(Boolean) as THREE.Object3D[];
+
+  if (build === "stocky") {
+    // Broad chest / hips; limbs thick; head stays close to average
+    if (torso) torso.scale.multiply(new THREE.Vector3(1.24, 1.04, 1.2));
+    if (hips) hips.scale.multiply(new THREE.Vector3(1.3, 1.06, 1.24));
+    if (neck) neck.scale.multiply(new THREE.Vector3(1.22, 0.92, 1.18));
+    for (const leg of legs) {
+      leg.scale.x *= 1.24;
+      leg.scale.z *= 1.24;
+    }
+    for (const arm of arms) {
+      arm.scale.x *= 1.22;
+      arm.scale.z *= 1.22;
+      arm.scale.y *= 0.95;
+    }
+    // Sit arms on the broader frame
+    if (armL) armL.position.x -= 0.65;
+    if (armR) armR.position.x += 0.65;
+    if (head) {
+      head.scale.x *= 0.94;
+      head.scale.z *= 0.94;
+    }
+  } else {
+    // Slim: narrow midsection, thinner limbs, head reads slightly larger
+    if (torso) torso.scale.multiply(new THREE.Vector3(0.86, 1.02, 0.88));
+    if (hips) hips.scale.multiply(new THREE.Vector3(0.84, 1.0, 0.86));
+    if (neck) neck.scale.multiply(new THREE.Vector3(0.88, 1.06, 0.9));
+    for (const leg of legs) {
+      leg.scale.x *= 0.86;
+      leg.scale.z *= 0.86;
+    }
+    for (const arm of arms) {
+      arm.scale.x *= 0.86;
+      arm.scale.z *= 0.86;
+      arm.scale.y *= 1.04;
+    }
+    if (armL) armL.position.x += 0.4;
+    if (armR) armR.position.x -= 0.4;
+    if (head) {
+      head.scale.x *= 1.05;
+      head.scale.z *= 1.05;
+    }
+  }
+}
+
+/**
+ * Tall / short via leg length + placement, not whole-body squash.
+ * Keeps the head readable instead of stretching the face.
+ */
+function applyHeightStyle(body: THREE.Object3D, height: Height) {
+  if (height === "average") return;
+
+  const legL = AssetLibrary.findNamed(body, "Leg_L");
+  const legR = AssetLibrary.findNamed(body, "Leg_R");
+  const hips = AssetLibrary.findNamed(body, "Hips");
+  const neck = AssetLibrary.findNamed(body, "Neck");
+  const head = AssetLibrary.findNamed(body, "Head");
+  const armL = AssetLibrary.findNamed(body, "Arm_L");
+  const armR = AssetLibrary.findNamed(body, "Arm_R");
+  const torso = AssetLibrary.findNamed(body, "Torso");
+  const legs = [legL, legR].filter(Boolean) as THREE.Object3D[];
+  const upper = [hips, neck, head, armL, armR, torso].filter(
+    Boolean,
+  ) as THREE.Object3D[];
+
+  const tall = height === "tall";
+  const legStretch = tall ? 1.28 : 0.78;
+  const legXZ = tall ? 0.96 : 1.06;
+
+  for (const leg of legs) {
+    leg.scale.set(legXZ, legStretch, legXZ);
+  }
+
+  // Plant feet after leg scale (pivot is at the hip).
+  let lift = 0;
+  if (legs.length) {
+    body.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    for (const leg of legs) box.expandByObject(leg);
+    // Target sole roughly at y≈1.1 (authored rest).
+    lift = 1.1 - box.min.y;
+  }
+
+  for (const p of [...legs, ...upper]) {
+    p.position.y += lift;
+  }
+
+  if (tall) {
+    // Extra waist length — raise shoulders/head a bit more than hips.
+    const waist = 1.6;
+    for (const p of [neck, head, armL, armR, torso]) {
+      if (p) p.position.y += waist;
+    }
+    if (hips) hips.scale.y *= 1.1;
+    // Slightly longer arms to match the frame
+    for (const arm of [armL, armR]) {
+      if (arm) arm.scale.y *= 1.1;
+    }
+    // Head stays closer to average size so the face doesn't elongate
+    if (head) {
+      head.scale.x *= 0.93;
+      head.scale.y *= 0.9;
+      head.scale.z *= 0.93;
+    }
+  } else {
+    // Short: compact torso, bigger chibi-ish head
+    const tuck = 1.2;
+    for (const p of [neck, head, armL, armR, torso]) {
+      if (p) p.position.y -= tuck;
+    }
+    if (hips) hips.scale.y *= 0.9;
+    for (const arm of [armL, armR]) {
+      if (arm) arm.scale.y *= 0.9;
+    }
+    if (head) {
+      head.scale.x *= 1.1;
+      head.scale.y *= 1.12;
+      head.scale.z *= 1.1;
+    }
+  }
+}
+
+function setNamedScale(root: THREE.Object3D, name: string, sx: number, sy = sx, sz = sx) {
+  const obj = AssetLibrary.findNamed(root, name);
+  if (obj) obj.scale.set(sx, sy, sz);
+}
+
+function multiplyNamedScale(
+  root: THREE.Object3D,
+  name: string,
+  sx: number,
+  sy = sx,
+  sz = sx,
+) {
+  const obj = AssetLibrary.findNamed(root, name);
+  if (obj) obj.scale.multiply(new THREE.Vector3(sx, sy, sz));
+}
+
+function nudgeNamed(root: THREE.Object3D, name: string, dx: number, dy: number, dz = 0) {
+  const obj = AssetLibrary.findNamed(root, name);
+  if (obj) obj.position.add(new THREE.Vector3(dx, dy, dz));
+}
+
+/** Scatter freckle dots across the cheeks (FaceAccent). */
+function attachFreckles(head: THREE.Object3D) {
+  head.getObjectByName("FaceAccent")?.removeFromParent();
+  const group = new THREE.Group();
+  group.name = "FaceAccent";
+  const freckleMat = mat(Palette.blushDark, { name: "Freckle" });
+  const spots: Array<[number, number, number, number]> = [
+    [-2.2, -0.35, 5.55, 0.22],
+    [-1.55, -0.85, 5.62, 0.18],
+    [-2.55, -0.95, 5.48, 0.16],
+    [2.15, -0.4, 5.55, 0.22],
+    [1.5, -0.9, 5.62, 0.18],
+    [2.5, -1.0, 5.48, 0.16],
+    [-0.35, -0.7, 5.7, 0.14],
+    [0.45, -0.55, 5.68, 0.15],
+  ];
+  for (const [x, y, z, r] of spots) {
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(r, 6, 5), freckleMat);
+    dot.position.set(x, y, z);
+    dot.userData.noOutline = true;
+    group.add(dot);
+  }
+  head.add(group);
+}
+
+/**
+ * Face toggle: cheek shape, eyes, brows, mouth, blush, freckles.
+ * Stacks on sex style via multiply (order: sex → face → height).
+ */
+function applyFaceStyle(body: THREE.Object3D, face: FaceStyle) {
+  const head = AssetLibrary.findNamed(body, "Head");
+  head?.getObjectByName("FaceAccent")?.removeFromParent();
+
+  const browL = head?.getObjectByName("Brow_L");
+  const browR = head?.getObjectByName("Brow_R");
+
+  if (face === "round") {
+    // Chubby cheeks, wide soft eyes, full blush
+    head?.scale.multiply(new THREE.Vector3(1.14, 0.96, 1.12));
+    multiplyNamedScale(body, "Eye_L", 1.18, 1.22, 1.1);
+    multiplyNamedScale(body, "Eye_R", 1.18, 1.22, 1.1);
+    multiplyNamedScale(body, "Highlight_L", 1.15);
+    multiplyNamedScale(body, "Highlight_R", 1.15);
+    multiplyNamedScale(body, "Blush_L", 1.45, 1.25, 1.15);
+    multiplyNamedScale(body, "Blush_R", 1.45, 1.25, 1.15);
+    multiplyNamedScale(body, "Mouth", 0.95, 1.15, 1);
+    nudgeNamed(body, "Eye_L", -0.22, -0.08);
+    nudgeNamed(body, "Eye_R", 0.22, -0.08);
+    nudgeNamed(body, "Highlight_L", -0.22, -0.08);
+    nudgeNamed(body, "Highlight_R", 0.22, -0.08);
+    if (browL) {
+      browL.position.y -= 0.12;
+      browL.scale.x *= 1.15;
+      browL.rotation.z = 0.05;
+    }
+    if (browR) {
+      browR.position.y -= 0.12;
+      browR.scale.x *= 1.15;
+      browR.rotation.z = -0.05;
+    }
+  } else if (face === "soft") {
+    // Gentle oval, medium eyes, warm blush — readable baseline
+    head?.scale.multiply(new THREE.Vector3(1.05, 1.03, 1.04));
+    multiplyNamedScale(body, "Eye_L", 1.08, 1.12, 1.05);
+    multiplyNamedScale(body, "Eye_R", 1.08, 1.12, 1.05);
+    multiplyNamedScale(body, "Highlight_L", 1.08);
+    multiplyNamedScale(body, "Highlight_R", 1.08);
+    multiplyNamedScale(body, "Blush_L", 1.15, 1.05, 1);
+    multiplyNamedScale(body, "Blush_R", 1.15, 1.05, 1);
+    multiplyNamedScale(body, "Mouth", 0.92, 1.05, 1);
+    // Keep brows soft: flat / slightly outer tip up (never inward = angry)
+    if (browL) {
+      browL.scale.set(1.08, 0.36, 0.5);
+      browL.rotation.z = 0.18;
+    }
+    if (browR) {
+      browR.scale.set(1.08, 0.36, 0.5);
+      browR.rotation.z = -0.18;
+    }
+  } else if (face === "sharp") {
+    // Narrower jaw/cheeks, smaller almond eyes, angled brows, less blush
+    head?.scale.multiply(new THREE.Vector3(0.9, 1.06, 0.94));
+    multiplyNamedScale(body, "Eye_L", 0.88, 0.78, 0.95);
+    multiplyNamedScale(body, "Eye_R", 0.88, 0.78, 0.95);
+    multiplyNamedScale(body, "Highlight_L", 0.8, 0.7, 0.85);
+    multiplyNamedScale(body, "Highlight_R", 0.8, 0.7, 0.85);
+    multiplyNamedScale(body, "Blush_L", 0.45, 0.4, 0.4);
+    multiplyNamedScale(body, "Blush_R", 0.45, 0.4, 0.4);
+    multiplyNamedScale(body, "Mouth", 1.2, 0.75, 1);
+    nudgeNamed(body, "Eye_L", 0.18, 0.12);
+    nudgeNamed(body, "Eye_R", -0.18, 0.12);
+    nudgeNamed(body, "Highlight_L", 0.18, 0.12);
+    nudgeNamed(body, "Highlight_R", -0.18, 0.12);
+    nudgeNamed(body, "Mouth", 0, 0.1);
+    if (browL) {
+      browL.position.set(-1.85, 1.95, 5.72);
+      browL.scale.set(1.25, 0.32, 0.5);
+      browL.rotation.z = -0.42;
+    }
+    if (browR) {
+      browR.position.set(1.85, 1.95, 5.72);
+      browR.scale.set(1.25, 0.32, 0.5);
+      browR.rotation.z = 0.42;
+    }
+  } else {
+    // Freckled — soft-ish features + cheek freckles
+    head?.scale.multiply(new THREE.Vector3(1.06, 1.0, 1.05));
+    multiplyNamedScale(body, "Eye_L", 1.1, 1.08, 1.05);
+    multiplyNamedScale(body, "Eye_R", 1.1, 1.08, 1.05);
+    multiplyNamedScale(body, "Highlight_L", 1.05);
+    multiplyNamedScale(body, "Highlight_R", 1.05);
+    multiplyNamedScale(body, "Blush_L", 0.85, 0.8, 0.85);
+    multiplyNamedScale(body, "Blush_R", 0.85, 0.8, 0.85);
+    multiplyNamedScale(body, "Mouth", 1.05, 1.0, 1);
+    if (head) attachFreckles(head);
+    if (browL) {
+      browL.scale.set(1.1, 0.36, 0.5);
+      browL.rotation.z = 0.16;
+    }
+    if (browR) {
+      browR.scale.set(1.1, 0.36, 0.5);
+      browR.rotation.z = -0.16;
+    }
+  }
+}
+
+/** Two small oval brow blobs above the eyes (never a monobrow). */
+function attachEyebrows(head: THREE.Object3D | undefined) {
+  if (!head) return;
+  head.getObjectByName("Eyebrows")?.removeFromParent();
+  const group = new THREE.Group();
+  group.name = "Eyebrows";
+  const ink = mat(0x3a2818, { name: "Ink" });
+  for (const side of [-1, 1] as const) {
+    const blob = new THREE.Mesh(new THREE.SphereGeometry(0.48, 10, 8), ink);
+    blob.name = side < 0 ? "Brow_L" : "Brow_R";
+    blob.position.set(side * 1.95, 1.72, 5.72);
+    // Flat little pads, tipped slightly outward
+    blob.scale.set(1.15, 0.4, 0.55);
+    blob.rotation.z = side * -0.2;
+    blob.userData.noOutline = true;
+    group.add(blob);
+  }
+  head.add(group);
+}
+
+/** Smooth ink stroke along a short curve (smile eyes / mouth). */
+function makeInkCurve(
+  points: THREE.Vector3[],
+  radius: number,
+  tubular = 14,
+): THREE.Mesh {
+  const curve = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.35);
+  const mesh = new THREE.Mesh(
+    new THREE.TubeGeometry(curve, tubular, radius, 6, false),
+    mat(Palette.ink, { name: "Ink" }),
+  );
+  mesh.userData.noOutline = true;
+  return mesh;
+}
+
+/** Soft ^ happy eye — one continuous stroke. */
+function makeCaretEye(): THREE.Group {
+  const g = new THREE.Group();
+  g.name = "SmileCaret";
+  g.add(
+    makeInkCurve(
+      [
+        new THREE.Vector3(-0.78, -0.28, 0),
+        new THREE.Vector3(-0.28, 0.32, 0),
+        new THREE.Vector3(0.28, 0.32, 0),
+        new THREE.Vector3(0.78, -0.28, 0),
+      ],
+      0.13,
+      12,
+    ),
+  );
+  return g;
+}
+
+/** Wide cozy grin — single U-curve with lifted corners. */
+function makeSmileMouth(): THREE.Group {
+  const g = new THREE.Group();
+  g.name = "SmileMouth";
+  g.add(
+    makeInkCurve(
+      [
+        new THREE.Vector3(-1.65, 0.42, 0),
+        new THREE.Vector3(-0.85, -0.08, 0),
+        new THREE.Vector3(0, -0.32, 0),
+        new THREE.Vector3(0.85, -0.08, 0),
+        new THREE.Vector3(1.65, 0.42, 0),
+      ],
+      0.145,
+      16,
+    ),
+  );
+  return g;
+}
+
+/**
+ * Attach smile overlays under Head. Normal eyes+mouth hide while these show.
+ * Always rebuilds so mesh tweaks take effect after hot reload.
+ */
+function ensureSmileOverlays(body: THREE.Object3D): {
+  eyeL: THREE.Object3D;
+  eyeR: THREE.Object3D;
+  mouth: THREE.Object3D;
+  eyeLY: number;
+  eyeRY: number;
+  mouthY: number;
+} | null {
+  const head = AssetLibrary.findNamed(body, "Head");
+  if (!head) return null;
+
+  for (const n of ["SmileEye_L", "SmileEye_R", "SmileMouth"]) {
+    head.getObjectByName(n)?.removeFromParent();
+  }
+
+  const srcL = AssetLibrary.findNamed(body, "Eye_L");
+  const srcR = AssetLibrary.findNamed(body, "Eye_R");
+  const srcM = AssetLibrary.findNamed(body, "Mouth");
+
+  const eyeL = makeCaretEye();
+  eyeL.name = "SmileEye_L";
+  const eyeLY = (srcL?.position.y ?? 0.55) + 0.08;
+  eyeL.position.set(srcL?.position.x ?? -1.85, eyeLY, 5.78);
+  head.add(eyeL);
+
+  const eyeR = makeCaretEye();
+  eyeR.name = "SmileEye_R";
+  const eyeRY = (srcR?.position.y ?? 0.55) + 0.08;
+  eyeR.position.set(srcR?.position.x ?? 1.85, eyeRY, 5.78);
+  head.add(eyeR);
+
+  const mouth = makeSmileMouth();
+  const mouthY = (srcM?.position.y ?? -2.15) + 0.08;
+  mouth.position.set(0, mouthY, 5.92);
+  head.add(mouth);
+
+  eyeL.visible = false;
+  eyeR.visible = false;
+  mouth.visible = false;
+  return { eyeL, eyeR, mouth, eyeLY, eyeRY, mouthY };
+}
+
+/** Distinct silhouettes + face accents so identity reads at a glance. */
+function applySexStyle(body: THREE.Object3D, sex: Sex, hairColor: number) {
+  const head = AssetLibrary.findNamed(body, "Head");
+  const torso = AssetLibrary.findNamed(body, "Torso");
+  const hips = AssetLibrary.findNamed(body, "Hips");
+  const neck = AssetLibrary.findNamed(body, "Neck");
+  const armL = AssetLibrary.findNamed(body, "Arm_L");
+  const armR = AssetLibrary.findNamed(body, "Arm_R");
+  const hair = AssetLibrary.findNamed(body, "Hair");
+
+  head?.getObjectByName("SexAccent")?.removeFromParent();
+  attachEyebrows(head ?? undefined);
+
+  if (sex === "boy") {
+    head?.scale.set(0.94, 0.96, 0.94);
+    setNamedScale(body, "Eye_L", 0.82);
+    setNamedScale(body, "Eye_R", 0.82);
+    setNamedScale(body, "Highlight_L", 0.75);
+    setNamedScale(body, "Highlight_R", 0.75);
+    setNamedScale(body, "Blush_L", 0.35, 0.3, 0.3);
+    setNamedScale(body, "Blush_R", 0.35, 0.3, 0.3);
+    setNamedScale(body, "Mouth", 1.15, 1, 1);
+    if (torso) torso.scale.set(1.08, 1.04, 1.06);
+    if (hips) hips.scale.multiply(new THREE.Vector3(0.95, 0.95, 0.95));
+    if (neck) neck.scale.set(1.2, 1, 1.15);
+    if (armL) armL.position.x = -6.15;
+    if (armR) armR.position.x = 6.15;
+    if (hair) hair.scale.set(0.98, 0.95, 0.98);
+  } else if (sex === "girl") {
+    head?.scale.set(1.1, 1.08, 1.08);
+    setNamedScale(body, "Eye_L", 1.22);
+    setNamedScale(body, "Eye_R", 1.22);
+    setNamedScale(body, "Highlight_L", 1.15);
+    setNamedScale(body, "Highlight_R", 1.15);
+    setNamedScale(body, "Blush_L", 1.35, 1.1, 1.0);
+    setNamedScale(body, "Blush_R", 1.35, 1.1, 1.0);
+    setNamedScale(body, "Mouth", 0.9, 1, 1);
+    if (torso) torso.scale.set(0.94, 1.0, 0.96);
+    if (hips) hips.scale.multiply(new THREE.Vector3(1.28, 1.08, 1.15));
+    if (neck) neck.scale.set(0.9, 1, 0.9);
+    if (armL) armL.position.x = -5.25;
+    if (armR) armR.position.x = 5.25;
+    if (hair) hair.scale.set(1.06, 1.08, 1.05);
+
+    // Hair bow
+    if (head) {
+      const accent = new THREE.Group();
+      accent.name = "SexAccent";
+      accent.position.set(2.4, 5.8, 1.2);
+      const ribbon = mat(0xf49ab6, { name: "Secondary" });
+      const knot = mat(hairColor, { name: "Hair" });
+      const left = new THREE.Mesh(new THREE.SphereGeometry(1.15, 10, 8), ribbon);
+      left.position.set(-1.1, 0, 0);
+      left.scale.set(1.1, 0.7, 0.45);
+      const right = new THREE.Mesh(new THREE.SphereGeometry(1.15, 10, 8), ribbon);
+      right.position.set(1.1, 0, 0);
+      right.scale.set(1.1, 0.7, 0.45);
+      const center = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), knot);
+      accent.add(left, right, center);
+      head.add(accent);
+    }
+  } else {
+    // Non-binary — mid proportions with a clear geometric accent
+    head?.scale.set(1.02, 1.04, 1.0);
+    setNamedScale(body, "Eye_L", 1.08);
+    setNamedScale(body, "Eye_R", 1.08);
+    setNamedScale(body, "Highlight_L", 1.05);
+    setNamedScale(body, "Highlight_R", 1.05);
+    setNamedScale(body, "Blush_L", 0.95);
+    setNamedScale(body, "Blush_R", 0.55); // soft asymmetry
+    setNamedScale(body, "Mouth", 1.05, 1.1, 1);
+    if (torso) torso.scale.set(1.0, 1.02, 1.02);
+    if (hips) hips.scale.multiply(new THREE.Vector3(1.1, 1.0, 1.05));
+    if (neck) neck.scale.set(1.0, 1, 1.0);
+    if (armL) armL.position.x = -5.7;
+    if (armR) armR.position.x = 5.7;
+    if (hair) {
+      hair.scale.set(1.02, 1.0, 1.0);
+      hair.rotation.z = 0.06;
+    }
+
+    // Ear cuff + chest pin
+    if (head) {
+      const accent = new THREE.Group();
+      accent.name = "SexAccent";
+      const metal = mat(0xe8b73c, { name: "Primary" });
+      const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.22, 6, 12), metal);
+      cuff.position.set(5.4, 0.2, 1.5);
+      cuff.rotation.y = Math.PI / 2;
+      accent.add(cuff);
+      head.add(accent);
+    }
+    if (torso) {
+      const pin = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 6), mat(0x5aaa9a, { name: "Primary" }));
+      pin.name = "SexAccent";
+      pin.position.set(-3.2, 22.5, 4.8);
+      torso.add(pin);
+      const diamond = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 0), mat(0xe8b73c, { name: "Primary" }));
+      diamond.position.set(-3.2, 22.5, 5.3);
+      diamond.scale.set(0.7, 1, 0.4);
+      diamond.name = "SexAccentPin";
+      torso.add(diamond);
+    }
+  }
 }
 
 /**
@@ -76,13 +594,47 @@ const LIE_Z = 18;
 const SIT_Y = 11.5;
 const SIT_Z = 6;
 
+/**
+ * Hair kits include a wide flat fringe pad across the forehead that reads as a
+ * hair-colored slug above the brows. Hide that pad; keep caps/volume/tails.
+ */
+function stripForeheadFringe(hair: THREE.Object3D) {
+  const size = new THREE.Vector3();
+  hair.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    // Authored fringe pieces sit forward on the face with a short, wide bound.
+    if (obj.position.z < 3.8) return;
+    const box = new THREE.Box3().setFromObject(obj);
+    box.getSize(size);
+    if (size.x > 5 && size.y < 2.8 && size.z < 3.5) {
+      obj.visible = false;
+    }
+  });
+}
+
+/** Body GLB ships a flat foot disc that doubles every contact shadow. */
+function stripAuthoredShadowDisc(body: THREE.Object3D) {
+  const size = new THREE.Vector3();
+  body.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    const box = new THREE.Box3().setFromObject(obj);
+    if (box.min.y > 2) return;
+    box.getSize(size);
+    if (size.y < 0.5 && size.x > 6 && size.z > 6 && Math.abs(size.x - size.z) < 2) {
+      obj.visible = false;
+    }
+  });
+}
+
 function assembleActor(look: PlayerLook): { group: THREE.Group; limbs: Limbs } {
   const group = new THREE.Group();
   group.name = "actorBody";
 
   const body = AssetLibrary.cloneBody();
+  stripAuthoredShadowDisc(body);
   const torso = AssetLibrary.cloneTorso(look.clothing);
   const hair = AssetLibrary.cloneHair(look.hairStyle);
+  stripForeheadFringe(hair);
 
   // Hair is authored in Head-local space - attach at identity under Head.
   const head = AssetLibrary.findNamed(body, "Head");
@@ -111,7 +663,6 @@ function assembleActor(look: PlayerLook): { group: THREE.Group; limbs: Limbs } {
     sleeve.scale.set(1.0, 1.05, 1.0);
     sleeve.castShadow = true;
     sleeve.receiveShadow = true;
-    sleeve.userData.noOutline = true;
     arm.add(sleeve);
   }
 
@@ -120,8 +671,13 @@ function assembleActor(look: PlayerLook): { group: THREE.Group; limbs: Limbs } {
     Hair: look.hair,
     Shirt: look.shirt,
     Pants: look.pants,
-    Accent: look.hair,
+    // Accent (shoes) and Ink (eyes/mouth) keep authored colors — never hair-tint.
   });
+
+  applySexStyle(body, look.sex, look.hair);
+  applyFaceStyle(body, look.face);
+  applyHeightStyle(body, look.height);
+  applyBuildStyle(body, look.build);
 
   // Look scale is applied by createActor each frame (reactions need a clean base).
   body.scale.set(1, 1, 1);
@@ -162,6 +718,32 @@ export function createActor(look: PlayerLook): ActorHandle {
   let stretchDur = 0;
   let yawnT = 0;
   let yawnDur = 0;
+  let waveT = 0;
+  let waveDur = 0;
+  let smileT = 0;
+  let smileDur = 0;
+  let blushT = 0;
+  let blushDur = 0;
+
+  type FaceRest = {
+    mouth: THREE.Vector3 | null;
+    blushL: THREE.Vector3 | null;
+    blushR: THREE.Vector3 | null;
+  };
+
+  const readScale = (name: string): THREE.Vector3 | null => {
+    const obj = AssetLibrary.findNamed(body, name);
+    return obj ? obj.scale.clone() : null;
+  };
+
+  const captureFaceRest = (): FaceRest => ({
+    mouth: readScale("Mouth"),
+    blushL: readScale("Blush_L"),
+    blushR: readScale("Blush_R"),
+  });
+
+  let faceRest = captureFaceRest();
+  let smileFx = ensureSmileOverlays(body);
 
   const armRest = (arm: THREE.Object3D) => ({
     x: (arm.userData.restX as number) ?? -0.1,
@@ -176,6 +758,175 @@ export function createActor(look: PlayerLook): ActorHandle {
   };
 
   const headNode = () => AssetLibrary.findNamed(body, "Head");
+
+  const setFacePartVisible = (name: string, visible: boolean) => {
+    const obj = AssetLibrary.findNamed(body, name);
+    if (obj) obj.visible = visible;
+  };
+
+  const applyFaceRest = () => {
+    const mouth = AssetLibrary.findNamed(body, "Mouth");
+    const blushL = AssetLibrary.findNamed(body, "Blush_L");
+    const blushR = AssetLibrary.findNamed(body, "Blush_R");
+    if (mouth && faceRest.mouth) mouth.scale.copy(faceRest.mouth);
+    if (blushL && faceRest.blushL) {
+      blushL.scale.copy(faceRest.blushL);
+      if (blushL.userData.restY != null) {
+        blushL.position.y = blushL.userData.restY as number;
+      }
+    }
+    if (blushR && faceRest.blushR) {
+      blushR.scale.copy(faceRest.blushR);
+      if (blushR.userData.restY != null) {
+        blushR.position.y = blushR.userData.restY as number;
+      }
+    }
+    for (const n of ["Eye_L", "Eye_R", "Highlight_L", "Highlight_R", "Mouth"]) {
+      setFacePartVisible(n, true);
+    }
+    const head = headNode();
+    if (head && pose === "stand") {
+      if (head.userData.restScaleX != null) {
+        head.scale.x = head.userData.restScaleX as number;
+      }
+      if (head.userData.restScaleY != null) {
+        head.scale.y = head.userData.restScaleY as number;
+      }
+    }
+    if (smileFx) {
+      smileFx.eyeL.visible = false;
+      smileFx.eyeR.visible = false;
+      smileFx.mouth.visible = false;
+      smileFx.eyeL.scale.set(1, 1, 1);
+      smileFx.eyeR.scale.set(1, 1, 1);
+      smileFx.mouth.scale.set(1, 1, 1);
+      smileFx.eyeL.position.y = smileFx.eyeLY;
+      smileFx.eyeR.position.y = smileFx.eyeRY;
+      smileFx.mouth.position.y = smileFx.mouthY;
+    }
+  };
+
+  const applyEmbarrassedBlush = (u: number) => {
+    const blushL = AssetLibrary.findNamed(body, "Blush_L");
+    const blushR = AssetLibrary.findNamed(body, "Blush_R");
+    const ease = u * u * (3 - 2 * u);
+    if (blushL && faceRest.blushL) {
+      if (blushL.userData.restY == null) blushL.userData.restY = blushL.position.y;
+      blushL.scale.set(
+        faceRest.blushL.x * (1 + ease * 2.1),
+        faceRest.blushL.y * (1 + ease * 1.6),
+        faceRest.blushL.z,
+      );
+      blushL.position.y = (blushL.userData.restY as number) + ease * 0.2;
+    }
+    if (blushR && faceRest.blushR) {
+      if (blushR.userData.restY == null) blushR.userData.restY = blushR.position.y;
+      blushR.scale.set(
+        faceRest.blushR.x * (1 + ease * 2.1),
+        faceRest.blushR.y * (1 + ease * 1.6),
+        faceRest.blushR.z,
+      );
+      blushR.position.y = (blushR.userData.restY as number) + ease * 0.2;
+    }
+  };
+
+  const applySmile = (u: number) => {
+    if (!smileFx) smileFx = ensureSmileOverlays(body);
+    const blushL = AssetLibrary.findNamed(body, "Blush_L");
+    const blushR = AssetLibrary.findNamed(body, "Blush_R");
+    const head = headNode();
+    // Ease the visible window so it doesn't hard-pop at the edges.
+    const showHappy = u > 0.04;
+    const ease = u * u * (3 - 2 * u); // smoothstep
+
+    for (const n of ["Eye_L", "Eye_R", "Highlight_L", "Highlight_R", "Mouth"]) {
+      setFacePartVisible(n, !showHappy);
+    }
+    if (smileFx) {
+      smileFx.eyeL.visible = showHappy;
+      smileFx.eyeR.visible = showHappy;
+      smileFx.mouth.visible = showHappy;
+      // Grow in from a tiny squash so the expression blooms
+      const eyeS = 0.35 + ease * 0.75;
+      smileFx.eyeL.scale.set(eyeS * 1.05, eyeS, 1);
+      smileFx.eyeR.scale.set(eyeS * 1.05, eyeS, 1);
+      smileFx.eyeL.position.y = smileFx.eyeLY + ease * 0.12;
+      smileFx.eyeR.position.y = smileFx.eyeRY + ease * 0.12;
+      // Mouth widens and drops a touch into a fuller grin
+      smileFx.mouth.scale.set(0.55 + ease * 0.6, 0.7 + ease * 0.45, 1);
+      smileFx.mouth.position.y = smileFx.mouthY - ease * 0.1;
+    }
+
+    if (head) {
+      if (head.userData.restScaleX == null) {
+        head.userData.restScaleX = head.scale.x;
+        head.userData.restScaleY = head.scale.y;
+      }
+      const rx = head.userData.restScaleX as number;
+      const ry = head.userData.restScaleY as number;
+      // Soft cheek puff
+      head.scale.x = rx * (1 + ease * 0.06);
+      head.scale.y = ry * (1 - ease * 0.04);
+    }
+
+    if (blushL && faceRest.blushL) {
+      if (blushL.userData.restY == null) blushL.userData.restY = blushL.position.y;
+      blushL.scale.set(
+        faceRest.blushL.x * (1 + ease * 1.15),
+        faceRest.blushL.y * (1 + ease * 0.85),
+        faceRest.blushL.z,
+      );
+      blushL.position.y = (blushL.userData.restY as number) + ease * 0.15;
+    }
+    if (blushR && faceRest.blushR) {
+      if (blushR.userData.restY == null) blushR.userData.restY = blushR.position.y;
+      blushR.scale.set(
+        faceRest.blushR.x * (1 + ease * 1.15),
+        faceRest.blushR.y * (1 + ease * 0.85),
+        faceRest.blushR.z,
+      );
+      blushR.position.y = (blushR.userData.restY as number) + ease * 0.15;
+    }
+  };
+
+  const tickFlourish = (dt: number) => {
+    const waving = waveDur > 0 && waveT < waveDur;
+    const smiling = smileDur > 0 && smileT < smileDur;
+    const blushing = blushDur > 0 && blushT < blushDur;
+    if (waving) waveT += dt;
+    if (smiling) smileT += dt;
+    if (blushing) blushT += dt;
+
+    if (blushing) {
+      applyEmbarrassedBlush(Math.sin(Math.min(1, blushT / blushDur) * Math.PI));
+    } else if (blushDur > 0) {
+      blushDur = 0;
+      blushT = 0;
+      applyFaceRest();
+      const head = headNode();
+      if (head) head.rotation.x = easeToward(head.rotation.x, 0, dt, 10);
+    } else if (smiling) {
+      applySmile(Math.sin(Math.min(1, smileT / smileDur) * Math.PI));
+    } else if (smileDur > 0) {
+      smileDur = 0;
+      smileT = 0;
+      applyFaceRest();
+    }
+
+    if (!waving && waveDur > 0) {
+      waveDur = 0;
+      waveT = 0;
+    }
+
+    return {
+      waving,
+      waveU: waving ? Math.sin(Math.min(1, waveT / waveDur) * Math.PI) : 0,
+      waveSwing: waving ? Math.sin(waveT * 14) : 0,
+      blushU: blushing
+        ? Math.sin(Math.min(1, blushT / blushDur) * Math.PI)
+        : 0,
+    };
+  };
 
   const applyPoseTransforms = (dt: number) => {
     const stretching = stretchDur > 0 && stretchT < stretchDur;
@@ -306,6 +1057,13 @@ export function createActor(look: PlayerLook): ActorHandle {
         stretchT = 0;
         yawnDur = 0;
         yawnT = 0;
+        waveDur = 0;
+        waveT = 0;
+        smileDur = 0;
+        smileT = 0;
+        blushDur = 0;
+        blushT = 0;
+        applyFaceRest();
         body.position.z = 0;
         limbs.legL.rotation.x = 0;
         limbs.legR.rotation.x = 0;
@@ -324,6 +1082,24 @@ export function createActor(look: PlayerLook): ActorHandle {
       yawnT = 0;
       yawnDur = 0.7;
     },
+    playWave() {
+      if (pose !== "stand") return;
+      waveT = 0;
+      waveDur = 1.15;
+    },
+    playSmile() {
+      smileT = 0;
+      smileDur = 1.15;
+      blushDur = 0;
+      blushT = 0;
+    },
+    playBlush() {
+      blushT = 0;
+      blushDur = 2.4;
+      smileDur = 0;
+      smileT = 0;
+      applyFaceRest();
+    },
     update(dt) {
       yaw = dampAngle(yaw, yawTarget, 14, dt);
       body.rotation.y = yaw;
@@ -333,13 +1109,16 @@ export function createActor(look: PlayerLook): ActorHandle {
         return;
       }
 
+      const flourish = tickFlourish(dt);
+
       // Ease out of sit/lie residual tilt / bed offset when returning to stand.
       body.rotation.x = easeToward(body.rotation.x, 0, dt, 10);
       body.position.y = easeToward(body.position.y, 0, dt, 10);
       body.position.z = easeToward(body.position.z, 0, dt, 10);
       const head = headNode();
       if (head) {
-        head.rotation.x = easeToward(head.rotation.x, 0, dt, 10);
+        const duck = flourish.blushU * 0.28 + flourish.waveU * -0.08;
+        head.rotation.x = easeToward(head.rotation.x, duck, dt, 10);
         head.scale.y = easeToward(head.scale.y, 1, dt, 10);
       }
 
@@ -389,6 +1168,7 @@ export function createActor(look: PlayerLook): ActorHandle {
         limbs.armR.rotation.x = r.x - idle * 0.05;
         limbs.armL.rotation.z = l.z;
         limbs.armR.rotation.z = r.z;
+        limbs.armR.rotation.y = 0;
         return;
       }
 
@@ -408,6 +1188,7 @@ export function createActor(look: PlayerLook): ActorHandle {
         limbs.armR.rotation.x = r.x + swing * 0.28;
         limbs.armL.rotation.z = l.z;
         limbs.armR.rotation.z = r.z;
+        limbs.armR.rotation.y = easeToward(limbs.armR.rotation.y, 0, dt, 10);
       } else {
         bob += dt * 1.6;
         const idle = Math.sin(bob);
@@ -427,14 +1208,40 @@ export function createActor(look: PlayerLook): ActorHandle {
           dt,
           6,
         );
-        limbs.armR.rotation.x = easeToward(
-          limbs.armR.rotation.x,
-          r.x - idle * 0.04,
-          dt,
-          6,
-        );
         limbs.armL.rotation.z = easeToward(limbs.armL.rotation.z, l.z, dt, 6);
-        limbs.armR.rotation.z = easeToward(limbs.armR.rotation.z, r.z, dt, 6);
+
+        if (flourish.waving) {
+          // Side-raise away from torso (positive Z on Arm_R = out).
+          const raise = flourish.waveU;
+          const flap = flourish.waveSwing * raise;
+          limbs.armR.rotation.x = easeToward(
+            limbs.armR.rotation.x,
+            r.x - 0.4 * raise + flap * 0.1,
+            dt,
+            12,
+          );
+          limbs.armR.rotation.y = easeToward(
+            limbs.armR.rotation.y,
+            -0.25 * raise,
+            dt,
+            12,
+          );
+          limbs.armR.rotation.z = easeToward(
+            limbs.armR.rotation.z,
+            r.z + 1.5 * raise + flap * 0.28,
+            dt,
+            14,
+          );
+        } else {
+          limbs.armR.rotation.x = easeToward(
+            limbs.armR.rotation.x,
+            r.x - idle * 0.04,
+            dt,
+            6,
+          );
+          limbs.armR.rotation.y = easeToward(limbs.armR.rotation.y, 0, dt, 8);
+          limbs.armR.rotation.z = easeToward(limbs.armR.rotation.z, r.z, dt, 6);
+        }
       }
     },
     rebuild(newLook) {
@@ -443,11 +1250,19 @@ export function createActor(look: PlayerLook): ActorHandle {
       body = built.group;
       limbs = built.limbs;
       lookScale = scaleForLook(newLook);
+      faceRest = captureFaceRest();
+      smileFx = ensureSmileOverlays(body);
       body.rotation.y = yaw;
       reaction = null;
       pose = "stand";
       stretchDur = 0;
       yawnDur = 0;
+      waveDur = 0;
+      waveT = 0;
+      smileDur = 0;
+      smileT = 0;
+      blushDur = 0;
+      blushT = 0;
       root.add(body);
     },
     dispose() {
