@@ -1232,7 +1232,7 @@ export const AMBIENT_NPCS: AmbientNpcDef[] = [
     name: "Moss",
     vibe: "cute",
     facing: "right",
-    spawnTx: 5,
+    spawnTx: 7,
     spawnTy: 37,
     look: {
       sex: "enby",

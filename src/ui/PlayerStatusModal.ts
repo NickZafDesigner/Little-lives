@@ -11,11 +11,15 @@ import { computeCozyScore } from "../systems/cozyScore";
 import { jobDisplayName, jobById } from "../data/jobs";
 import { questById } from "../data/quests";
 import { petById } from "../data/pets";
-import { listUnlockTasks } from "../systems/unlockProgress";
+import {
+  furnitureForUnlockTask,
+  listUnlockTasks,
+} from "../systems/unlockProgress";
+import { paintFurnitureThumb } from "./FurniturePreview";
 import { Audio } from "../audio/AudioManager";
 import { drawPortrait } from "./portraits";
 
-type StatusTab = "status" | "tasks" | "pets" | "guide";
+type StatusTab = "status" | "jobs" | "tasks" | "pets" | "guide";
 
 const PET_NEED_IDS: PetNeedId[] = ["hunger", "energy", "fun", "bond"];
 const PET_NEED_LABELS: Record<PetNeedId, string> = {
@@ -52,6 +56,9 @@ export class PlayerStatusModal {
   private visible = false;
   private tab: StatusTab = "status";
   private lastPortraitKey = "";
+  private highlightQuestId: string | null = null;
+  private highlightUntil = 0;
+  private highlightScrollPending = false;
 
   constructor(parent: HTMLElement, state: GameState) {
     this.state = state;
@@ -74,10 +81,18 @@ export class PlayerStatusModal {
     return this.visible;
   }
 
-  open(tab: StatusTab = "status") {
+  open(
+    tab: StatusTab = "status",
+    opts?: { highlightQuestId?: string },
+  ) {
     this.tab = tab;
     this.visible = true;
     this.el.hidden = false;
+    if (opts?.highlightQuestId) {
+      this.highlightQuestId = opts.highlightQuestId;
+      this.highlightUntil = performance.now() + 2800;
+      this.highlightScrollPending = true;
+    }
     this.rebuild();
     Audio.sfx("ui");
   }
@@ -86,12 +101,28 @@ export class PlayerStatusModal {
     if (!this.visible) return;
     this.visible = false;
     this.el.hidden = true;
+    this.clearHighlight();
     Audio.sfx("ui");
   }
 
   toggle() {
     if (this.visible) this.close();
     else this.open(this.tab);
+  }
+
+  private clearHighlight() {
+    this.highlightQuestId = null;
+    this.highlightUntil = 0;
+    this.highlightScrollPending = false;
+  }
+
+  private activeHighlightId(): string | null {
+    if (!this.highlightQuestId) return null;
+    if (performance.now() > this.highlightUntil) {
+      this.clearHighlight();
+      return null;
+    }
+    return this.highlightQuestId;
   }
 
   /** Refresh live values while open (called from Hud.update). */
@@ -120,6 +151,7 @@ export class PlayerStatusModal {
         </header>
         <nav class="ll-status-tabs" role="tablist">
           <button type="button" class="ll-status-tab${this.tab === "status" ? " is-active" : ""}" data-tab="status" role="tab" aria-selected="${this.tab === "status"}">Status</button>
+          <button type="button" class="ll-status-tab${this.tab === "jobs" ? " is-active" : ""}" data-tab="jobs" role="tab" aria-selected="${this.tab === "jobs"}">Jobs</button>
           <button type="button" class="ll-status-tab${this.tab === "tasks" ? " is-active" : ""}" data-tab="tasks" role="tab" aria-selected="${this.tab === "tasks"}">Tasks</button>
           <button type="button" class="ll-status-tab${this.tab === "pets" ? " is-active" : ""}" data-tab="pets" role="tab" aria-selected="${this.tab === "pets"}">Pets</button>
           <button type="button" class="ll-status-tab${this.tab === "guide" ? " is-active" : ""}" data-tab="guide" role="tab" aria-selected="${this.tab === "guide"}">Guide</button>
@@ -141,6 +173,7 @@ export class PlayerStatusModal {
         const id = (tabBtn as HTMLElement).dataset.tab as StatusTab;
         if (!id || id === this.tab) return;
         this.tab = id;
+        if (id !== "tasks") this.clearHighlight();
         Audio.sfx("ui");
         this.rebuild();
       });
@@ -148,11 +181,45 @@ export class PlayerStatusModal {
 
     const body = this.el.querySelector("[data-status-body]")!;
     if (this.tab === "status") body.innerHTML = this.renderStatus(mood, cozy);
+    else if (this.tab === "jobs") body.innerHTML = this.renderJobs();
     else if (this.tab === "tasks") body.innerHTML = this.renderTasks();
     else if (this.tab === "pets") body.innerHTML = this.renderPets();
     else body.innerHTML = this.renderGuide();
 
+    if (this.tab === "tasks") {
+      this.mountUnlockThumbs(body);
+      this.scrollHighlightIntoView(body);
+    }
     this.syncPortrait();
+  }
+
+  private scrollHighlightIntoView(root: ParentNode) {
+    if (!this.highlightScrollPending) return;
+    const id = this.activeHighlightId();
+    this.highlightScrollPending = false;
+    if (!id) return;
+    const row = root.querySelector(
+      `[data-quest-id="${CSS.escape(id)}"]`,
+    ) as HTMLElement | null;
+    if (!row) return;
+    requestAnimationFrame(() => {
+      row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }
+
+  private mountUnlockThumbs(root: ParentNode) {
+    for (const host of root.querySelectorAll<HTMLElement>("[data-unlock-thumb]")) {
+      const defId = host.dataset.unlockThumb;
+      if (!defId) continue;
+      const canvas = document.createElement("canvas");
+      canvas.className = "ll-status-unlock-canvas";
+      canvas.setAttribute("aria-hidden", "true");
+      host.replaceChildren(canvas);
+      if (!paintFurnitureThumb(canvas, defId, 52)) {
+        host.classList.add("is-fallback");
+        host.textContent = "";
+      }
+    }
   }
 
   private renderStatus(mood: number, cozy: number): string {
@@ -162,18 +229,6 @@ export class PlayerStatusModal {
       return `<div class="ll-status-need"><span>${NEED_LABELS[id]}</span><div class="ll-bar"><i class="${needBarClass(v)}" style="width:${v}%"></i></div><b>${v}</b></div>`;
     }).join("");
 
-    const jobs =
-      s.hiredJobs.length === 0
-        ? `<p class="ll-status-empty">No jobs yet — ask around town who's hiring.</p>`
-        : `<ul class="ll-status-jobs">${s.hiredJobs
-            .map((id) => {
-              const shifts = s.jobShiftCounts[id] ?? 0;
-              const name = jobDisplayName(id, s.isPromoted(id));
-              const lot = jobById[id]?.lotId ?? "";
-              return `<li><strong>${escapeHtml(name)}</strong><span>${shifts} shift${shifts === 1 ? "" : "s"}${s.isPromoted(id) ? " · promoted" : ""}${lot ? ` · ${lot}` : ""}</span></li>`;
-            })
-            .join("")}</ul>`;
-
     return `
       <div class="ll-status-stats">
         <div class="ll-status-stat"><small>Money</small><strong>$${s.money}</strong></div>
@@ -182,13 +237,30 @@ export class PlayerStatusModal {
       </div>
       <h3 class="ll-status-section">Needs</h3>
       <div class="ll-status-needs">${needsHtml}</div>
-      <h3 class="ll-status-section">Jobs</h3>
-      ${jobs}
+    `;
+  }
+
+  private renderJobs(): string {
+    const s = this.state;
+    if (s.hiredJobs.length === 0) {
+      return `<p class="ll-status-empty">No jobs yet - ask around town who's hiring.</p>`;
+    }
+    return `
+      <h3 class="ll-status-section">Your jobs</h3>
+      <ul class="ll-status-jobs">${s.hiredJobs
+        .map((id) => {
+          const shifts = s.jobShiftCounts[id] ?? 0;
+          const name = jobDisplayName(id, s.isPromoted(id));
+          const lot = jobById[id]?.lotId ?? "";
+          return `<li><strong>${escapeHtml(name)}</strong><span>${shifts} shift${shifts === 1 ? "" : "s"}${s.isPromoted(id) ? " · promoted" : ""}${lot ? ` · ${lot}` : ""}</span></li>`;
+        })
+        .join("")}</ul>
     `;
   }
 
   private renderTasks(): string {
     const s = this.state;
+    const highlightId = this.activeHighlightId();
     const questRows: string[] = [];
     for (const id of s.quests.active) {
       const def = questById[id];
@@ -199,8 +271,9 @@ export class PlayerStatusModal {
       const have = counts[step.id] ?? 0;
       const need = step.count ?? 1;
       const pct = Math.min(100, Math.round((have / need) * 100));
+      const lit = highlightId === id ? " is-highlight" : "";
       questRows.push(`
-        <div class="ll-status-task">
+        <div class="ll-status-task${lit}" data-quest-id="${escapeHtml(id)}">
           <div class="ll-status-task-top">
             <strong>${escapeHtml(def.title)}</strong>
             <span>${have}/${need}</span>
@@ -213,34 +286,40 @@ export class PlayerStatusModal {
 
     const unlocks = listUnlockTasks(s);
     const open = unlocks.filter((t) => !t.done);
-    const done = unlocks.filter((t) => t.done);
 
     const unlockHtml = open
       .map((t) => {
+        const pieces = furnitureForUnlockTask(t.taskId);
+        const primary = pieces[0];
+        const names = pieces.map((p) => p.name);
+        const title =
+          names.length === 0
+            ? t.title
+            : names.length === 1
+              ? names[0]!
+              : names.join(" & ");
         const pct =
           t.target > 0
             ? Math.min(100, Math.round((t.current / t.target) * 100))
             : 0;
+        const thumbAttr = primary
+          ? ` data-unlock-thumb="${escapeHtml(primary.id)}"`
+          : "";
         return `
-          <div class="ll-status-task">
-            <div class="ll-status-task-top">
-              <strong>${escapeHtml(t.title)}</strong>
-              <span>${escapeHtml(t.label)}</span>
+          <div class="ll-status-task ll-status-unlock">
+            <div class="ll-status-unlock-thumb"${thumbAttr} aria-hidden="true"></div>
+            <div class="ll-status-unlock-body">
+              <div class="ll-status-task-top">
+                <strong>${escapeHtml(title)}</strong>
+                <span>${escapeHtml(t.label)}</span>
+              </div>
+              <p>${escapeHtml(t.hint)}</p>
+              <div class="ll-build-tip-bar"><i style="width:${pct}%"></i></div>
             </div>
-            <p>${escapeHtml(t.hint)}</p>
-            <div class="ll-build-tip-bar"><i style="width:${pct}%"></i></div>
           </div>
         `;
       })
       .join("");
-
-    const doneHtml =
-      done.length === 0
-        ? ""
-        : `<details class="ll-status-done">
-            <summary>Completed unlocks (${done.length})</summary>
-            <ul>${done.map((t) => `<li>${escapeHtml(t.title)}</li>`).join("")}</ul>
-          </details>`;
 
     return `
       <h3 class="ll-status-section">Active quests</h3>
@@ -250,13 +329,11 @@ export class PlayerStatusModal {
           : `<p class="ll-status-empty">No active quests right now.</p>`
       }
       <h3 class="ll-status-section">Furniture unlocks</h3>
-      <p class="ll-status-empty">Unlocks make pieces available to buy — they still cost money.</p>
       ${
         open.length
           ? `<div class="ll-status-task-list">${unlockHtml}</div>`
           : `<p class="ll-status-empty">Every furniture unlock is complete!</p>`
       }
-      ${doneHtml}
     `;
   }
 
@@ -308,7 +385,6 @@ export class PlayerStatusModal {
       <ul class="ll-status-keys">
         <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span>Move</span></li>
         <li><kbd>Click</kbd> <span>Walk or interact</span></li>
-        <li><kbd>Pinch</kbd> / <kbd>+</kbd><kbd>−</kbd> <span>Zoom</span></li>
       </ul>
       <h3 class="ll-status-section">Useful keys</h3>
       <ul class="ll-status-keys">
@@ -321,9 +397,9 @@ export class PlayerStatusModal {
       </ul>
       <h3 class="ll-status-section">Tips</h3>
       <ul class="ll-status-tips">
-        <li>Keep an eye on needs — hungry, sleepy neighbours aren't at their best.</li>
+        <li>Keep an eye on needs - hungry, sleepy neighbours aren't at their best.</li>
         <li>Take a job in town, then spend your earnings on furniture and pets.</li>
-        <li>Locked catalog pieces unlock for purchase — everything still has a price.</li>
+        <li>Complete tasks to unlock new catalog pieces you can buy for your home.</li>
         <li>When the day winds down, head home and sleep to start fresh.</li>
       </ul>
     `;

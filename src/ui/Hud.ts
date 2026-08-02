@@ -67,6 +67,8 @@ export class Hud {
     needId: NeedId;
     amount: number;
     born: number;
+    /** Vertical slot so simultaneous boosts don't overlap. */
+    stack: number;
   }> = [];
 
   constructor(
@@ -95,6 +97,17 @@ export class Hud {
       if (t.closest("[data-hud-avatar]")) {
         e.stopPropagation();
         this.statusModal.toggle();
+        this.lastStructureKey = "";
+        this.update();
+        return;
+      }
+      const obj = t.closest("[data-objective]") as HTMLElement | null;
+      if (obj) {
+        e.stopPropagation();
+        const questId = obj.dataset.questId;
+        this.statusModal.open("tasks", {
+          highlightQuestId: questId || undefined,
+        });
         this.lastStructureKey = "";
         this.update();
       }
@@ -163,19 +176,31 @@ export class Hud {
 
     const tracker = this.getTracker();
     const aspiration = !tracker ? this.getAspiration() : null;
-    const shown = tracker
+    type Shown = {
+      title: string;
+      objective: string;
+      side: boolean;
+      kind: "quest" | "goal";
+      questId?: string;
+      have?: number;
+      need?: number;
+    };
+    const shown: Shown | null = tracker
       ? {
           title: tracker.title,
           objective: tracker.objective,
           side: !!tracker.side,
-          kind: "quest" as const,
+          kind: "quest",
+          questId: tracker.questId,
+          have: tracker.have,
+          need: tracker.need,
         }
       : aspiration
         ? {
             title: aspiration.title,
             objective: aspiration.objective,
             side: true,
-            kind: "goal" as const,
+            kind: "goal",
           }
         : null;
 
@@ -194,7 +219,7 @@ export class Hud {
     const shiftLabel = shiftJob
       ? shiftJob.tasks[s.jobTasksDone]?.label ?? "Working"
       : "";
-    // Structural only — value ticks must NOT remount DOM (kills :hover tooltips
+    // Structural only - value ticks must NOT remount DOM (kills :hover tooltips
     // and retriggers the needs-panel entrance animation).
     // Urgency is patched onto the avatar so need recovery doesn't wipe floats.
     const structureKey = [
@@ -203,7 +228,7 @@ export class Hud {
       s.playerName,
       s.adoptedPet ? "pet" : "",
       showBeat ? beat!.title : "",
-      shown ? `${shown.kind}|${shown.title}|${shown.side ? 1 : 0}` : "",
+      shown ? `${shown.kind}|${shown.title}|${shown.side ? 1 : 0}|${shown.have ?? ""}|${shown.need ?? ""}|${shown.questId ?? ""}` : "",
       shiftActive ? `shift|${s.activeJobId}|${s.jobTasksDone}` : "",
     ].join("|");
 
@@ -269,6 +294,8 @@ export class Hud {
     const now = performance.now();
     let stagger = 0;
     let boosted = false;
+    // Continue the column above any floats still on screen.
+    let stack = this.pendingFloats.length;
     for (const id of NEED_IDS) {
       const delta = Math.round(needs[id]) - Math.round(this.prevNeeds[id]);
       if (delta < 1) continue;
@@ -278,8 +305,9 @@ export class Hud {
         needId: id,
         amount: delta,
         born: now + stagger,
+        stack: stack++,
       });
-      stagger += 80;
+      stagger += 90;
     }
     if (boosted) {
       this.boostUntil = now + BOOST_PULSE_MS;
@@ -332,10 +360,8 @@ export class Hud {
       const el = document.createElement("div");
       el.className = "ll-need-float";
       el.dataset.floatKey = f.key;
+      el.style.setProperty("--stack", String(f.stack));
       el.textContent = `+${f.amount} ${NEED_LABELS[f.needId]}`;
-      // Slight stack offset when several needs pop at once
-      const stackIndex = this.floatHost.childElementCount;
-      if (stackIndex > 0) el.style.top = `${-stackIndex * 6}px`;
       this.floatHost.appendChild(el);
       el.addEventListener("animationend", () => {
         el.remove();
@@ -361,6 +387,9 @@ export class Hud {
       objective: string;
       side: boolean;
       kind: "quest" | "goal";
+      questId?: string;
+      have?: number;
+      need?: number;
     } | null;
     shiftActive?: boolean;
     shiftProgress?: string;
@@ -375,11 +404,35 @@ export class Hud {
       : "";
 
     const objectiveHtml = shown
-      ? `<div class="ll-objective${shown.side ? " is-side" : ""}" data-objective>
-          <small>${shown.kind === "goal" ? "Lifestyle" : "Objective"}</small>
+      ? (() => {
+          const kindLabel = shown.kind === "goal" ? "Lifestyle" : shown.side ? "Side quest" : "Objective";
+          const tip =
+            shown.kind === "quest"
+              ? "Open Tasks · see this objective"
+              : "Open Tasks · quests & unlocks";
+          const questAttr = shown.questId
+            ? ` data-quest-id="${escapeHtml(shown.questId)}"`
+            : "";
+          const progress =
+            shown.need && shown.need > 1 && shown.have != null
+              ? (() => {
+                  const pct = Math.min(
+                    100,
+                    Math.round((shown.have / shown.need) * 100),
+                  );
+                  return `<div class="ll-objective-bar" aria-hidden="true"><i style="width:${pct}%"></i></div>`;
+                })()
+              : "";
+          return `<button type="button" class="ll-objective${shown.side ? " is-side" : ""}${shown.kind === "goal" ? " is-goal" : ""}" data-objective${questAttr} title="${escapeHtml(tip)}" aria-label="${escapeHtml(`${kindLabel}: ${shown.title}. ${shown.objective}. ${tip}`)}">
+          <span class="ll-objective-kicker">
+            <small>${kindLabel}</small>
+            <span class="ll-objective-go" aria-hidden="true">Tasks ›</span>
+          </span>
           <strong>${escapeHtml(shown.title)}</strong>
           <span data-objective-text>${escapeHtml(shown.objective)}</span>
-        </div>`
+          ${progress}
+        </button>`;
+        })()
       : "";
 
     const beatHtml = showBeat
@@ -403,9 +456,9 @@ export class Hud {
     const statusOpen = this.statusModal.isOpen();
     const urgencyTip =
       urgency === "critical"
-        ? "Needs urgent — click for status"
+        ? "Needs urgent - click for status"
         : urgency === "warn"
-          ? "Needs getting low — click for status"
+          ? "Needs getting low - click for status"
             : "Click for status, tasks, pets & guide";
 
     return `
@@ -511,9 +564,9 @@ export class Hud {
       avatar.classList.toggle("is-open", this.statusModal.isOpen());
       const tip =
         v.urgency === "critical"
-          ? "Needs urgent — click for status"
+          ? "Needs urgent - click for status"
           : v.urgency === "warn"
-            ? "Needs getting low — click for status"
+            ? "Needs getting low - click for status"
             : "Click for status, tasks, pets & guide";
       if (avatar.getAttribute("aria-label") !== tip) {
         avatar.setAttribute("aria-label", tip);

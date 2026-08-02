@@ -28,7 +28,7 @@ export interface PlayerProfile {
   favouriteAnimals: string[];
 }
 
-export const SEX_OPTIONS: Sex[] = ["girl", "boy", "enby"];
+export const SEX_OPTIONS: Sex[] = ["girl", "boy"];
 export const HEIGHT_OPTIONS: Height[] = ["short", "average", "tall"];
 export const BUILD_OPTIONS: Build[] = ["slim", "average", "stocky"];
 export const FACE_OPTIONS: FaceStyle[] = ["round", "soft", "sharp", "freckled"];

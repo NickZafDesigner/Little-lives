@@ -48,6 +48,7 @@ import { petById } from "../data/pets";
 import {
   WORK_END,
   WORK_LATE,
+  WORK_OPEN,
   WORK_START,
   type QuestEvent,
 } from "../data/quests";
@@ -108,6 +109,7 @@ import {
   createPet,
   furnitureFootprint,
   placeFurniture,
+  surfaceHeightFor,
   type PetHandle,
 } from "../mesh/furniture";
 import { BuildFeedback, createPaintFloorMesh, rotateDir } from "../build/BuildFeedback";
@@ -121,6 +123,10 @@ import { HintArrow } from "../ui/HintArrow";
 import { TimeMontage } from "../ui/TimeMontage";
 import { WorkMinigame, gradeScore, type MiniGrade } from "../ui/WorkMinigame";
 import { PlayMinigame, type PlayMiniGrade } from "../ui/PlayMinigame";
+import { TvViewer, TV_FULL_WATCH_MS } from "../ui/TvViewer";
+import { TV_SHOWS, type TvShowId } from "../data/tvShows";
+import { ConfettiBurst } from "../ui/ConfettiBurst";
+import { PayCelebration } from "../ui/PayCelebration";
 import { BuildCatalog } from "../ui/BuildCatalog";
 import {
   completedUnlockTaskIds,
@@ -130,6 +136,7 @@ import {
 import { InteractionMenu, type MenuOption } from "../ui/InteractionMenu";
 import { muteButtonHtml, wireMute } from "../ui/mute";
 import { Audio } from "../audio/AudioManager";
+import { WetTrail, WET_TRAIL_INDOOR_Y, WET_TRAIL_OUTDOOR_Y } from "../fx/WetTrail";
 
 interface NpcRuntime {
   id: string;
@@ -152,7 +159,7 @@ interface Target {
   z: number;
 }
 
-const WALK_SPEED = 165;
+const WALK_SPEED = 206;
 
 export function createWorldScreen(
   app: App,
@@ -197,11 +204,14 @@ export function createWorldScreen(
   let timeMontage!: TimeMontage;
   let workMini!: WorkMinigame;
   let playMini!: PlayMinigame;
+  let tvViewer!: TvViewer;
+  let confetti!: ConfettiBurst;
+  let payCelebration!: PayCelebration;
   /** NPC under the cursor in live mode (for name tooltips). */
   let hoveredNpcId: string | null = null;
   let menu!: InteractionMenu;
   let catalog!: BuildCatalog;
-  /** New-game wake-up cutscene — blocks movement / menus until done. */
+  /** New-game wake-up cutscene - blocks movement / menus until done. */
   let introActive = false;
   /** Soft post-sleep morning commute thought (hired days). */
   let morningBeatActive = false;
@@ -219,9 +229,14 @@ export function createWorldScreen(
     | "bounce"
     | "speak"
     | "done" = "done";
-  /** Elapsed seconds in the wake cutscene (dt-driven — survives mount hitches). */
+  /** Elapsed seconds in the wake cutscene (dt-driven - survives mount hitches). */
   let introT = 0;
-  let introThinkShown = false;
+  /** Wake thought beats: 0 none → 1 bare room → 2 lonely TV → 3 sofa doodle. */
+  let introThinkStep = 0;
+  /** Ignore advance until this time (stops the open click from skipping). */
+  let introAdvanceAt = 0;
+  /** Elapsed seconds since bouncing out of bed (dt-driven). */
+  let introPostBounceT = 0;
   let introBounced = false;
   let introSpoke = false;
   let unMute: (() => void) | null = null;
@@ -229,8 +244,15 @@ export function createWorldScreen(
   let lastDialogueSeq = 0;
   /** Keep cinematic zoom through brief gaps between chained dialogue lines. */
   let focusHoldUntil = 0;
+  /** Last-frame focus state so zoom SFX only fire on transitions. */
+  let wasFocusZoom = false;
+  /** Last-frame indoor state so enter/exit zoom SFX only fire on transitions. */
+  let wasIndoors = false;
+  /** Skip the first indoor sample so loading in a building doesn't whoosh. */
+  let indoorSfxReady = false;
   /** Tight face zoom after a bladder accident. */
   let wetFaceUntil = 0;
+  let wetTrail: WetTrail | null = null;
   let keyLatch = new Set<string>();
   let onPointerMove: ((e: PointerEvent) => void) | null = null;
   let onWheel: ((e: WheelEvent) => void) | null = null;
@@ -240,6 +262,9 @@ export function createWorldScreen(
   let placeRot: Dir = "down";
   /** Item picked up from the house to move (removed from world until placed). */
   let heldFurniture: PlacedFurniture | null = null;
+  /** Children of a held surface host, with tile offsets from the host origin. */
+  let heldChildren: Array<{ piece: PlacedFurniture; dx: number; dy: number }> =
+    [];
   let buildFeedback: BuildFeedback | null = null;
   /** NPC currently in conversation / interaction - stays put and faces the player. */
   let engagedNpcId: string | null = null;
@@ -441,7 +466,7 @@ export function createWorldScreen(
   const talkToAmbient = (id: string) => {
     if (nightBlocksLeisure()) {
       Audio.sfx("deny");
-      state.showToast("Too late for chats — go home and sleep.");
+      state.showToast("Too late for chats - go home and sleep.");
       const t = buildingHintTarget("home");
       hintArrow?.showAt(t.x, t.z, "Home", 5000);
       return;
@@ -472,7 +497,14 @@ export function createWorldScreen(
     tx >= 0 && ty >= 0 && tx < MAP_W && ty < MAP_H;
 
   const furnitureAt = (tx: number, ty: number, lotId?: LotId) => {
+    // Prefer surface children so pick/click targets the appliance first.
     for (const f of state.furniture) {
+      if (!f.parentUid) continue;
+      if (lotId && f.lotId !== lotId) continue;
+      if (f.tx === tx && f.ty === ty) return f;
+    }
+    for (const f of state.furniture) {
+      if (f.parentUid) continue;
       if (lotId && f.lotId !== lotId) continue;
       const def = furnitureById[f.defId];
       if (!def) continue;
@@ -484,6 +516,53 @@ export function createWorldScreen(
     return null;
   };
 
+  /** Floor-level piece covering a tile (ignores countertop children). */
+  const floorFurnitureAt = (tx: number, ty: number, lotId?: LotId) => {
+    for (const f of state.furniture) {
+      if (f.parentUid) continue;
+      if (lotId && f.lotId !== lotId) continue;
+      const def = furnitureById[f.defId];
+      if (!def) continue;
+      const { tw, th } = furnitureFootprint(f.defId, f.rot ?? "down");
+      if (tx >= f.tx && ty >= f.ty && tx < f.tx + tw && ty < f.ty + th) {
+        return f;
+      }
+    }
+    return null;
+  };
+
+  /** Host that supports countertop items covering this tile. */
+  const surfaceHostAt = (tx: number, ty: number, lotId?: LotId) => {
+    for (const f of state.furniture) {
+      if (f.parentUid) continue;
+      if (lotId && f.lotId !== lotId) continue;
+      const def = furnitureById[f.defId];
+      if (!def?.supportsItems) continue;
+      const { tw, th } = furnitureFootprint(f.defId, f.rot ?? "down");
+      if (tx >= f.tx && ty >= f.ty && tx < f.tx + tw && ty < f.ty + th) {
+        return f;
+      }
+    }
+    return null;
+  };
+
+  const surfaceChildAt = (tx: number, ty: number, lotId?: LotId) => {
+    for (const f of state.furniture) {
+      if (!f.parentUid) continue;
+      if (lotId && f.lotId !== lotId) continue;
+      if (f.tx === tx && f.ty === ty) return f;
+    }
+    return null;
+  };
+
+  const removeFurnitureMesh = (uid: string) => {
+    const mesh = furnitureMeshes.get(uid);
+    if (mesh) {
+      app.renderer.remove(mesh);
+      furnitureMeshes.delete(uid);
+    }
+  };
+
   const rebuildCollision = () => {
     collision = baseCollision.map((row) => [...row]);
     for (const key of state.walls) {
@@ -491,6 +570,7 @@ export function createWorldScreen(
       if (inBounds(tx, ty)) collision[ty][tx] = true;
     }
     for (const f of state.furniture) {
+      if (f.parentUid) continue;
       const def = furnitureById[f.defId];
       if (!def?.blocksMovement) continue;
       const { tw, th } = furnitureFootprint(f.defId, f.rot ?? "down");
@@ -504,8 +584,46 @@ export function createWorldScreen(
     }
   };
 
+  /**
+   * Tiles NPCs must not idle on: blocked ground plus any interactive furniture
+   * footprint (desks, counters, etc.) so they never obstruct use / clicks.
+   */
+  const npcStandBlocked = (): boolean[][] => {
+    const blocked = collision.map((row) => [...row]);
+    for (const f of state.furniture) {
+      if (f.parentUid) continue;
+      const def = furnitureById[f.defId];
+      if (!def?.interactions?.length) continue;
+      const { tw, th } = furnitureFootprint(f.defId, f.rot ?? "down");
+      for (let dy = 0; dy < th; dy++) {
+        for (let dx = 0; dx < tw; dx++) {
+          const tx = f.tx + dx;
+          const ty = f.ty + dy;
+          if (inBounds(tx, ty)) blocked[ty][tx] = true;
+        }
+      }
+    }
+    return blocked;
+  };
+
+  /** Snap an authored spawn off desks / counters / walls onto a free stand tile. */
+  const snapNpcStand = (tx: number, ty: number): GridPos => {
+    const blocked = npcStandBlocked();
+    return (
+      nearestWalkable(blocked, { x: tx, y: ty }, MAP_W, MAP_H, 6) ?? {
+        x: tx,
+        y: ty,
+      }
+    );
+  };
+
   const spawnFurniture = (f: PlacedFurniture) => {
-    const mesh = placeFurniture(f);
+    let surfaceY = 0;
+    if (f.parentUid) {
+      const host = state.furniture.find((h) => h.uid === f.parentUid);
+      if (host) surfaceY = surfaceHeightFor(host.defId);
+    }
+    const mesh = placeFurniture(f, { surfaceY });
     furnitureMeshes.set(f.uid, mesh);
     app.renderer.add(mesh);
     return mesh;
@@ -571,9 +689,11 @@ export function createWorldScreen(
     for (const f of state.furniture) {
       const def = furnitureById[f.defId];
       if (!def) continue;
+      const rot = f.rot ?? "down";
+      const { tw, th } = furnitureFootprint(f.defId, rot);
       const tiles: GridPos[] = [];
-      for (let dy = 0; dy < def.height; dy++) {
-        for (let dx = 0; dx < def.width; dx++) {
+      for (let dy = 0; dy < th; dy++) {
+        for (let dx = 0; dx < tw; dx++) {
           tiles.push({ x: f.tx + dx, y: f.ty + dy });
         }
       }
@@ -582,8 +702,8 @@ export function createWorldScreen(
         id: f.uid,
         label: def.name,
         tiles,
-        x: f.tx * TILE + (def.width * TILE) / 2,
-        z: f.ty * TILE + (def.height * TILE) / 2,
+        x: f.tx * TILE + (tw * TILE) / 2,
+        z: f.ty * TILE + (th * TILE) / 2,
       });
     }
     for (const npc of npcs) {
@@ -778,7 +898,8 @@ export function createWorldScreen(
     !!menu?.isOpen() ||
     !!timeMontage?.isPlaying() ||
     !!workMini?.isOpen() ||
-    !!playMini?.isOpen();
+    !!playMini?.isOpen() ||
+    !!tvViewer?.isOpen();
 
   const primaryJobId = (): string | null => {
     if (state.activeJobId) return state.activeJobId;
@@ -856,20 +977,20 @@ export function createWorldScreen(
       hintArrow?.hide();
       fireHint(
         "arrive_cafe_ask_jun",
-        "There's Jun — ask about that Help Wanted sign!",
+        "There's Jun - ask about that Help Wanted sign!",
       );
     }
 
     const jobId = primaryJobId();
     const job = jobId ? jobById[jobId] : null;
 
-    // Morning commute 8–9
+    // Morning commute 8–8:30
     if (
       job &&
       state.lastShiftDay !== state.dayIndex &&
       !state.jobActive &&
       state.dayTime >= MORNING_TIME &&
-      state.dayTime < WORK_START &&
+      state.dayTime < WORK_OPEN &&
       lot !== job.lotId
     ) {
       const t = buildingHintTarget(job.lotId);
@@ -886,27 +1007,30 @@ export function createWorldScreen(
       } else if (state.needs.energy < 45) {
         fireHint(
           `morning_energy_${state.dayIndex}`,
-          "Still a bit sleepy — coffee would help.",
+          "Still a bit sleepy - coffee would help.",
         );
       }
     }
 
-    // Work hours / late nudge
+    // Work hours / late nudge (doors open 8:30)
     if (
       job &&
       state.lastShiftDay !== state.dayIndex &&
       !state.jobActive &&
-      state.dayTime >= WORK_START &&
+      state.dayTime >= WORK_OPEN &&
       state.dayTime < WORK_END &&
       lot !== job.lotId
     ) {
       const t = buildingHintTarget(job.lotId);
       const late = state.dayTime >= WORK_LATE;
+      const early = state.dayTime < WORK_START;
       fireHint(
         `shift_time_${state.dayIndex}_${job.id}`,
         late
-          ? `I'm late for the ${lotNameForJob(job.id)} — hurry!`
-          : `Shift hours! Better head to the ${lotNameForJob(job.id)}.`,
+          ? `I'm late for the ${lotNameForJob(job.id)} - hurry!`
+          : early
+            ? `Doors are open at the ${lotNameForJob(job.id)} - I can clock in early!`
+            : `Shift hours! Better head to the ${lotNameForJob(job.id)}.`,
         { x: t.x, z: t.z, label: "Work" },
       );
     }
@@ -922,7 +1046,7 @@ export function createWorldScreen(
       const t = buildingHintTarget("home");
       fireHint(
         `evening_home_${state.dayIndex}`,
-        "Long day — head home when you're ready.",
+        "Long day - head home when you're ready.",
         { x: t.x, z: t.z, label: "Home" },
       );
     }
@@ -933,7 +1057,7 @@ export function createWorldScreen(
       if (now - nightNudgeAt > 9000) {
         nightNudgeAt = now;
         const t = buildingHintTarget("home");
-        thoughtBubble?.showText("It's late — go home to bed and sleep until morning.");
+        thoughtBubble?.showText("It's late - go home to bed and sleep until morning.");
         hintArrow?.showAt(t.x, t.z, "Bed", 6000);
         Audio.sfx("chime");
       }
@@ -945,7 +1069,7 @@ export function createWorldScreen(
           (f) => f.lotId === "home" && f.defId === "bed",
         );
         const pos = bed ? furnitureWorldPos(bed.uid) : null;
-        thoughtBubble?.showText("Time for bed — sleep until morning.");
+        thoughtBubble?.showText("Time for bed - sleep until morning.");
         if (pos) hintArrow?.showAt(pos.x, pos.z, "Sleep", 6000);
       }
     }
@@ -1077,7 +1201,7 @@ export function createWorldScreen(
       );
     }
     aspirations.refresh();
-    // Relationship already updated — toast only when we just hit the unlock threshold.
+    // Relationship already updated - toast only when we just hit the unlock threshold.
     if (result.becameClose) {
       let closeCount = 0;
       for (const rel of Object.values(state.relationships)) {
@@ -1250,7 +1374,7 @@ export function createWorldScreen(
         }
         if (active.tasks.some((t) => t.furnitureUid === furn.uid)) {
           Audio.sfx("deny");
-          state.showToast("Not that one — follow the arrow.");
+          state.showToast("Not that one - follow the arrow.");
           pinTaskArrow(active);
           return;
         }
@@ -1320,10 +1444,11 @@ export function createWorldScreen(
       const blocked = needsPet && !state.adoptedPet;
       const sleepLabel =
         i.id === "sleep" ? "Sleep (wake at 8 AM)" : i.label;
+      const watchSub = i.id === "watch" ? "Pick a show" : describeDeltas(i.needDeltas);
       options.push({
         id: i.id,
         label: sleepLabel,
-        sub: blocked ? "Adopt a pet first" : describeDeltas(i.needDeltas),
+        sub: blocked ? "Adopt a pet first" : watchSub,
         disabled: blocked,
       });
     }
@@ -1338,7 +1463,7 @@ export function createWorldScreen(
       if (id === "weekly_beat" && beat) {
         if (nightBlocksLeisure()) {
           Audio.sfx("deny");
-          state.showToast("Too late — go home and sleep.");
+          state.showToast("Too late - go home and sleep.");
           return;
         }
         Audio.sfx("interact");
@@ -1387,13 +1512,21 @@ export function createWorldScreen(
       if (interaction.id === "swing" || interaction.id === "slide") {
         if (nightBlocksLeisure()) {
           Audio.sfx("deny");
-          state.showToast("Too late — go home and sleep.");
+          state.showToast("Too late - go home and sleep.");
           return;
         }
-        if (playMini.isOpen() || workMini.isOpen() || timeMontage.isPlaying()) {
+        if (playMini.isOpen() || workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) {
           return;
         }
         beginPlayActivity(interaction.id);
+        return;
+      }
+
+      if (interaction.id === "watch") {
+        if (playMini.isOpen() || workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) {
+          return;
+        }
+        openTvShowMenu(x, y);
         return;
       }
 
@@ -1420,7 +1553,7 @@ export function createWorldScreen(
           const bonus = sleepEnergyBonus(state.playerTraits, state.dayTime);
           if (bonus) mod.deltas.energy = (mod.deltas.energy ?? 0) + Math.floor(bonus / 2);
           if (nightBlocksLeisure()) {
-            state.showToast("A nap won't advance the day — use Sleep for morning.", 2800);
+            state.showToast("A nap won't advance the day - use Sleep for morning.", 2800);
           }
         }
         state.needs = applyNeedDeltas(state.needs, mod.deltas);
@@ -1504,10 +1637,6 @@ export function createWorldScreen(
     const from = state.dayTime;
     const to = Math.max(from, WORK_END);
     hintArrow?.hide();
-    thoughtBubble?.showText(
-      "That's a wrap — home and a soft bed sound good.",
-      4200,
-    );
 
     timeMontage.play({
       from,
@@ -1535,97 +1664,186 @@ export function createWorldScreen(
         state.jobQualityScores = [];
         state.shiftLate = false;
         Audio.playMusic("world");
-        Audio.sfx("coin");
-        Audio.sfx("success");
-        const tip = payMod.toast ? ` ${payMod.toast}` : "";
-        const lateNote = wasLate ? " (late penalty)" : "";
+
+        const tip = payMod.toast?.trim() ?? "";
+        const lateNote = wasLate ? "Late start - small pay trim." : "";
         const qualityNote =
-          !wasLate && qualityAvg >= 0.85 ? " Great work today!" : "";
-        state.showToast(
-          `Shift complete! You earned $${pay}.${tip}${lateNote}${qualityNote}`,
-        );
-        quests.emit(jobShiftEvent(job.id), undefined, { unlockToast: false });
-        quests.emit("any_shift_complete", undefined, { unlockToast: false });
-        aspirations.noteShift();
-
-        if (
+          !wasLate && qualityAvg >= 0.85 ? "Great work today!" : "";
+        const note = [tip, lateNote, qualityNote].filter(Boolean).join(" ");
+        const willPromote =
           !state.isPromoted(job.id) &&
-          (state.jobShiftCounts[job.id] ?? 0) >= PROMOTION_SHIFTS
-        ) {
-          state.jobPromoted.push(job.id);
-          const promo = JOB_PROMOTIONS[job.id];
-          if (promo) {
-            const boss = NPCS.find((n) => n.id === job.hireNpcId);
-            state.showDialogue(
-              (boss?.id ?? "player") as NpcId,
-              boss?.name ?? "Boss",
-              promo.bossLine,
-            );
-            state.showToast(`Promoted to ${promo.title}!`, 3000);
-          }
-        }
-        toastNewUnlocks(state, unlockBefore);
+          (state.jobShiftCounts[job.id] ?? 0) >= PROMOTION_SHIFTS;
 
-        const home = buildingHintTarget("home");
-        fireHint(
-          `evening_home_${state.dayIndex}`,
-          "Long day — head home when you're ready.",
-          { x: home.x, z: home.z, label: "Home" },
-        );
+        // Beat 1: payday only - cash + confetti + banner
+        Audio.sfx("cash");
+        confetti.burst("huge", undefined, "gold");
+        payCelebration.show({
+          amount: pay,
+          title: qualityAvg >= 0.85 && !wasLate ? "Big payday!" : "Payday!",
+          note,
+          durationMs: 2800,
+          onDone: () => {
+            // Beat 2: quest / aspiration / promotion story beats
+            quests.emit(jobShiftEvent(job.id), undefined, {
+              unlockToast: false,
+            });
+            quests.emit("any_shift_complete", undefined, {
+              unlockToast: false,
+            });
+            aspirations.noteShift();
+
+            if (willPromote) {
+              state.jobPromoted.push(job.id);
+              const promo = JOB_PROMOTIONS[job.id];
+              if (promo) {
+                const boss = NPCS.find((n) => n.id === job.hireNpcId);
+                state.showDialogue(
+                  (boss?.id ?? "player") as NpcId,
+                  boss?.name ?? "Boss",
+                  promo.bossLine,
+                );
+                state.showToast(`Promoted to ${promo.title}!`, 3000);
+              }
+            }
+
+            toastNewUnlocks(state, unlockBefore);
+
+            // Beat 3: home hint once dialogue / other UI clears
+            const home = buildingHintTarget("home");
+            const hintId = `evening_home_${state.dayIndex}`;
+            let tries = 0;
+            const tryEveningHint = () => {
+              tries += 1;
+              if (uiBusy() && tries < 40) {
+                window.setTimeout(tryEveningHint, 350);
+                return;
+              }
+              fireHint(hintId, "Long day - head home when you're ready.", {
+                x: home.x,
+                z: home.z,
+                label: "Home",
+              });
+            };
+            window.setTimeout(tryEveningHint, willPromote ? 500 : 350);
+          },
+        });
       },
     });
   };
 
+  const celebrateGrade = (
+    grade: MiniGrade | PlayMiniGrade,
+    opts?: { finale?: boolean },
+  ) => {
+    // Skip mid-task confetti on the last work beat - payday owns the finale.
+    if (opts?.finale) return;
+    if (grade === "perfect") confetti.burst("big");
+    else if (grade === "ok") confetti.burst("soft");
+  };
+
   const beginPlayActivity = (kind: "swing" | "slide") => {
-    if (playMini.isOpen() || workMini.isOpen() || timeMontage.isPlaying()) return;
+    if (playMini.isOpen() || workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) return;
     Audio.sfx("interact");
     const label = kind === "swing" ? "Ride the Swings" : "Down the Slide";
-    playMini.play(kind, label, (grade: PlayMiniGrade) => {
-      const fun = grade === "perfect" ? 40 : grade === "ok" ? 24 : 10;
-      const energy = grade === "perfect" ? -6 : grade === "ok" ? -8 : -10;
-      state.needs = applyNeedDeltas(state.needs, { fun, energy });
-      const toast =
-        grade === "perfect"
-          ? kind === "swing"
-            ? "Highest swing!"
-            : "Perfect whoosh!"
-          : grade === "ok"
-            ? "Whee!"
-            : "Oof — dusty knees.";
-      if (grade === "perfect") Audio.sfx("success");
-      else if (grade === "ok") Audio.sfx("chime");
-      else Audio.sfx("deny");
-      state.showToast(toast, 2400);
+    playMini.play(
+      kind,
+      label,
+      (grade: PlayMiniGrade) => {
+        const fun = grade === "perfect" ? 40 : grade === "ok" ? 24 : 10;
+        const energy = grade === "perfect" ? -6 : grade === "ok" ? -8 : -10;
+        state.needs = applyNeedDeltas(state.needs, { fun, energy });
+        const toast =
+          grade === "perfect"
+            ? kind === "swing"
+              ? "Highest swing!"
+              : "Perfect whoosh!"
+            : grade === "ok"
+              ? "Whee!"
+              : "Oof - dusty knees.";
+        state.showToast(toast, 2400);
+        aspirations.refresh();
+      },
+      celebrateGrade,
+    );
+  };
+
+  const openTvShowMenu = (x: number, y: number) => {
+    const options: MenuOption[] = TV_SHOWS.map((s) => ({
+      id: s.id,
+      label: s.title,
+      sub: `${s.channel.split("·")[1]?.trim() ?? s.id} · ${describeDeltas(s.needDeltas)}`,
+    }));
+    menu.show(
+      "What's on?",
+      "Pick a show",
+      options,
+      x,
+      y,
+      (id) => {
+        if (id !== "comedy" && id !== "action" && id !== "horror") return;
+        beginWatchTv(id);
+      },
+    );
+  };
+
+  const beginWatchTv = (showId: TvShowId) => {
+    if (playMini.isOpen() || workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) {
+      return;
+    }
+    Audio.sfx("interact");
+    tvViewer.play(showId, (watchedMs, show) => {
+      Audio.playMusic(state.jobActive ? "work" : "world");
+      const full = watchedMs >= TV_FULL_WATCH_MS;
+      if (full) {
+        const mod = modifyInteractionDeltas(
+          "watch",
+          "tv",
+          show.needDeltas,
+          state.playerTraits,
+          state.favouriteFood,
+        );
+        state.needs = applyNeedDeltas(state.needs, mod.deltas);
+        Audio.sfx("success");
+        state.showToast(mod.toast ?? show.toast, 2600);
+      } else {
+        state.needs = applyNeedDeltas(state.needs, { fun: 8, energy: -2 });
+        Audio.sfx("chime");
+        state.showToast(show.snackToast, 2200);
+      }
       aspirations.refresh();
     });
   };
 
   const beginWorkTask = (job: JobDef, task: JobTaskDef) => {
-    if (workMini.isOpen() || timeMontage.isPlaying()) return;
+    if (workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) return;
     Audio.sfx("interact");
-    workMini.play(task.mini, task.label, (grade: MiniGrade) => {
-      state.jobQualityScores.push(gradeScore(grade));
-      state.jobTasksDone += 1;
-      const energy =
-        grade === "perfect" ? -6 : grade === "ok" ? -8 : -10;
-      const fun = grade === "perfect" ? -2 : -4;
-      state.needs = applyNeedDeltas(state.needs, {
-        energy,
-        fun,
-        social: 6,
-      });
-      const total = jobTaskCount(job);
-      if (state.jobTasksDone >= total) {
-        completeShift(job);
-      } else {
-        if (grade === "perfect") Audio.sfx("success");
-        else Audio.sfx("chime");
-        state.showToast(
-          `${task.label} done! ${state.jobTasksDone}/${total}`,
-        );
-        pinTaskArrow(job);
-      }
-    });
+    const isFinale = state.jobTasksDone + 1 >= jobTaskCount(job);
+    workMini.play(
+      task.mini,
+      task.label,
+      (grade: MiniGrade) => {
+        state.jobQualityScores.push(gradeScore(grade));
+        state.jobTasksDone += 1;
+        const energy =
+          grade === "perfect" ? -6 : grade === "ok" ? -8 : -10;
+        const fun = grade === "perfect" ? -2 : -4;
+        state.needs = applyNeedDeltas(state.needs, {
+          energy,
+          fun,
+          social: 6,
+        });
+        const total = jobTaskCount(job);
+        if (state.jobTasksDone >= total) {
+          completeShift(job);
+        } else {
+          state.showToast(
+            `${task.label} done! ${state.jobTasksDone}/${total}`,
+          );
+          pinTaskArrow(job);
+        }
+      },
+      (grade) => celebrateGrade(grade, { finale: isFinale }),
+    );
   };
 
   const openJobMenu = (jobId: string, x: number, y: number) => {
@@ -1659,13 +1877,13 @@ export function createWorldScreen(
       const anyShifts = Object.values(state.jobShiftCounts).some((n) => n > 0);
       state.showToast(
         anyShifts
-          ? "You're done for today — come back tomorrow."
-          : "First shift starts tomorrow — sleep until 8 AM!",
+          ? "You're done for today - come back tomorrow."
+          : "First shift starts tomorrow - sleep until 8 AM!",
       );
       return;
     }
     const hourOk =
-      state.dayTime >= WORK_START && state.dayTime < WORK_END;
+      state.dayTime >= WORK_OPEN && state.dayTime < WORK_END;
     if (!hourOk) {
       Audio.sfx("deny");
       state.showToast(job.closedMessage);
@@ -1678,13 +1896,18 @@ export function createWorldScreen(
     const mood = moodFromNeeds(state.needs);
     const payMod = jobPayMultiplier(state.playerTraits, job.id, mood);
     const estPay = Math.round(basePay * payMod.mult);
+    const early = state.dayTime < WORK_START;
     const late = state.dayTime >= WORK_LATE;
     const lot = LOTS.find((l) => l.id === job.lotId);
     const beat = beatForDay(state.dayIndex);
     const options: MenuOption[] = [
       {
         id: "shift",
-        label: late ? "Clock in (late!)" : "Clock in",
+        label: late
+          ? "Clock in (late!)"
+          : early
+            ? "Clock in early"
+            : "Clock in",
         sub: `${jobDisplayName(job.id, promoted)} · ~$${estPay} · ${jobTaskCount(job)} tasks`,
       },
     ];
@@ -1710,7 +1933,7 @@ export function createWorldScreen(
         if (id === "weekly_beat" && beat) {
           if (nightBlocksLeisure()) {
             Audio.sfx("deny");
-            state.showToast("Too late — go home and sleep.");
+            state.showToast("Too late - go home and sleep.");
             return;
           }
           Audio.sfx("interact");
@@ -1722,12 +1945,12 @@ export function createWorldScreen(
               social: beat.social,
             });
             Audio.sfx("success");
-            state.showToast(`${beat.title} — lovely!`, 2800);
+            state.showToast(`${beat.title} - lovely!`, 2800);
             aspirations.noteWeeklyBeat();
           });
           return;
         }
-        if (!(state.dayTime >= WORK_START && state.dayTime < WORK_END)) {
+        if (!(state.dayTime >= WORK_OPEN && state.dayTime < WORK_END)) {
           Audio.sfx("deny");
           state.showToast(job.closedMessage);
           return;
@@ -1739,8 +1962,8 @@ export function createWorldScreen(
           );
           state.showToast(
             anyShifts
-              ? "You're done for today — come back tomorrow."
-              : "First shift starts tomorrow — sleep until 8 AM!",
+              ? "You're done for today - come back tomorrow."
+              : "First shift starts tomorrow - sleep until 8 AM!",
           );
           return;
         }
@@ -1755,14 +1978,16 @@ export function createWorldScreen(
           const boss = NPCS.find((n) => n.id === job.hireNpcId);
           state.showToast(
             boss
-              ? `${boss.name}: You're late — let's make up for it.`
-              : "Late clock-in — pay may be lighter.",
+              ? `${boss.name}: You're late - let's make up for it.`
+              : "Late clock-in - pay may be lighter.",
             3200,
           );
+        } else if (state.dayTime < WORK_START) {
+          state.showToast("Nice and early - shift started!");
         } else {
-          state.showToast("Shift started — follow the arrow!");
+          state.showToast("Shift started - follow the arrow!");
         }
-        thoughtBubble?.showText("Alright — let's get to work!", 3200);
+        thoughtBubble?.showText("Alright - let's get to work!", 3200);
         pinTaskArrow(job);
       },
       { id: "player", look: state.playerLook },
@@ -1772,7 +1997,7 @@ export function createWorldScreen(
   const openNpcMenu = (target: Target, x: number, y: number) => {
     if (nightBlocksLeisure()) {
       Audio.sfx("deny");
-      state.showToast("Too late for chats — go home and sleep.");
+      state.showToast("Too late for chats - go home and sleep.");
       const t = buildingHintTarget("home");
       hintArrow?.showAt(t.x, t.z, "Home", 5000);
       return;
@@ -2002,18 +2227,18 @@ export function createWorldScreen(
           state.startBusy("Asking about work", 1200);
           delayed(1200, () => {
             state.hire(hireJob.id);
-            // First shift is tomorrow — lock out same-day clock-in.
+            // First shift is tomorrow - lock out same-day clock-in.
             state.lastShiftDay = state.dayIndex;
             Audio.sfx("success");
             const hireLines: Record<string, string> = {
               cafe_barista:
-                "You're hired! Start tomorrow — counter's yours 9 to 5.",
+                "You're hired! Start tomorrow - counter's yours 9 to 5.",
               market_clerk:
-                "Fine. Be here tomorrow — don't break the jam jars. 9 to 5.",
+                "Fine. Be here tomorrow - don't break the jam jars. 9 to 5.",
               library_aide:
                 "Very well. Start tomorrow. Aide hours are 9 to 5.",
               clinic_aide:
-                "I'd welcome the help. Come tomorrow — shifts run 9 to 5.",
+                "I'd welcome the help. Come tomorrow - shifts run 9 to 5.",
             };
             state.showDialogue(
               npcId,
@@ -2043,13 +2268,13 @@ export function createWorldScreen(
                   return;
                 }
                 state.showToast(
-                  "First shift is tomorrow — head home by 9 PM to sleep.",
+                  "First shift is tomorrow - head home by 9 PM to sleep.",
                   3400,
                 );
                 const t = buildingHintTarget("home");
                 hintArrow?.showAt(t.x, t.z, "Home", 7000);
                 thoughtBubble?.showText(
-                  "New job tomorrow — I should sleep by 9 so I'm up at 8.",
+                  "New job tomorrow - I should sleep by 9 so I'm up at 8.",
                   4800,
                 );
               },
@@ -2572,8 +2797,32 @@ export function createWorldScreen(
   ): boolean => {
     const def = furnitureById[defId];
     if (!def) return false;
+    if (!opts?.free && state.money < def.price) return false;
     const { tw, th } = furnitureFootprint(defId, rot);
     const home = LOTS.find((l) => l.id === "home")!;
+
+    if (def.placeOnSurface) {
+      for (let dy = 0; dy < th; dy++) {
+        for (let dx = 0; dx < tw; dx++) {
+          const x = tx + dx;
+          const y = ty + dy;
+          if (
+            x <= home.tx ||
+            y <= home.ty ||
+            x >= home.tx + home.tw - 1 ||
+            y >= home.ty + home.th - 1
+          ) {
+            return false;
+          }
+          const host = surfaceHostAt(x, y, "home");
+          if (!host) return false;
+          const child = surfaceChildAt(x, y, "home");
+          if (child && child.uid !== heldFurniture?.uid) return false;
+        }
+      }
+      return true;
+    }
+
     for (let dy = 0; dy < th; dy++) {
       for (let dx = 0; dx < tw; dx++) {
         const x = tx + dx;
@@ -2589,10 +2838,17 @@ export function createWorldScreen(
         if (map.ground[y][x] === Tile.door) return false;
         if (baseCollision[y]?.[x]) return false;
         if (state.walls.has(state.wallKey(x, y))) return false;
-        if (furnitureAt(x, y)) return false;
+        if (floorFurnitureAt(x, y, "home")) return false;
       }
     }
-    if (!opts?.free && state.money < def.price) return false;
+    // Held host with children must keep each child on the new footprint.
+    if (heldFurniture?.defId === defId && heldChildren.length > 0) {
+      for (const { dx, dy } of heldChildren) {
+        const cx = tx + dx;
+        const cy = ty + dy;
+        if (cx < tx || cy < ty || cx >= tx + tw || cy >= ty + th) return false;
+      }
+    }
     return true;
   };
 
@@ -2600,49 +2856,76 @@ export function createWorldScreen(
     if (!heldFurniture) return;
     state.furniture.push(heldFurniture);
     spawnFurniture(heldFurniture);
+    for (const { piece } of heldChildren) {
+      state.furniture.push(piece);
+      spawnFurniture(piece);
+    }
     heldFurniture = null;
+    heldChildren = [];
     rebuildCollision();
   };
 
   const pickUpFurniture = (hit: PlacedFurniture) => {
-    heldFurniture = { ...hit, rot: hit.rot ?? "down" };
+    const def = furnitureById[hit.defId];
+    heldChildren = [];
+    if (def?.supportsItems) {
+      const kids = state.furniture.filter((f) => f.parentUid === hit.uid);
+      heldChildren = kids.map((k) => ({
+        piece: { ...k },
+        dx: k.tx - hit.tx,
+        dy: k.ty - hit.ty,
+      }));
+      for (const k of kids) {
+        state.furniture = state.furniture.filter((f) => f.uid !== k.uid);
+        removeFurnitureMesh(k.uid);
+      }
+    }
+    heldFurniture = {
+      ...hit,
+      rot: hit.rot ?? "down",
+      parentUid: undefined,
+    };
     placeRot = heldFurniture.rot ?? "down";
     state.furniture = state.furniture.filter((f) => f.uid !== hit.uid);
-    const mesh = furnitureMeshes.get(hit.uid);
-    if (mesh) {
-      app.renderer.remove(mesh);
-      furnitureMeshes.delete(hit.uid);
-    }
+    removeFurnitureMesh(hit.uid);
     state.selectedBuildItem = null;
     rebuildCollision();
     Audio.sfx("pickup");
-    const def = furnitureById[hit.defId];
+    const kidNote =
+      heldChildren.length > 0
+        ? ` (+${heldChildren.length} on top)`
+        : "";
     state.showToast(
-      `Moving ${def?.name ?? "item"} - R to rotate, click to place, Esc to cancel`,
+      `Moving ${def?.name ?? "item"}${kidNote} - R to rotate, click to place, Esc to cancel`,
     );
     catalog.rebuild();
   };
 
   const sellFurniture = (hit: PlacedFurniture) => {
     const def = furnitureById[hit.defId];
-    const refund = Math.floor((def?.price ?? 0) * 0.6);
+    let refund = Math.floor((def?.price ?? 0) * 0.6);
+    const kids = state.furniture.filter((f) => f.parentUid === hit.uid);
+    for (const k of kids) {
+      const kd = furnitureById[k.defId];
+      refund += Math.floor((kd?.price ?? 0) * 0.6);
+      state.furniture = state.furniture.filter((f) => f.uid !== k.uid);
+      removeFurnitureMesh(k.uid);
+    }
     state.money += refund;
     state.furniture = state.furniture.filter((f) => f.uid !== hit.uid);
-    const mesh = furnitureMeshes.get(hit.uid);
-    if (mesh) {
-      app.renderer.remove(mesh);
-      furnitureMeshes.delete(hit.uid);
-    }
+    removeFurnitureMesh(hit.uid);
     rebuildCollision();
     Audio.sfx("sell");
-    state.showToast(`Sold ${def?.name ?? "item"} for $${refund}`);
+    const extra =
+      kids.length > 0 ? ` (+${kids.length} countertop item${kids.length > 1 ? "s" : ""})` : "";
+    state.showToast(`Sold ${def?.name ?? "item"}${extra} for $${refund}`);
     catalog.rebuild();
   };
 
   const toggleBuild = () => {
     if (state.mode === "live" && nightBlocksLeisure()) {
       Audio.sfx("deny");
-      state.showToast("Too late to build — go home and sleep.");
+      state.showToast("Too late to build - go home and sleep.");
       return;
     }
     const lot = lotAtTile(Math.floor(playerX / TILE), Math.floor(playerZ / TILE));
@@ -2664,6 +2947,7 @@ export function createWorldScreen(
       app.renderer.setGridVisible(true, home);
       placeRot = "down";
       heldFurniture = null;
+      heldChildren = [];
       state.selectedBuildItem = null;
       state.buildTool = "furniture";
       lastBuildTile = {
@@ -2675,7 +2959,7 @@ export function createWorldScreen(
       updateGhost();
       Audio.sfx("build");
       Audio.playMusic("build");
-      state.showToast("Build mode — pick from the catalog, then click to place");
+      state.showToast("Build mode - pick from the catalog, then click to place");
       quests.emit("opened_build");
       if (quests.isActive("empty_nest")) quests.emit("game_started");
     } else {
@@ -2704,9 +2988,14 @@ export function createWorldScreen(
     if (state.buildTool === "sell") {
       if (heldFurniture) {
         const def = furnitureById[heldFurniture.defId];
-        const refund = Math.floor((def?.price ?? 0) * 0.6);
+        let refund = Math.floor((def?.price ?? 0) * 0.6);
+        for (const { piece } of heldChildren) {
+          const kd = furnitureById[piece.defId];
+          refund += Math.floor((kd?.price ?? 0) * 0.6);
+        }
         state.money += refund;
         heldFurniture = null;
+        heldChildren = [];
         Audio.sfx("sell");
         state.showToast(`Sold ${def?.name ?? "item"} for $${refund}`);
         catalog.rebuild();
@@ -2791,25 +3080,46 @@ export function createWorldScreen(
     // Furniture tool: place held / pick up existing / buy new
     if (heldFurniture) {
       const defId = heldFurniture.defId;
+      const placeDef = furnitureById[defId];
       if (!canPlace(defId, tx, ty, placeRot, { free: true })) {
         Audio.sfx("deny");
-        state.showToast("Doesn't fit there - try R to rotate.");
+        state.showToast(
+          placeDef?.placeOnSurface
+            ? "Needs a free spot on a counter or table."
+            : "Doesn't fit there - try R to rotate.",
+        );
         return;
       }
+      const host = placeDef?.placeOnSurface
+        ? surfaceHostAt(tx, ty, "home")
+        : undefined;
       const placed: PlacedFurniture = {
         ...heldFurniture,
         tx,
         ty,
         rot: placeRot,
         lotId: "home",
+        parentUid: host?.uid,
       };
+      const kids = heldChildren;
       heldFurniture = null;
+      heldChildren = [];
       state.furniture.push(placed);
       spawnFurniture(placed);
+      for (const { piece, dx, dy } of kids) {
+        const child: PlacedFurniture = {
+          ...piece,
+          tx: tx + dx,
+          ty: ty + dy,
+          lotId: "home",
+          parentUid: placed.uid,
+        };
+        state.furniture.push(child);
+        spawnFurniture(child);
+      }
       rebuildCollision();
       Audio.sfx("place");
-      const def = furnitureById[defId];
-      state.showToast(`Placed ${def?.name ?? "item"}`);
+      state.showToast(`Placed ${placeDef?.name ?? "item"}`);
       catalog.rebuild();
       if (state.hasPetSetup()) quests.emit("pet_setup");
       return;
@@ -2840,12 +3150,19 @@ export function createWorldScreen(
     if (!canPlace(defId, tx, ty, placeRot)) {
       Audio.sfx("deny");
       state.showToast(
-        state.money < def.price ? "Not enough money." : "Doesn't fit - try R.",
+        state.money < def.price
+          ? "Not enough money."
+          : def.placeOnSurface
+            ? "Needs a free spot on a counter or table."
+            : "Doesn't fit - try R.",
       );
       return;
     }
     const unlockBefore = completedUnlockTaskIds(state);
     state.money -= def.price;
+    const host = def.placeOnSurface
+      ? surfaceHostAt(tx, ty, "home")
+      : undefined;
     const placed: PlacedFurniture = {
       uid: `f_${uidCounter++}`,
       defId,
@@ -2853,6 +3170,7 @@ export function createWorldScreen(
       ty,
       lotId: "home",
       rot: placeRot,
+      parentUid: host?.uid,
     };
     state.furniture.push(placed);
     spawnFurniture(placed);
@@ -2860,7 +3178,7 @@ export function createWorldScreen(
     Audio.sfx("place");
     if (hasTrait(state.playerTraits, "Creative")) {
       state.needs = applyNeedDeltas(state.needs, { fun: 4 });
-      state.showToast(`Placed ${def.name} — Creative spark!`);
+      state.showToast(`Placed ${def.name} - Creative spark!`);
     } else {
       state.showToast(`Placed ${def.name}`);
     }
@@ -2876,6 +3194,9 @@ export function createWorldScreen(
     if (menu.containsPoint(cx, cy)) return true;
     if (catalog.containsPoint(cx, cy)) return true;
     if (hud.containsHudCluster(cx, cy)) return true;
+    if (tvViewer?.isOpen()) return true;
+    if (workMini?.isOpen()) return true;
+    if (playMini?.isOpen()) return true;
     return false;
   };
 
@@ -3052,7 +3373,12 @@ export function createWorldScreen(
     }
 
     const ok = canPlace(defId, tx, ty, placeRot, { free: !!heldFurniture });
-    buildFeedback.showFurniturePlace(defId, tx, ty, placeRot, ok);
+    let surfaceY = 0;
+    if (furnitureById[defId]?.placeOnSurface) {
+      const host = surfaceHostAt(tx, ty, "home");
+      if (host) surfaceY = surfaceHeightFor(host.defId);
+    }
+    buildFeedback.showFurniturePlace(defId, tx, ty, placeRot, ok, surfaceY);
   };
 
   const finishWakeIntro = () => {
@@ -3085,6 +3411,50 @@ export function createWorldScreen(
     Audio.sfx("ui");
   };
 
+  const WAKE_THOUGHTS = [
+    {
+      kind: "text" as const,
+      text: "First morning in my own place… still doesn't feel like mine yet.",
+    },
+    {
+      kind: "text" as const,
+      text: "I've got a TV… and nowhere to sit for it. Classic.",
+    },
+    {
+      kind: "sofa" as const,
+      text: "A sunny sofa would look perfect…",
+    },
+  ];
+
+  const showWakeThought = (step: number) => {
+    const beat = WAKE_THOUGHTS[step - 1];
+    if (!beat) return;
+    introThinkStep = step;
+    introPhase = "think";
+    introAdvanceAt = performance.now() + 350;
+    if (beat.kind === "sofa") thoughtBubble.showSofa(beat.text);
+    else thoughtBubble.showText(beat.text, 0);
+  };
+
+  const advanceWakeThought = () => {
+    if (!introActive || introPhase !== "think") return;
+    if (performance.now() < introAdvanceAt) return;
+
+    if (introThinkStep < WAKE_THOUGHTS.length) {
+      showWakeThought(introThinkStep + 1);
+      Audio.sfx("ui");
+      return;
+    }
+
+    // Last thought acknowledged - hop out of bed, then speak.
+    if (!introBounced) {
+      introBounced = true;
+      introPhase = "bounce";
+      introPostBounceT = 0;
+      bounceOutOfBed();
+    }
+  };
+
   const beginWakeSpeech = () => {
     thoughtBubble.hide();
     dialogue.setOnClosed(() => {
@@ -3094,10 +3464,16 @@ export function createWorldScreen(
         if (!menu.isOpen()) releaseEngagedNpc();
       });
     });
+    const name = state.playerName;
     state.showDialogue(
       "player",
-      state.playerName,
-      "I need to furnish my house. I need money for that though — let's see who's hiring.",
+      name,
+      "If I'm going to call this home, I need furniture - starting with somewhere to actually sit.",
+    );
+    state.showDialogue(
+      "player",
+      name,
+      "Furniture costs money, though. Let's see who's hiring.",
     );
   };
 
@@ -3105,7 +3481,9 @@ export function createWorldScreen(
     introActive = true;
     introPhase = "lie";
     introT = 0;
-    introThinkShown = false;
+    introThinkStep = 0;
+    introAdvanceAt = 0;
+    introPostBounceT = 0;
     introBounced = false;
     introSpoke = false;
     player.setPose("lie");
@@ -3117,6 +3495,20 @@ export function createWorldScreen(
   /** Advance wake cutscene from real frame time (not wall-clock timeouts). */
   const tickWakeIntro = (dt: number) => {
     if (!introActive || introPhase === "done" || introPhase === "speak") return;
+
+    // Thought beats wait for click / Space - don't auto-advance.
+    if (introPhase === "think") return;
+
+    if (introPhase === "bounce") {
+      introPostBounceT += dt;
+      if (introPostBounceT >= 1.35 && !introSpoke) {
+        introSpoke = true;
+        introPhase = "speak";
+        beginWakeSpeech();
+      }
+      return;
+    }
+
     introT += dt;
 
     if (introT >= 0.9 && introPhase === "lie") {
@@ -3131,22 +3523,17 @@ export function createWorldScreen(
       introPhase = "yawn";
       player.playYawn();
     }
-    if (introT >= 3.4 && !introThinkShown) {
-      introThinkShown = true;
-      introPhase = "think";
-      thoughtBubble.showSofa("A sunny sofa would look perfect…");
+    // First thought appears after the yawn; further beats are click-to-advance.
+    if (introT >= 3.4 && introThinkStep < 1) {
+      showWakeThought(1);
     }
-    // Keep the sofa thought up ~2.4s so zoom + caption are readable.
-    if (introT >= 5.8 && !introBounced) {
-      introBounced = true;
-      introPhase = "bounce";
-      bounceOutOfBed();
-    }
-    if (introT >= 7.2 && !introSpoke) {
-      introSpoke = true;
-      introPhase = "speak";
-      beginWakeSpeech();
-    }
+  };
+
+  const onIntroAdvancePointer = (e: PointerEvent) => {
+    if (!introActive || introPhase !== "think") return;
+    const t = e.target as Element | null;
+    if (t?.closest?.(".ll-mute, .ll-dialogue-wrap")) return;
+    advanceWakeThought();
   };
 
   return {
@@ -3164,7 +3551,7 @@ export function createWorldScreen(
 
       player = createActor(state.playerLook);
       if (!isContinue) {
-        // Wake on the starter bed (collision blocks bed tiles — skip nearestWalkable).
+        // Wake on the starter bed (collision blocks bed tiles - skip nearestWalkable).
         const home = LOTS.find((l) => l.id === "home")!;
         const bedTx = home.tx + 2;
         const bedTy = home.ty + 1;
@@ -3201,8 +3588,9 @@ export function createWorldScreen(
         ...NPCS.map((def) => {
           const actor = createNpcActor(def.color);
           actor.root.userData.npcId = def.id;
-          const x = def.spawnTx * TILE + TILE / 2;
-          const z = def.spawnTy * TILE + TILE / 2;
+          const stand = snapNpcStand(def.spawnTx, def.spawnTy);
+          const x = stand.x * TILE + TILE / 2;
+          const z = stand.y * TILE + TILE / 2;
           actor.setPosition(x, z);
           app.renderer.add(actor.root);
           return {
@@ -3216,8 +3604,9 @@ export function createWorldScreen(
         ...AMBIENT_NPCS.map((def) => {
           const actor = createActor(def.look);
           actor.root.userData.npcId = def.id;
-          const x = def.spawnTx * TILE + TILE / 2;
-          const z = def.spawnTy * TILE + TILE / 2;
+          const stand = snapNpcStand(def.spawnTx, def.spawnTy);
+          const x = stand.x * TILE + TILE / 2;
+          const z = stand.y * TILE + TILE / 2;
           actor.setPosition(x, z);
           actor.setFacing(def.facing);
           actor.setWalking(false);
@@ -3250,8 +3639,23 @@ export function createWorldScreen(
       thoughtBubble = new ThoughtBubble(ui);
       hintArrow = new HintArrow(ui);
       timeMontage = new TimeMontage(ui);
+      confetti = new ConfettiBurst(ui);
+      payCelebration = new PayCelebration(ui);
+      wetTrail = new WetTrail(
+        (o) => app.renderer.add(o),
+        (o) => app.renderer.remove(o),
+        (x, z) => {
+          const lot = lotAtTile(Math.floor(x / TILE), Math.floor(z / TILE));
+          // Building lots have a floor plinth (top ≈ y=2); parks are outdoor turf.
+          if (lot && lot.id !== "park" && lot.id !== "playpark") {
+            return WET_TRAIL_INDOOR_Y;
+          }
+          return WET_TRAIL_OUTDOOR_Y;
+        },
+      );
       workMini = new WorkMinigame(ui);
       playMini = new PlayMinigame(ui);
+      tvViewer = new TvViewer(ui);
       menu = new InteractionMenu(ui);
       menu.setPlayerLook(state.playerLook);
       menu.setOnDismiss(() => {
@@ -3280,6 +3684,7 @@ export function createWorldScreen(
       lastDialogueSeq = state.dialogueSeq;
 
       app.canvas.addEventListener("pointerdown", onPointerDown);
+      window.addEventListener("pointerdown", onIntroAdvancePointer, true);
 
       onPointerMove = (e: PointerEvent) => {
         if (state.mode !== "build") {
@@ -3346,8 +3751,9 @@ export function createWorldScreen(
       });
 
       onWheel = (e: WheelEvent) => {
-        // Always eat the gesture while the world is up so Chrome can't page-zoom.
-        if (e.ctrlKey || e.metaKey) e.preventDefault();
+        // Eat pinch gestures over the stage so Chrome can't page-zoom.
+        // Camera zoom is cinematic-only - no manual pinch / scroll zoom.
+        if (!(e.ctrlKey || e.metaKey)) return;
 
         const stage = document.getElementById("stage");
         const overStage = !!stage && (() => {
@@ -3361,19 +3767,8 @@ export function createWorldScreen(
         })();
         if (!overStage) return;
 
-        if (menu.isOpen()) return;
-        if (catalog.containsPoint(e.clientX, e.clientY)) return;
-        if (hud.containsHudCluster(e.clientX, e.clientY)) return;
-        if (dialogue?.isOpen()) return;
-
         e.preventDefault();
-        // Pinch only - plain scroll must never zoom (causes walk-time wobble).
-        if (e.ctrlKey || e.metaKey) {
-          app.renderer.zoomByWheel(e.deltaY, true);
-        }
       };
-      // Listen on window so pinch works even when the pointer is over
-      // pointer-events UI layers that sit above the canvas.
       window.addEventListener("wheel", onWheel, { passive: false, capture: true });
 
       app.renderer.setZoom(1);
@@ -3389,6 +3784,7 @@ export function createWorldScreen(
     unmount() {
       introActive = false;
       app.canvas.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerdown", onIntroAdvancePointer, true);
       if (onPointerMove)
         app.canvas.removeEventListener("pointermove", onPointerMove);
       if (onWheel) app.canvas.removeEventListener("wheel", onWheel);
@@ -3403,6 +3799,11 @@ export function createWorldScreen(
       timeMontage?.destroy();
       workMini?.destroy();
       playMini?.destroy();
+      tvViewer?.destroy();
+      confetti?.destroy();
+      payCelebration?.destroy();
+      wetTrail?.dispose();
+      wetTrail = null;
       hoveredNpcId = null;
       menu?.destroy();
       catalog?.destroy();
@@ -3426,6 +3827,7 @@ export function createWorldScreen(
       app.renderer.setGhost(null);
       app.renderer.setGridVisible(false);
       app.renderer.setZoom(1);
+      wasFocusZoom = false;
     },
 
     update(dt: number) {
@@ -3433,7 +3835,8 @@ export function createWorldScreen(
         introActive ||
         !!timeMontage?.isPlaying() ||
         !!workMini?.isOpen() ||
-        !!playMini?.isOpen();
+        !!playMini?.isOpen() ||
+        !!tvViewer?.isOpen();
       if (!freezeClock) {
         state.dayTime = (state.dayTime + dt / (14 * 60)) % 1;
       }
@@ -3456,6 +3859,7 @@ export function createWorldScreen(
             () => {
               player.playBlush();
               wetFaceUntil = performance.now() + 3200;
+              wetTrail?.splash(playerX, playerZ);
               Audio.sfx("deny");
             },
           );
@@ -3476,6 +3880,7 @@ export function createWorldScreen(
         !timeMontage?.isPlaying() &&
         !workMini?.isOpen() &&
         !playMini?.isOpen() &&
+        !tvViewer?.isOpen() &&
         justPressed("KeyE") &&
         !dialogue.isOpen()
       ) {
@@ -3488,6 +3893,7 @@ export function createWorldScreen(
         !timeMontage?.isPlaying() &&
         !workMini?.isOpen() &&
         !playMini?.isOpen() &&
+        !tvViewer?.isOpen() &&
         justPressed("KeyB") &&
         !dialogue.isOpen()
       ) {
@@ -3519,14 +3925,13 @@ export function createWorldScreen(
           state.showToast("Pick up furniture or a catalog item to rotate");
         }
       }
-      if (justPressed("Equal") || justPressed("NumpadAdd")) {
-        app.renderer.adjustZoom(1.12);
-      }
-      if (justPressed("Minus") || justPressed("NumpadSubtract")) {
-        app.renderer.adjustZoom(1 / 1.12);
-      }
-      if (justPressed("Digit0") || justPressed("Numpad0")) {
-        app.renderer.setZoom(1);
+      // Wake thoughts: click / Space / Enter to advance (dialogue handles its own keys).
+      if (
+        introActive &&
+        introPhase === "think" &&
+        (justPressed("Space") || justPressed("Enter"))
+      ) {
+        advanceWakeThought();
       }
       // Space / Enter / Esc for dialogue are handled inside DialogueBox
       if (!introActive && justPressed("Escape") && !dialogue.isOpen()) {
@@ -3558,6 +3963,7 @@ export function createWorldScreen(
         !timeMontage?.isPlaying() &&
         !workMini?.isOpen() &&
         !playMini?.isOpen() &&
+        !tvViewer?.isOpen() &&
         state.mode === "live" &&
         !state.isBusy() &&
         !menu.isOpen() &&
@@ -3631,6 +4037,7 @@ export function createWorldScreen(
       player.update(dt);
       state.playerX = playerX;
       state.playerY = playerZ;
+      wetTrail?.update(dt, playerX, playerZ, state.isWet);
 
       // NPCs
       const now = performance.now();
@@ -3671,7 +4078,8 @@ export function createWorldScreen(
             x: lot.tx + 1 + Math.floor(Math.random() * (lot.tw - 2)),
             y: lot.ty + 1 + Math.floor(Math.random() * (lot.th - 2)),
           };
-          const walkable = nearestWalkable(collision, goal, MAP_W, MAP_H, 3);
+          const standBlocked = npcStandBlocked();
+          const walkable = nearestWalkable(standBlocked, goal, MAP_W, MAP_H, 3);
           if (!walkable) continue;
           const p = npc.actor.getPosition();
           npc.path = findPathToAny(
@@ -3740,21 +4148,28 @@ export function createWorldScreen(
       {
         const nowFocus = performance.now();
         const wetFace = nowFocus < wetFaceUntil;
+        // Build mode needs a steady wide view for placement - no cinematic lean-in.
         const wantFocus =
-          wetFace ||
-          !!thoughtBubble?.isVisible() ||
-          dialogue.isOpen() ||
-          menu.isOpen() ||
-          !!workMini?.isOpen() ||
-          !!playMini?.isOpen() ||
-          morningBeatActive ||
-          !!engagedNpcId ||
-          (introActive &&
-            (introPhase === "think" ||
-              introPhase === "bounce" ||
-              introPhase === "speak"));
+          state.mode !== "build" &&
+          (wetFace ||
+            !!thoughtBubble?.isVisible() ||
+            dialogue.isOpen() ||
+            menu.isOpen() ||
+            !!workMini?.isOpen() ||
+            !!playMini?.isOpen() ||
+            !!tvViewer?.isOpen() ||
+            morningBeatActive ||
+            !!engagedNpcId ||
+            (introActive &&
+              (introPhase === "think" ||
+                introPhase === "bounce" ||
+                introPhase === "speak")));
         if (wantFocus) focusHoldUntil = nowFocus + 450;
         const focus = wantFocus || nowFocus < focusHoldUntil;
+        if (focus !== wasFocusZoom) {
+          Audio.sfx(focus ? "zoom_in" : "zoom_out");
+          wasFocusZoom = focus;
+        }
         if (focus) {
           if (wetFace) {
             app.renderer.beginFocusZoom(
@@ -3769,6 +4184,16 @@ export function createWorldScreen(
       }
 
       app.renderer.update(dt, playerX, playerZ);
+
+      {
+        const indoors = app.renderer.isIndoors();
+        if (indoorSfxReady && indoors !== wasIndoors) {
+          // Skip SFX if cinematic focus already whooshed this frame.
+          if (!wasFocusZoom) Audio.sfx(indoors ? "zoom_in" : "zoom_out");
+        }
+        wasIndoors = indoors;
+        indoorSfxReady = true;
+      }
 
       dialogue.setPlayerLook(state.playerLook);
       dialogue.update(dt);

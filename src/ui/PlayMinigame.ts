@@ -2,17 +2,30 @@
  * Playground mini-games: swing pump rhythm + slide chute timing.
  */
 
+import { Audio } from "../audio/AudioManager";
+
 export type PlayMiniKind = "swing" | "slide";
 export type PlayMiniGrade = "perfect" | "ok" | "miss";
+
+const RESULT_HOLD_MS = 950;
+const GRADE_LABEL: Record<PlayMiniGrade, string> = {
+  perfect: "PERFECT!",
+  ok: "WHEE!",
+  miss: "OOF…",
+};
 
 export class PlayMinigame {
   private root: HTMLElement;
   private titleEl: HTMLElement;
   private stage: HTMLElement;
   private hintEl: HTMLElement;
+  private resultEl: HTMLElement;
+  private resultGradeEl: HTMLElement;
   private open = false;
   private kind: PlayMiniKind = "swing";
   private onDone: ((grade: PlayMiniGrade) => void) | null = null;
+  /** Fires as soon as the grade is known (during the result flash). */
+  private onGrade: ((grade: PlayMiniGrade) => void) | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private pointerDown: ((e: PointerEvent) => void) | null = null;
   private raf = 0;
@@ -20,7 +33,7 @@ export class PlayMinigame {
   private bornMs = 0;
   private resolved = false;
 
-  // swing — pendulum pump rhythm
+  // swing - pendulum pump rhythm
   private angle = 0;
   private angVel = 1.85;
   private height = 0.12;
@@ -30,13 +43,14 @@ export class PlayMinigame {
   private cooldownUntil = 0;
   private beatHalf = 0.14;
 
-  // slide — one-shot chute timing
+  // slide - one-shot chute timing
   private marker = 0;
   private dir = 1;
   private speed = 1.35;
   private zoneCenter = 0.72;
   private zoneHalf = 0.08;
   private slideDone = false;
+  private enterTimer = 0;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement("div");
@@ -44,14 +58,23 @@ export class PlayMinigame {
     this.root.hidden = true;
     this.root.innerHTML = `
       <div class="ll-play-mini-card">
+        <p class="ll-play-mini-kicker">Playtime</p>
         <p class="ll-play-mini-title"></p>
         <div class="ll-play-mini-stage"></div>
         <p class="ll-play-mini-hint"></p>
+        <div class="ll-mini-result" hidden>
+          <span class="ll-mini-result-burst" aria-hidden="true"></span>
+          <span class="ll-mini-result-grade"></span>
+        </div>
       </div>
     `;
     this.titleEl = this.root.querySelector(".ll-play-mini-title") as HTMLElement;
     this.stage = this.root.querySelector(".ll-play-mini-stage") as HTMLElement;
     this.hintEl = this.root.querySelector(".ll-play-mini-hint") as HTMLElement;
+    this.resultEl = this.root.querySelector(".ll-mini-result") as HTMLElement;
+    this.resultGradeEl = this.root.querySelector(
+      ".ll-mini-result-grade",
+    ) as HTMLElement;
     parent.appendChild(this.root);
   }
 
@@ -59,10 +82,16 @@ export class PlayMinigame {
     return this.open;
   }
 
-  play(kind: PlayMiniKind, label: string, onDone: (grade: PlayMiniGrade) => void) {
+  play(
+    kind: PlayMiniKind,
+    label: string,
+    onDone: (grade: PlayMiniGrade) => void,
+    onGrade?: (grade: PlayMiniGrade) => void,
+  ) {
     this.close();
     this.kind = kind;
     this.onDone = onDone;
+    this.onGrade = onGrade ?? null;
     this.open = true;
     this.resolved = false;
     this.lastMs = performance.now();
@@ -82,12 +111,30 @@ export class PlayMinigame {
     this.zoneHalf = 0.075;
     this.slideDone = false;
     this.titleEl.textContent = label;
+    this.resultEl.hidden = true;
+    this.resultEl.classList.remove("is-perfect", "is-ok", "is-miss");
     this.root.hidden = false;
-    this.root.classList.remove("is-out", "is-perfect", "is-ok", "is-miss");
+    this.root.classList.remove(
+      "is-out",
+      "is-open",
+      "is-in",
+      "is-enter",
+      "is-perfect",
+      "is-ok",
+      "is-miss",
+      "is-hit",
+      "is-perfect-hit",
+    );
     void this.root.offsetWidth;
-    this.root.classList.add("is-in");
+    this.root.classList.add("is-open", "is-in", "is-enter");
+    if (this.enterTimer) window.clearTimeout(this.enterTimer);
+    this.enterTimer = window.setTimeout(() => {
+      this.enterTimer = 0;
+      this.root.classList.remove("is-in", "is-enter");
+    }, 450);
     this.buildStage();
     this.bindInput();
+    Audio.sfx("mini_start");
     this.raf = requestAnimationFrame(this.frame);
   }
 
@@ -98,7 +145,7 @@ export class PlayMinigame {
 
   private buildStage() {
     if (this.kind === "swing") {
-      this.hintEl.textContent = "Tap on the beat to pump higher — Space / click";
+      this.hintEl.textContent = "Tap on the beat to pump higher · Space / click";
       this.stage.innerHTML = `
         <div class="ll-play-swing">
           <div class="ll-play-swing-meter">
@@ -109,21 +156,25 @@ export class PlayMinigame {
               <span class="ll-play-swing-zone is-left"></span>
               <span class="ll-play-swing-zone is-right"></span>
               <span class="ll-play-swing-bob"></span>
+              <span class="ll-mini-hit-ring" aria-hidden="true"></span>
             </div>
           </div>
           <div class="ll-play-swing-count">
-            <span class="ll-play-swing-n">0</span>/${this.pumpsNeeded}
+            <span class="ll-play-swing-n">0</span>
+            <span class="ll-play-swing-slash">/</span>
+            ${this.pumpsNeeded}
           </div>
         </div>
       `;
       this.layoutSwing();
     } else {
-      this.hintEl.textContent = "Hit the green whoosh zone — Space / click";
+      this.hintEl.textContent = "Hit the green whoosh zone · Space / click";
       this.stage.innerHTML = `
         <div class="ll-play-slide">
           <div class="ll-play-slide-chute">
             <span class="ll-play-slide-zone"></span>
             <span class="ll-play-slide-marker"></span>
+            <span class="ll-mini-hit-ring" aria-hidden="true"></span>
           </div>
           <div class="ll-play-slide-label">WHOOSH</div>
         </div>
@@ -170,6 +221,21 @@ export class PlayMinigame {
       zone.style.width = `${this.zoneHalf * 2 * 100}%`;
     }
     if (marker) marker.style.left = `${this.marker * 100}%`;
+  }
+
+  private pulseHit(perfect: boolean) {
+    this.root.classList.remove("is-hit", "is-perfect-hit");
+    void this.root.offsetWidth;
+    this.root.classList.add(perfect ? "is-perfect-hit" : "is-hit");
+    const ring = this.stage.querySelector(".ll-mini-hit-ring");
+    if (ring) {
+      ring.classList.remove("is-pop");
+      void (ring as HTMLElement).offsetWidth;
+      ring.classList.add("is-pop");
+    }
+    window.setTimeout(() => {
+      this.root.classList.remove("is-hit", "is-perfect-hit");
+    }, 280);
   }
 
   private bindInput() {
@@ -219,16 +285,21 @@ export class PlayMinigame {
     if (score >= 0.9) {
       this.height = Math.min(1, this.height + 0.18);
       this.angVel = Math.min(2.6, this.angVel + 0.12);
-      this.hintEl.textContent = "Whoosh — higher!";
+      this.hintEl.textContent = "Whoosh - higher!";
+      Audio.sfx("mini_perfect");
+      this.pulseHit(true);
     } else if (score >= 0.5) {
       this.height = Math.min(1, this.height + 0.1);
       this.angVel = Math.min(2.4, this.angVel + 0.06);
       this.hintEl.textContent = "Nice pump!";
+      Audio.sfx("mini_hit");
+      this.pulseHit(false);
     } else {
       this.height = Math.max(0.08, this.height - 0.04);
-      this.hintEl.textContent = "Off-beat — wait for the ends!";
+      this.hintEl.textContent = "Off-beat - wait for the ends!";
+      Audio.sfx("mini_miss");
       this.root.classList.add("is-shake");
-      window.setTimeout(() => this.root.classList.remove("is-shake"), 180);
+      window.setTimeout(() => this.root.classList.remove("is-shake"), 220);
     }
 
     const n = this.stage.querySelector(".ll-play-swing-n");
@@ -256,6 +327,12 @@ export class PlayMinigame {
     if (dist <= this.zoneHalf * 0.7) grade = "perfect";
     else if (dist <= this.zoneHalf * 1.55) grade = "ok";
     else grade = "miss";
+    if (grade === "perfect") this.pulseHit(true);
+    else if (grade === "ok") this.pulseHit(false);
+    else {
+      this.root.classList.add("is-shake");
+      window.setTimeout(() => this.root.classList.remove("is-shake"), 220);
+    }
     this.resolve(grade);
   }
 
@@ -317,22 +394,41 @@ export class PlayMinigame {
           ? this.kind === "swing"
             ? "Good height!"
             : "Whee!"
-          : "Oof — dusty knees.";
+          : "Oof - dusty knees.";
     this.root.classList.add(`is-${grade}`);
+    this.resultGradeEl.textContent = GRADE_LABEL[grade];
+    this.resultEl.classList.add(`is-${grade}`);
+    this.resultEl.hidden = false;
+    if (grade === "perfect") Audio.sfx("mini_win");
+    else if (grade === "ok") Audio.sfx("mini_ok");
+    else Audio.sfx("mini_miss");
+    this.onGrade?.(grade);
     const done = this.onDone;
     window.setTimeout(() => {
       this.close();
       done?.(grade);
-    }, 480);
+    }, RESULT_HOLD_MS);
   }
 
   private close() {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
+    if (this.enterTimer) {
+      window.clearTimeout(this.enterTimer);
+      this.enterTimer = 0;
+    }
     this.unbindInput();
     this.open = false;
     this.onDone = null;
-    this.root.classList.remove("is-in", "is-shake");
+    this.onGrade = null;
+    this.root.classList.remove(
+      "is-open",
+      "is-in",
+      "is-enter",
+      "is-shake",
+      "is-hit",
+      "is-perfect-hit",
+    );
     this.root.classList.add("is-out");
     this.root.hidden = true;
   }

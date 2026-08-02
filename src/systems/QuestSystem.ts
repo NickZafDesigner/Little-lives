@@ -11,9 +11,13 @@ import {
 } from "./unlockProgress";
 
 export interface QuestTrackerInfo {
+  questId: string;
   title: string;
   objective: string;
   side?: boolean;
+  /** Step progress when the active step has a count > 1. */
+  have?: number;
+  need?: number;
 }
 
 /**
@@ -105,7 +109,14 @@ export class QuestSystem {
       if (incomplete.length > 1 && def.id === "settled_in") {
         objective = incomplete.map((s) => s.objectiveLabel).join(" · ");
       }
-      return { title: def.title, objective, side: def.side };
+      return {
+        questId: def.id,
+        title: def.title,
+        objective,
+        side: def.side,
+        have: need > 1 ? have : undefined,
+        need: need > 1 ? need : undefined,
+      };
     }
     return null;
   }

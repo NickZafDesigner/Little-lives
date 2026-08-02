@@ -35,6 +35,10 @@ export interface TownMapData {
   /** Decorative world props placed on top of grass (not tile codes). */
   rocks: Array<[number, number]>;
   fencePosts: Array<[number, number]>;
+  /** Explicit canopy trees (2×2 footprint; always rendered). */
+  trees: Array<[number, number]>;
+  /** Path / plaza lamps. */
+  lamps: Array<[number, number]>;
 }
 
 function fillRect(
@@ -143,8 +147,8 @@ export function createTownMap(): TownMapData {
   fillRect(ground, 2, 16, 2, 28, Tile.path);
   // South of park / between café & shelter.
   fillRect(ground, 20, 30, 30, 2, Tile.path);
-  // Park west entrance from spine.
-  fillRect(ground, 22, 20, 2, 2, Tile.path);
+  // Park west entrance from spine (widened into the ring below).
+  fillRect(ground, 22, 20, 4, 2, Tile.path);
   // Café / shelter / library frontage.
   fillRect(ground, 2, 44, 90, 2, Tile.path);
   // Connector east to library/market gap.
@@ -225,19 +229,24 @@ export function createTownMap(): TownMapData {
   clearInterior(collision, market.tx, market.ty, market.tw, market.th);
 
   const park = LOTS.find((l) => l.id === "park")!;
-  fillRect(ground, park.tx + 2, park.ty + 7, 16, 2, Tile.parkPath);
-  fillRect(ground, park.tx + 9, park.ty + 2, 2, 10, Tile.parkPath);
-  fillRect(ground, park.tx + 2, park.ty + 2, 2, 2, Tile.parkPath);
-  fillRect(ground, park.tx + 16, park.ty + 2, 2, 2, Tile.parkPath);
-  fillRect(ground, park.tx + 2, park.ty + 10, 2, 2, Tile.parkPath);
-  fillRect(ground, park.tx + 16, park.ty + 10, 2, 2, Tile.parkPath);
-  fillRect(ground, park.tx + 7, park.ty + 5, 6, 3, Tile.water);
-  fillRect(ground, park.tx + 6, park.ty + 6, 8, 1, Tile.sand);
-  for (let y = park.ty + 5; y < park.ty + 8; y++) {
+  // Formal ring plaza: outer walk frame, cardinal spurs, centered pond.
+  fillRect(ground, park.tx + 2, park.ty + 2, 16, 2, Tile.parkPath); // north walk
+  fillRect(ground, park.tx + 2, park.ty + 10, 16, 2, Tile.parkPath); // south walk
+  fillRect(ground, park.tx + 2, park.ty + 2, 2, 10, Tile.parkPath); // west walk
+  fillRect(ground, park.tx + 16, park.ty + 2, 2, 10, Tile.parkPath); // east walk
+  // Spurs from the west/east walks in toward the sand rim.
+  fillRect(ground, park.tx + 4, park.ty + 6, 2, 2, Tile.parkPath); // west spur
+  fillRect(ground, park.tx + 14, park.ty + 6, 2, 2, Tile.parkPath); // east spur
+  // Pond + sand beach rim (sand first, water on top).
+  // N/S sand already butts the ring walks, so no extra spurs needed there.
+  fillRect(ground, park.tx + 6, park.ty + 4, 8, 6, Tile.sand);
+  fillRect(ground, park.tx + 7, park.ty + 5, 6, 4, Tile.water);
+  for (let y = park.ty + 5; y < park.ty + 9; y++) {
     for (let x = park.tx + 7; x < park.tx + 13; x++) collision[y][x] = true;
   }
+  // West street approach already painted with the park ring above.
 
-  // Playpark south of Town Park — mulch paths + spur from the park road.
+  // Playpark south of Town Park - mulch paths + spur from the park road.
   const playpark = LOTS.find((l) => l.id === "playpark")!;
   fillRect(
     ground,
@@ -331,7 +340,7 @@ export function createTownMap(): TownMapData {
   );
   clearInterior(collision, clinic.tx, clinic.ty, clinic.tw, clinic.th);
 
-  // South beach strip — sand above deep water, walkable promenade.
+  // South beach strip - sand above deep water, walkable promenade.
   fillRect(ground, 2, 62, 92, 4, Tile.sand);
   fillRect(ground, 2, 65, 92, 2, Tile.water);
   for (let x = 2; x < 94; x++) {
@@ -384,23 +393,23 @@ export function createTownMap(): TownMapData {
   };
 
   const decorSpots: Array<[number, number]> = [
-    // Park flower beds
-    [28, 16],
-    [29, 16],
-    [38, 16],
-    [39, 16],
-    [28, 25],
-    [29, 25],
-    [38, 25],
-    [39, 25],
-    [26, 18],
-    [26, 22],
-    [41, 18],
-    [41, 22],
-    [32, 15],
-    [35, 15],
-    [32, 26],
-    [35, 26],
+    // Park lawn flower beds (inside the ring, beside the pond)
+    [28, 18],
+    [29, 18],
+    [38, 18],
+    [39, 18],
+    [28, 22],
+    [29, 22],
+    [38, 22],
+    [39, 22],
+    [28, 20],
+    [39, 20],
+    [30, 15],
+    [33, 15],
+    [36, 15],
+    [30, 26],
+    [33, 26],
+    [36, 26],
     // Home garden
     [6, 15],
     [12, 15],
@@ -456,15 +465,19 @@ export function createTownMap(): TownMapData {
   }
 
   const bushSpots: Array<[number, number]> = [
-    // Park hedge frame
+    // Park hedge corners (outside the ring)
     [25, 14],
     [28, 14],
-    [40, 14],
-    [43, 14],
+    [39, 14],
+    [42, 14],
     [25, 27],
-    [43, 27],
-    [25, 18],
-    [43, 20],
+    [28, 27],
+    [39, 27],
+    [42, 27],
+    [24, 18],
+    [24, 22],
+    [43, 18],
+    [43, 22],
     // Home & café yards
     [6, 14],
     [16, 14],
@@ -523,17 +536,17 @@ export function createTownMap(): TownMapData {
   };
 
   const rockCandidates: Array<[number, number]> = [
-    [31, 19],
-    [38, 19],
-    [30, 24],
-    [39, 24],
-    [34, 18],
-    [28, 20],
-    [42, 20],
+    // Pond rim accents
+    [30, 18],
+    [37, 18],
+    [30, 23],
+    [37, 23],
+    // Beach
     [14, 63],
     [36, 63],
     [58, 63],
     [80, 63],
+    // Scattered town rocks
     [22, 28],
     [46, 32],
     [70, 18],
@@ -550,18 +563,17 @@ export function createTownMap(): TownMapData {
   }
 
   const fenceCandidates: Array<[number, number]> = [
-    // Park south edge
+    // Park south edge (even spacing)
     [25, 28],
-    [28, 28],
-    [32, 28],
-    [36, 28],
-    [40, 28],
-    [43, 28],
-    // Park north
+    [29, 28],
+    [33, 28],
+    [37, 28],
+    [41, 28],
+    // Park north edge
     [25, 15],
-    [28, 15],
-    [40, 15],
-    [43, 15],
+    [29, 15],
+    [37, 15],
+    [41, 15],
     // Home side garden
     [18, 5],
     [18, 7],
@@ -591,7 +603,135 @@ export function createTownMap(): TownMapData {
     collision[y][x] = true;
   }
 
-  return { ground, collision, doors, rocks, fencePosts };
+  // Big canopy trees - each needs a clear 2×2 grass footprint.
+  const treeCandidates: Array<[number, number]> = [
+    // Park corners (outside the ring walks)
+    [24, 15],
+    [41, 15],
+    [24, 25],
+    [41, 25],
+    // Between home and park
+    [21, 8],
+    [36, 8],
+    // West lane / café block
+    [4, 22],
+    [4, 30],
+    [16, 30],
+    [16, 40],
+    // Neighbor & market yards
+    [48, 12],
+    [64, 12],
+    [88, 16],
+    [92, 8],
+    // Mid-east / shelter-library
+    [48, 34],
+    [64, 34],
+    [88, 40],
+    [92, 30],
+    // Clinic approach + beach fringe
+    [24, 50],
+    [38, 52],
+    [16, 56],
+    [64, 56],
+    [78, 56],
+    // North belt
+    [28, 4],
+    [48, 4],
+    [68, 4],
+    [84, 4],
+    // Playpark flanks
+    [24, 32],
+    [42, 32],
+  ];
+  const treeFootprintClear = (x: number, y: number) => {
+    for (let dy = 0; dy < 2; dy++) {
+      for (let dx = 0; dx < 2; dx++) {
+        const tx = x + dx;
+        const ty = y + dy;
+        const t = ground[ty]?.[tx];
+        const ok =
+          t === Tile.grass ||
+          t === Tile.grassVar ||
+          t === Tile.flower ||
+          t === Tile.bush;
+        if (!ok) return false;
+        if (rocks.some(([rx, ry]) => rx === tx && ry === ty)) return false;
+        if (fencePosts.some(([fx, fy]) => fx === tx && fy === ty)) return false;
+        if (trees.some(([sx, sy]) => tx >= sx && tx < sx + 2 && ty >= sy && ty < sy + 2)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  const trees: Array<[number, number]> = [];
+  for (const [x, y] of treeCandidates) {
+    if (!treeFootprintClear(x, y)) continue;
+    for (let dy = 0; dy < 2; dy++) {
+      for (let dx = 0; dx < 2; dx++) {
+        const tx = x + dx;
+        const ty = y + dy;
+        const t = ground[ty]?.[tx];
+        if (t === Tile.bush || t === Tile.flower) set(ground, tx, ty, Tile.grass);
+        collision[ty][tx] = true;
+      }
+    }
+    trees.push([x, y]);
+  }
+
+  // Lamps at path junctions and plaza entrances.
+  const lampCandidates: Array<[number, number]> = [
+    // Park ring corners
+    [26, 16],
+    [41, 16],
+    [26, 25],
+    [41, 25],
+    // Park west entrance
+    [24, 20],
+    // Street junctions
+    [20, 14],
+    [20, 30],
+    [20, 44],
+    [20, 60],
+    [50, 14],
+    [68, 14],
+    [90, 14],
+    [2, 44],
+    [50, 44],
+    [68, 44],
+    [90, 44],
+    [33, 60],
+    // Beach promenade
+    [20, 62],
+    [48, 62],
+    [72, 62],
+    // Playpark entrance
+    [33, 30],
+  ];
+  const lamps: Array<[number, number]> = [];
+  const canHostLamp = (x: number, y: number) => {
+    const t = ground[y]?.[x];
+    return (
+      t === Tile.path ||
+      t === Tile.parkPath ||
+      t === Tile.grass ||
+      t === Tile.grassVar ||
+      t === Tile.sand
+    );
+  };
+  for (const [x, y] of lampCandidates) {
+    if (!canHostLamp(x, y)) continue;
+    if (trees.some(([tx, ty]) => x >= tx && x < tx + 2 && y >= ty && y < ty + 2)) {
+      continue;
+    }
+    if (rocks.some(([rx, ry]) => rx === x && ry === y)) continue;
+    if (fencePosts.some(([fx, fy]) => fx === x && fy === y)) continue;
+    lamps.push([x, y]);
+    // Lamps sit on path edges - block the tile so you walk around them.
+    collision[y][x] = true;
+  }
+
+  return { ground, collision, doors, rocks, fencePosts, trees, lamps };
 }
 
 export const SOLID_TILES = new Set<number>([Tile.water, Tile.wall, Tile.bush]);

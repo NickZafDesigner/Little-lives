@@ -87,14 +87,14 @@ export const QUESTS: QuestDef[] = [
     id: "empty_nest",
     title: "Empty Nest",
     journalLine:
-      "I need to furnish my house. I need money for that though — let's see who's hiring.",
+      "If I want a real living room, I need furniture - and that means finding work.",
     autoStart: true,
     silentStart: true,
     steps: [
       {
         id: "realize",
         event: "game_started",
-        objectiveLabel: "Furnish the house — but first, find work",
+        objectiveLabel: "Furnish the house - but first, find work",
       },
     ],
   },
@@ -114,7 +114,7 @@ export const QUESTS: QuestDef[] = [
   {
     id: "first_paycheck",
     title: "First Paycheck",
-    journalLine: "I'm on the books! Shifts run 9 to 5 — better clock in.",
+    journalLine: "I'm on the books! Shifts run 9 to 5 - better clock in.",
     requires: ["get_a_job"],
     steps: [
       {
@@ -409,7 +409,9 @@ export const questById = Object.fromEntries(
   QUESTS.map((q) => [q.id, q]),
 ) as Record<string, QuestDef>;
 
-/** Work hours as dayTime fractions (9 AM - 5 PM). */
+/** Earliest clock-in (8:30 AM) - arrive early before official start. */
+export const WORK_OPEN = 8.5 / 24;
+/** Official shift start (9 AM). */
 export const WORK_START = 9 / 24;
 export const WORK_END = 17 / 24;
 /** Clock-in after this counts as late (9:15 AM). */

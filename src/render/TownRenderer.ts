@@ -56,7 +56,9 @@ export class TownRenderer {
   private hemi: THREE.HemisphereLight;
   private sun: THREE.DirectionalLight;
   private buildings: BuildingHandle[] = [];
-  private buildingsUpdate: ((dt: number) => void) | null = null;
+  private buildingsUpdate:
+    | ((dt: number, playerX: number, playerZ: number) => void)
+    | null = null;
   private signs: SignHandle[] = [];
   private follow = new THREE.Vector3();
   private followTarget = new THREE.Vector3();
@@ -67,12 +69,16 @@ export class TownRenderer {
   static readonly FRUSTUM_DEFAULT = 560;
   static readonly FRUSTUM_MIN = 240;
   static readonly FRUSTUM_MAX = 980;
+  /** Closer follow while the player is inside a building. */
+  static readonly FRUSTUM_INDOOR = 280;
   private frustumSize = TownRenderer.FRUSTUM_DEFAULT;
   private frustumTarget = TownRenderer.FRUSTUM_DEFAULT;
   /** Prior user frustum while a cinematic focus zoom is active. */
   private focusRestore: number | null = null;
   /** Higher = snappier; lowered briefly for thought close-ups. */
   private zoomDamp = 28;
+  /** True while the follow target is inside a building footprint. */
+  private indoors = false;
   /** Thought / dialogue close-up (below FRUSTUM_MIN). Soft enough to avoid hard cuts. */
   static readonly FRUSTUM_FOCUS = 260;
   /** Extra-tight face close-up (bladder accident / embarrassment). */
@@ -103,13 +109,13 @@ export class TownRenderer {
   private hoverTh = 0;
   private clock = 0;
   private worldBuilt = false;
-  // Low oblique — high Y made roofs read as flat lids on wide lots.
+  // Low oblique - high Y made roofs read as flat lids on wide lots.
   private camOffset = new THREE.Vector3(165, 185, 285);
   /** Locked orientation - lookAt is NOT called while the camera moves. */
   private camQuat = new THREE.Quaternion();
   private composer: EffectComposer;
   private gradePass: ShaderPass;
-  /** Sun offset from follow target — direction changes with time of day. */
+  /** Sun offset from follow target - direction changes with time of day. */
   private sunOffset = new THREE.Vector3(180, 380, 140);
 
   constructor(canvas: HTMLCanvasElement) {
@@ -126,6 +132,15 @@ export class TownRenderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
+    // Catalog tip previews used to spawn extra WebGL contexts; if the browser
+    // steals this one, cancel the loss so it can restore instead of staying blank.
+    canvas.addEventListener(
+      "webglcontextlost",
+      (e) => {
+        e.preventDefault();
+      },
+      false,
+    );
 
     this.scene = new THREE.Scene();
     // Fog must sit well past the visible frustum or the valley washes to sky.
@@ -248,11 +263,20 @@ export class TownRenderer {
     this.frameShiftXTarget = 0;
     this.frameShiftYTarget = 0;
     this.zoomDamp = 28;
+    // Indoor baseline re-applies on the next update from player position.
+    this.indoors = false;
   }
 
-  /** Multiply current zoom (e.g. 1.1 = 10% closer, 0.9 = 10% farther). */
-  adjustZoom(factor: number) {
-    this.setZoom(this.getZoom() * factor);
+  /** Baseline frustum for the current location (outdoor town vs indoors). */
+  private baseFrustum(): number {
+    return this.indoors
+      ? TownRenderer.FRUSTUM_INDOOR
+      : TownRenderer.FRUSTUM_DEFAULT;
+  }
+
+  /** True while the camera baseline is the indoor close follow. */
+  isIndoors(): boolean {
+    return this.indoors;
   }
 
   /**
@@ -265,7 +289,7 @@ export class TownRenderer {
     frameY = TownRenderer.FOCUS_FRAME_Y,
   ) {
     if (this.focusRestore === null) {
-      this.focusRestore = this.frustumTarget;
+      this.focusRestore = this.baseFrustum();
       this.frustumTarget = frustum;
       this.zoomDamp = 10;
     } else if (this.frustumTarget !== frustum) {
@@ -302,6 +326,11 @@ export class TownRenderer {
     );
   }
 
+  /** Multiply current zoom (e.g. 1.1 = 10% closer, 0.9 = 10% farther). */
+  adjustZoom(factor: number) {
+    this.setZoom(this.getZoom() * factor);
+  }
+
   /**
    * Wheel / trackpad pinch → zoom.
    * Only pinch (ctrl/meta + wheel) zooms - plain trackpad scroll is ignored
@@ -312,6 +341,23 @@ export class TownRenderer {
     const steps = THREE.MathUtils.clamp(deltaY, -400, 400) / 120;
     const base = 0.28;
     this.adjustZoom(Math.pow(base, steps));
+  }
+
+  /** Pull in on the character while indoors; ease back out on exit. */
+  private syncIndoorZoom(playerX: number, playerZ: number) {
+    const inside =
+      this.buildings.length > 0 &&
+      playerInsideBuilding(playerX, playerZ, this.buildings) !== null;
+    if (inside === this.indoors) return;
+    this.indoors = inside;
+    const base = this.baseFrustum();
+    if (this.focusRestore !== null) {
+      // Dialogue/thought close-up is active - come back to the new baseline.
+      this.focusRestore = base;
+    } else {
+      this.frustumTarget = base;
+      this.zoomDamp = 9;
+    }
   }
 
   private applyFrustum() {
@@ -650,6 +696,9 @@ export class TownRenderer {
     this.follow.set(playerX, 0, playerZ);
     this.followTarget.copy(this.follow);
 
+    // Indoor baseline before zoom easing so entry snaps the target this frame.
+    this.syncIndoorZoom(playerX, playerZ);
+
     // Smooth zoom toward target frustum (pinch / focus zoom)
     let frustumDirty = false;
     if (Math.abs(this.frustumSize - this.frustumTarget) > 0.05) {
@@ -703,13 +752,14 @@ export class TownRenderer {
     // Fade / lift the roof only when the player is inside - never hide the
     // whole shell based on camera XZ (that made cafés vanish on approach).
     if (this.buildings.length > 0) {
-      const inside = playerInsideBuilding(playerX, playerZ, this.buildings);
+      const insideLot = playerInsideBuilding(playerX, playerZ, this.buildings);
       for (const b of this.buildings) {
-        b.setRoofOpen(inside === b.lotId);
+        b.setRoofOpen(insideLot === b.lotId);
         b.group.visible = true;
       }
-      this.buildingsUpdate?.(dt);
+      this.buildingsUpdate?.(dt, playerX, playerZ);
     }
+
 
     // Move marker fade
     this.clock += dt;

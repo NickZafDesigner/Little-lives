@@ -1,11 +1,17 @@
+import { FurniturePreview } from "./FurniturePreview";
+
+/** Thought-bubble Sunny Sofa preview (same mesh as the build catalog). */
+const SOFA_PREVIEW_SIZE = 104;
+
 /**
  * Floating thought bubble above the player (world → screen projected).
- * Supports the wake-up sofa doodle and short text hints.
+ * Supports the wake-up sofa model preview and short text hints.
  */
 export class ThoughtBubble {
   private root: HTMLElement;
   private bubble: HTMLElement;
   private cloud: HTMLElement;
+  private preview = new FurniturePreview();
   private visible = false;
   private hideTimer: number | null = null;
   private zoomed = false;
@@ -41,40 +47,52 @@ export class ThoughtBubble {
   }
 
   /**
-   * Wake-intro yellow sofa doodle (+ optional caption).
-   * Caption keeps the beat readable under focus zoom.
+   * Wake-intro Sunny Sofa model (+ optional caption).
+   * Uses the same furniture mesh as the build-menu tooltip.
    */
   showSofa(caption = "A sunny sofa would look perfect…") {
     this.clearHideTimer();
+    this.preview.dispose();
     this.cloud.className = "ll-thought-cloud is-sofa";
     if (caption.trim()) {
       this.cloud.classList.add("is-captioned");
       this.cloud.innerHTML = `
-        <div class="ll-thought-sofa" aria-hidden="true"></div>
+        <div class="ll-thought-sofa-preview" aria-hidden="true"></div>
         <p class="ll-thought-caption">${escapeHtml(caption)}</p>
       `;
     } else {
-      this.cloud.innerHTML = `<div class="ll-thought-sofa" aria-label="Sunny sofa"></div>`;
+      this.cloud.innerHTML = `<div class="ll-thought-sofa-preview" aria-label="Sunny sofa"></div>`;
     }
+    const host = this.cloud.querySelector(
+      ".ll-thought-sofa-preview",
+    ) as HTMLElement;
+    this.preview.attach(host, "sofa", SOFA_PREVIEW_SIZE);
     this.reveal();
   }
 
-  /** Short player thought (auto-hides). */
+  /**
+   * Short player thought.
+   * Pass `ms <= 0` to keep it up until replaced (wake-intro beats).
+   */
   showText(text: string, ms = 4200) {
     this.clearHideTimer();
+    this.preview.dispose();
     this.cloud.className = "ll-thought-cloud is-text";
     this.cloud.textContent = text;
     this.reveal();
-    this.hideTimer = window.setTimeout(() => this.hide(), ms);
+    if (ms > 0) {
+      this.hideTimer = window.setTimeout(() => this.hide(), ms);
+    }
   }
 
-  /** @deprecated use showSofa — kept for call-site compatibility */
+  /** @deprecated use showSofa - kept for call-site compatibility */
   show() {
     this.showSofa();
   }
 
   hide() {
     this.clearHideTimer();
+    this.preview.dispose();
     if (!this.visible) return;
     this.visible = false;
     this.bubble.classList.remove("is-in");
@@ -116,6 +134,7 @@ export class ThoughtBubble {
 
   destroy() {
     this.clearHideTimer();
+    this.preview.dispose();
     this.visible = false;
     this.root.remove();
   }

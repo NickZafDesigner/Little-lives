@@ -136,7 +136,6 @@ export function createCreateScreen(
               <div class="ll-preview-meta">
                 <p class="ll-preview-name" data-plate>${name}</p>
                 <p class="ll-preview-caption" data-summary></p>
-                <p class="ll-preview-hint">Drag to turn</p>
               </div>
             </aside>
           </div>
@@ -170,7 +169,7 @@ export function createCreateScreen(
       rim.position.set(-50, 35, -40);
       previewScene.add(rim);
 
-      // One soft contact blob — no platform disc + cast shadow (that read as two circles)
+      // One soft contact blob - no platform disc + cast shadow (that read as two circles)
       const blob = new THREE.Mesh(
         new THREE.CircleGeometry(14, 48),
         new THREE.MeshBasicMaterial({
@@ -583,6 +582,8 @@ export function createCreateScreen(
       unZoomBanner?.();
       unZoomBanner = null;
       previewActor.dispose();
+      // Free the GPU context slot so the world canvas isn't stolen later.
+      previewRenderer?.forceContextLoss();
       previewRenderer?.dispose();
       previewRenderer = null;
       previewScene = null;

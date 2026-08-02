@@ -52,7 +52,7 @@ export class HintArrow {
     }
   }
 
-  /** Keep pointing until hide() — used for mid-shift station hops. */
+  /** Keep pointing until hide() - used for mid-shift station hops. */
   pinAt(worldX: number, worldZ: number, label = "") {
     this.showAt(worldX, worldZ, label, 0);
   }

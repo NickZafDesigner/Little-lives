@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Palette } from "../game/palette";
-import { TILE } from "../game/constants";
 import type { LotId } from "../data/types";
+import { lotDoorSignWorld } from "../world/lots";
 import { mat } from "./materials";
 
 export interface SignDef {
@@ -9,21 +9,19 @@ export interface SignDef {
   lotId: LotId;
   name: string;
   blurb: string;
-  /** Tile the post sits on (outside the lot). */
-  tx: number;
-  ty: number;
   accent: number;
+  /** Side of the door when facing the building from the street. */
+  side?: "west" | "east";
 }
 
-/** Clickable town signs — one per landmark, planted by the south entrance. */
+/** Clickable town signs - one per landmark, planted beside the front door. */
 export const TOWN_SIGNS: SignDef[] = [
   {
     id: "sign_home",
     lotId: "home",
     name: "Your Home",
-    blurb: "Home sweet home. A little house of your own — still finding its style.",
-    tx: 12,
-    ty: 14,
+    blurb: "Home sweet home. A little house of your own - still finding its style.",
+    side: "west",
     accent: Palette.wallTrim,
   },
   {
@@ -31,17 +29,15 @@ export const TOWN_SIGNS: SignDef[] = [
     lotId: "neighbor",
     name: "Mabel's House",
     blurb: "Mabel the baker lives here. Something sweet is always in the oven.",
-    tx: 57,
-    ty: 13,
+    side: "east",
     accent: Palette.rose,
   },
   {
     id: "sign_market",
     lotId: "market",
     name: "Vera's Market",
-    blurb: "Vera's Market — jam, parcels, and sharp opinions. Hiring clerks!",
-    tx: 80,
-    ty: 13,
+    blurb: "Vera's Market - jam, parcels, and sharp opinions. Hiring clerks!",
+    side: "west",
     accent: Palette.blush,
   },
   {
@@ -49,8 +45,7 @@ export const TOWN_SIGNS: SignDef[] = [
     lotId: "park",
     name: "Town Park",
     blurb: "Grass, a pond, and Pip tending the flowers. A good place to breathe.",
-    tx: 22,
-    ty: 20,
+    side: "west",
     accent: Palette.leaf,
   },
   {
@@ -58,17 +53,15 @@ export const TOWN_SIGNS: SignDef[] = [
     lotId: "playpark",
     name: "Playpark",
     blurb: "Swings, a slide, and room to burn the beige away. Higher swings, more fun!",
-    tx: 33,
-    ty: 38,
+    side: "east",
     accent: Palette.sunflower,
   },
   {
     id: "sign_cafe",
     lotId: "cafe",
     name: "Sunny Café",
-    blurb: "Sunny Café — open 9 to 5. Jun runs the counter. Help wanted!",
-    tx: 12,
-    ty: 44,
+    blurb: "Sunny Café - open 9 to 5. Jun runs the counter. Help wanted!",
+    side: "east",
     accent: Palette.cafe,
   },
   {
@@ -76,8 +69,7 @@ export const TOWN_SIGNS: SignDef[] = [
     lotId: "shelter",
     name: "Pet Shelter",
     blurb: "The Pet Shelter. Soft beds, full bowls, and friends waiting for a home.",
-    tx: 58,
-    ty: 44,
+    side: "west",
     accent: Palette.skyDeep,
   },
   {
@@ -85,17 +77,15 @@ export const TOWN_SIGNS: SignDef[] = [
     lotId: "library",
     name: "Town Library",
     blurb: "Quiet stacks, overdue stamps, and Theo behind the desk.",
-    tx: 80,
-    ty: 44,
+    side: "east",
     accent: Palette.lavender,
   },
   {
     id: "sign_clinic",
     lotId: "clinic",
     name: "Sage Clinic",
-    blurb: "Dr. Sage's clinic — bandages, checkups, and calm advice.",
-    tx: 36,
-    ty: 60,
+    blurb: "Dr. Sage's clinic - bandages, checkups, and calm advice.",
+    side: "west",
     accent: Palette.mint,
   },
 ];
@@ -166,14 +156,16 @@ export function buildTownSigns(): {
   const signs: SignHandle[] = [];
 
   for (const def of TOWN_SIGNS) {
+    const pose = lotDoorSignWorld(def.lotId, def.side ?? "east");
+    if (!pose) continue;
+
     const root = new THREE.Group();
     root.name = def.id;
     root.userData.signId = def.id;
 
-    const cx = def.tx * TILE + TILE / 2;
-    const cz = def.ty * TILE + TILE / 2;
-    // Path tile tops sit near y≈0.6 — plant posts there so they don't sink.
-    root.position.set(cx, 0.55, cz);
+    // Path tile tops sit near y≈0.6 - plant posts there so they don't sink.
+    // Board faces +Z (street), post hugged to the south wall face.
+    root.position.set(pose.x, 0.55, pose.z);
 
     const post = new THREE.Mesh(
       new THREE.BoxGeometry(3.2, 26, 3.2),
@@ -187,7 +179,7 @@ export function buildTownSigns(): {
       new THREE.BoxGeometry(22, 2.4, 2.4),
       mat(Palette.wood),
     );
-    bar.position.set(0, 24, 0);
+    bar.position.set(0, 24, 0.4);
     bar.castShadow = true;
     root.add(bar);
 
@@ -205,7 +197,8 @@ export function buildTownSigns(): {
       boardMat,
       boardBack,
     ]);
-    board.position.set(0, 24, 1.2);
+    // Face the street; keep the board just proud of the wall line.
+    board.position.set(0, 24, 2.2);
     board.castShadow = true;
     board.receiveShadow = true;
     root.add(board);
@@ -214,7 +207,7 @@ export function buildTownSigns(): {
       new THREE.BoxGeometry(30, 2, 4),
       mat(Palette.woodDeep),
     );
-    cap.position.set(0, 33, 0.6);
+    cap.position.set(0, 33, 1.2);
     cap.castShadow = true;
     root.add(cap);
 
@@ -229,9 +222,9 @@ export function buildTownSigns(): {
     signs.push({
       def,
       root,
-      tile: { x: def.tx, y: def.ty },
-      worldX: cx,
-      worldZ: cz,
+      tile: { x: pose.tileX, y: pose.tileY },
+      worldX: pose.x,
+      worldZ: pose.z,
     });
   }
 

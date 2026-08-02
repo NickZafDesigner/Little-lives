@@ -73,6 +73,17 @@ export interface FurnitureDef {
   petRequired?: boolean;
   /** When set, catalog item stays locked until this unlock task completes. */
   unlockTaskId?: string;
+  /**
+   * Bias the mesh toward its back so it sits flush on the exterior shell
+   * when placed on the first interior tile (TVs, fridges, etc.).
+   */
+  wallFlush?: boolean;
+  /** Host can hold placeOnSurface items (one per tile). */
+  supportsItems?: boolean;
+  /** Countertop Y in world units; defaults to 18 when supportsItems. */
+  surfaceHeight?: number;
+  /** Must be placed on a supportsItems host, not bare floor. */
+  placeOnSurface?: boolean;
 }
 
 export interface InteractionDef {
@@ -93,6 +104,8 @@ export interface PlacedFurniture {
   lotId: LotId;
   /** Which way the front of the piece faces. Default "down" (toward camera). */
   rot?: Dir;
+  /** When set, this piece sits on the named host's surface. */
+  parentUid?: string;
 }
 
 export interface NpcDef {

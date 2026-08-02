@@ -5,10 +5,19 @@
 
 type WaveKind = "sine" | "triangle" | "square" | "sawtooth";
 
-type TrackId = "title" | "create" | "world" | "build" | "work";
+type TrackId =
+  | "title"
+  | "create"
+  | "world"
+  | "build"
+  | "work"
+  | "tv_comedy"
+  | "tv_action"
+  | "tv_horror";
 
 type SfxId =
   | "ui"
+  | "hover"
   | "confirm"
   | "deny"
   | "menu"
@@ -23,11 +32,21 @@ type SfxId =
   | "pet"
   | "talk"
   | "coin"
+  | "cash"
   | "save"
   | "build"
   | "adopt"
   | "chime"
-  | "alarm";
+  | "alarm"
+  | "zoom_in"
+  | "zoom_out"
+  | "mini_start"
+  | "mini_hit"
+  | "mini_perfect"
+  | "mini_miss"
+  | "mini_tick"
+  | "mini_win"
+  | "mini_ok";
 
 type VoiceId = string;
 
@@ -1284,6 +1303,304 @@ const WORK_PATTERN_B: Pattern = {
   ],
 };
 
+/** Silly sitcom bump - bouncy major hops and goofy taps. */
+const TV_COMEDY_PATTERN: Pattern = {
+  bars: 4,
+  layers: [
+    {
+      wave: "square",
+      gain: 0.038,
+      soft: true,
+      cutoff: 2800,
+      notes: [
+        { t: 0, n: 72, d: 0.25, v: 0.9 },
+        { t: 0.5, n: 76, d: 0.25, v: 0.75 },
+        { t: 1, n: 79, d: 0.5, v: 0.85 },
+        { t: 1.5, n: 76, d: 0.25, v: 0.7 },
+        { t: 2, n: 74, d: 0.25, v: 0.8 },
+        { t: 2.5, n: 76, d: 0.25, v: 0.7 },
+        { t: 3, n: 79, d: 0.5, v: 0.85 },
+        { t: 3.5, n: 84, d: 0.5, v: 0.75 },
+        { t: 4, n: 76, d: 0.25, v: 0.9 },
+        { t: 4.5, n: 79, d: 0.25, v: 0.75 },
+        { t: 5, n: 81, d: 0.5, v: 0.85 },
+        { t: 5.5, n: 79, d: 0.25, v: 0.7 },
+        { t: 6, n: 76, d: 0.25, v: 0.8 },
+        { t: 6.5, n: 74, d: 0.25, v: 0.7 },
+        { t: 7, n: 72, d: 0.5, v: 0.85 },
+        { t: 7.5, n: 67, d: 0.5, v: 0.7 },
+        { t: 8, n: 72, d: 0.25, v: 0.9 },
+        { t: 8.5, n: 76, d: 0.25, v: 0.75 },
+        { t: 9, n: 79, d: 0.25, v: 0.8 },
+        { t: 9.5, n: 81, d: 0.25, v: 0.75 },
+        { t: 10, n: 84, d: 0.5, v: 0.85 },
+        { t: 10.5, n: 81, d: 0.25, v: 0.7 },
+        { t: 11, n: 79, d: 0.5, v: 0.8 },
+        { t: 11.5, n: 76, d: 0.5, v: 0.7 },
+        { t: 12, n: 74, d: 0.25, v: 0.85 },
+        { t: 12.5, n: 76, d: 0.25, v: 0.75 },
+        { t: 13, n: 79, d: 0.5, v: 0.8 },
+        { t: 14, n: 76, d: 0.25, v: 0.85 },
+        { t: 14.5, n: 72, d: 0.25, v: 0.75 },
+        { t: 15, n: 67, d: 1, v: 0.8 },
+      ],
+    },
+    {
+      wave: "triangle",
+      gain: 0.03,
+      soft: true,
+      cutoff: 1800,
+      notes: [
+        { t: 0, n: 60, d: 1, v: 0.7 },
+        { t: 1, n: 64, d: 1, v: 0.6 },
+        { t: 2, n: 67, d: 1, v: 0.65 },
+        { t: 3, n: 64, d: 1, v: 0.6 },
+        { t: 4, n: 62, d: 1, v: 0.7 },
+        { t: 5, n: 65, d: 1, v: 0.6 },
+        { t: 6, n: 69, d: 1, v: 0.65 },
+        { t: 7, n: 65, d: 1, v: 0.6 },
+        { t: 8, n: 60, d: 1, v: 0.7 },
+        { t: 9, n: 64, d: 1, v: 0.6 },
+        { t: 10, n: 67, d: 1, v: 0.65 },
+        { t: 11, n: 69, d: 1, v: 0.6 },
+        { t: 12, n: 67, d: 1, v: 0.7 },
+        { t: 13, n: 64, d: 1, v: 0.6 },
+        { t: 14, n: 62, d: 1, v: 0.65 },
+        { t: 15, n: 60, d: 1, v: 0.7 },
+      ],
+    },
+    {
+      wave: "sine",
+      gain: 0.045,
+      soft: true,
+      cutoff: 700,
+      notes: [
+        { t: 0, n: 48, d: 2, v: 0.85 },
+        { t: 2, n: 55, d: 2, v: 0.7 },
+        { t: 4, n: 50, d: 2, v: 0.8 },
+        { t: 6, n: 57, d: 2, v: 0.7 },
+        { t: 8, n: 48, d: 2, v: 0.85 },
+        { t: 10, n: 52, d: 2, v: 0.7 },
+        { t: 12, n: 55, d: 2, v: 0.8 },
+        { t: 14, n: 48, d: 2, v: 0.75 },
+      ],
+    },
+  ],
+  ticks: [
+    { t: 0, kind: "softkick", v: 0.14 },
+    { t: 1, kind: "tap", v: 0.12 },
+    { t: 2, kind: "softkick", v: 0.12 },
+    { t: 2.5, kind: "tap", v: 0.1 },
+    { t: 3, kind: "tap", v: 0.11 },
+    { t: 4, kind: "softkick", v: 0.14 },
+    { t: 5, kind: "tap", v: 0.12 },
+    { t: 6, kind: "softkick", v: 0.12 },
+    { t: 6.5, kind: "shush", v: 0.07 },
+    { t: 7, kind: "tap", v: 0.11 },
+    { t: 8, kind: "softkick", v: 0.14 },
+    { t: 9, kind: "tap", v: 0.12 },
+    { t: 10, kind: "softkick", v: 0.12 },
+    { t: 10.5, kind: "tap", v: 0.1 },
+    { t: 11, kind: "tap", v: 0.11 },
+    { t: 12, kind: "softkick", v: 0.14 },
+    { t: 13, kind: "tap", v: 0.12 },
+    { t: 14, kind: "softkick", v: 0.12 },
+    { t: 14.5, kind: "shush", v: 0.07 },
+    { t: 15, kind: "tap", v: 0.11 },
+  ],
+};
+
+/** Dramatic chase cue - driving ostinato and bold hits. */
+const TV_ACTION_PATTERN: Pattern = {
+  bars: 4,
+  layers: [
+    {
+      wave: "sawtooth",
+      gain: 0.028,
+      soft: true,
+      cutoff: 1600,
+      notes: [
+        { t: 0, n: 55, d: 0.5, v: 0.9 },
+        { t: 0.5, n: 55, d: 0.5, v: 0.7 },
+        { t: 1, n: 58, d: 0.5, v: 0.85 },
+        { t: 1.5, n: 55, d: 0.5, v: 0.7 },
+        { t: 2, n: 60, d: 0.5, v: 0.9 },
+        { t: 2.5, n: 58, d: 0.5, v: 0.75 },
+        { t: 3, n: 55, d: 0.5, v: 0.8 },
+        { t: 3.5, n: 53, d: 0.5, v: 0.7 },
+        { t: 4, n: 55, d: 0.5, v: 0.9 },
+        { t: 4.5, n: 55, d: 0.5, v: 0.7 },
+        { t: 5, n: 62, d: 0.5, v: 0.85 },
+        { t: 5.5, n: 60, d: 0.5, v: 0.75 },
+        { t: 6, n: 58, d: 0.5, v: 0.8 },
+        { t: 6.5, n: 55, d: 0.5, v: 0.7 },
+        { t: 7, n: 53, d: 0.5, v: 0.75 },
+        { t: 7.5, n: 55, d: 0.5, v: 0.8 },
+        { t: 8, n: 57, d: 0.5, v: 0.9 },
+        { t: 8.5, n: 57, d: 0.5, v: 0.7 },
+        { t: 9, n: 60, d: 0.5, v: 0.85 },
+        { t: 9.5, n: 57, d: 0.5, v: 0.7 },
+        { t: 10, n: 62, d: 0.5, v: 0.9 },
+        { t: 10.5, n: 60, d: 0.5, v: 0.75 },
+        { t: 11, n: 57, d: 0.5, v: 0.8 },
+        { t: 11.5, n: 55, d: 0.5, v: 0.7 },
+        { t: 12, n: 55, d: 0.5, v: 0.9 },
+        { t: 12.5, n: 58, d: 0.5, v: 0.8 },
+        { t: 13, n: 60, d: 0.5, v: 0.85 },
+        { t: 13.5, n: 62, d: 0.5, v: 0.8 },
+        { t: 14, n: 65, d: 1, v: 0.9 },
+        { t: 15, n: 55, d: 1, v: 0.85 },
+      ],
+    },
+    {
+      wave: "square",
+      gain: 0.022,
+      soft: true,
+      cutoff: 1400,
+      notes: [
+        { t: 0, n: 67, d: 0.25, v: 0.7 },
+        { t: 1, n: 70, d: 0.25, v: 0.65 },
+        { t: 2, n: 72, d: 0.25, v: 0.7 },
+        { t: 3, n: 70, d: 0.25, v: 0.6 },
+        { t: 4, n: 67, d: 0.25, v: 0.7 },
+        { t: 5, n: 74, d: 0.25, v: 0.65 },
+        { t: 6, n: 72, d: 0.25, v: 0.7 },
+        { t: 7, n: 67, d: 0.25, v: 0.6 },
+        { t: 8, n: 69, d: 0.25, v: 0.7 },
+        { t: 9, n: 72, d: 0.25, v: 0.65 },
+        { t: 10, n: 74, d: 0.25, v: 0.7 },
+        { t: 11, n: 72, d: 0.25, v: 0.6 },
+        { t: 12, n: 67, d: 0.25, v: 0.7 },
+        { t: 13, n: 70, d: 0.25, v: 0.65 },
+        { t: 14, n: 77, d: 0.5, v: 0.75 },
+        { t: 15, n: 67, d: 0.5, v: 0.7 },
+      ],
+    },
+    {
+      wave: "sine",
+      gain: 0.055,
+      soft: true,
+      cutoff: 600,
+      notes: [
+        { t: 0, n: 43, d: 1, v: 0.9 },
+        { t: 1, n: 43, d: 1, v: 0.7 },
+        { t: 2, n: 46, d: 1, v: 0.85 },
+        { t: 3, n: 43, d: 1, v: 0.75 },
+        { t: 4, n: 43, d: 1, v: 0.9 },
+        { t: 5, n: 48, d: 1, v: 0.8 },
+        { t: 6, n: 46, d: 1, v: 0.85 },
+        { t: 7, n: 43, d: 1, v: 0.75 },
+        { t: 8, n: 45, d: 1, v: 0.9 },
+        { t: 9, n: 45, d: 1, v: 0.7 },
+        { t: 10, n: 48, d: 1, v: 0.85 },
+        { t: 11, n: 45, d: 1, v: 0.75 },
+        { t: 12, n: 43, d: 1, v: 0.9 },
+        { t: 13, n: 46, d: 1, v: 0.8 },
+        { t: 14, n: 50, d: 1, v: 0.85 },
+        { t: 15, n: 43, d: 1, v: 0.9 },
+      ],
+    },
+  ],
+  ticks: [
+    { t: 0, kind: "softkick", v: 0.16 },
+    { t: 0.5, kind: "tap", v: 0.08 },
+    { t: 1, kind: "tap", v: 0.12 },
+    { t: 2, kind: "softkick", v: 0.14 },
+    { t: 2.5, kind: "tap", v: 0.08 },
+    { t: 3, kind: "tap", v: 0.11 },
+    { t: 4, kind: "softkick", v: 0.16 },
+    { t: 4.5, kind: "tap", v: 0.08 },
+    { t: 5, kind: "tap", v: 0.12 },
+    { t: 6, kind: "softkick", v: 0.14 },
+    { t: 6.5, kind: "shush", v: 0.06 },
+    { t: 7, kind: "tap", v: 0.11 },
+    { t: 8, kind: "softkick", v: 0.16 },
+    { t: 8.5, kind: "tap", v: 0.08 },
+    { t: 9, kind: "tap", v: 0.12 },
+    { t: 10, kind: "softkick", v: 0.14 },
+    { t: 10.5, kind: "tap", v: 0.08 },
+    { t: 11, kind: "tap", v: 0.11 },
+    { t: 12, kind: "softkick", v: 0.16 },
+    { t: 13, kind: "tap", v: 0.12 },
+    { t: 14, kind: "softkick", v: 0.15 },
+    { t: 14.5, kind: "shush", v: 0.07 },
+    { t: 15, kind: "tap", v: 0.13 },
+  ],
+};
+
+/** Creepy late-night sting - sparse drones and uneasy intervals. */
+const TV_HORROR_PATTERN: Pattern = {
+  bars: 4,
+  layers: [
+    {
+      wave: "sine",
+      gain: 0.05,
+      soft: true,
+      cutoff: 500,
+      notes: [
+        { t: 0, n: 36, d: 4, v: 0.9 },
+        { t: 4, n: 37, d: 4, v: 0.75 },
+        { t: 8, n: 36, d: 4, v: 0.85 },
+        { t: 12, n: 34, d: 4, v: 0.8 },
+      ],
+    },
+    {
+      wave: "triangle",
+      gain: 0.028,
+      soft: true,
+      cutoff: 900,
+      notes: [
+        { t: 0, n: 48, d: 2, v: 0.55 },
+        { t: 2, n: 54, d: 2, v: 0.45 },
+        { t: 4, n: 49, d: 2, v: 0.5 },
+        { t: 6, n: 55, d: 2, v: 0.4 },
+        { t: 8, n: 48, d: 2, v: 0.55 },
+        { t: 10, n: 53, d: 2, v: 0.45 },
+        { t: 12, n: 46, d: 2, v: 0.5 },
+        { t: 14, n: 54, d: 2, v: 0.4 },
+      ],
+    },
+    {
+      wave: "square",
+      gain: 0.016,
+      soft: true,
+      cutoff: 1200,
+      notes: [
+        { t: 1.5, n: 60, d: 0.15, v: 0.55 },
+        { t: 3.25, n: 66, d: 0.2, v: 0.45 },
+        { t: 5, n: 61, d: 0.15, v: 0.5 },
+        { t: 7.5, n: 67, d: 0.25, v: 0.4 },
+        { t: 9, n: 60, d: 0.15, v: 0.55 },
+        { t: 11.25, n: 66, d: 0.2, v: 0.45 },
+        { t: 13, n: 58, d: 0.15, v: 0.5 },
+        { t: 15.5, n: 72, d: 0.3, v: 0.55 },
+      ],
+    },
+    {
+      wave: "sawtooth",
+      gain: 0.012,
+      soft: true,
+      cutoff: 700,
+      notes: [
+        { t: 0, n: 42, d: 8, v: 0.35 },
+        { t: 8, n: 43, d: 8, v: 0.3 },
+      ],
+    },
+  ],
+  ticks: [
+    { t: 0, kind: "softkick", v: 0.1 },
+    { t: 2, kind: "shush", v: 0.08 },
+    { t: 4, kind: "softkick", v: 0.09 },
+    { t: 6, kind: "tap", v: 0.06 },
+    { t: 7.5, kind: "shush", v: 0.07 },
+    { t: 8, kind: "softkick", v: 0.1 },
+    { t: 10, kind: "shush", v: 0.08 },
+    { t: 12, kind: "softkick", v: 0.09 },
+    { t: 14, kind: "tap", v: 0.06 },
+    { t: 15.5, kind: "shush", v: 0.1 },
+  ],
+};
+
 
 const PATTERNS: Record<TrackId, Pattern[]> = {
   title: [TITLE_PATTERN],
@@ -1291,6 +1608,9 @@ const PATTERNS: Record<TrackId, Pattern[]> = {
   world: [WORLD_PATTERN_A, WORLD_PATTERN_B],
   build: [BUILD_PATTERN],
   work: [WORK_PATTERN_A, WORK_PATTERN_B],
+  tv_comedy: [TV_COMEDY_PATTERN],
+  tv_action: [TV_ACTION_PATTERN],
+  tv_horror: [TV_HORROR_PATTERN],
 };
 
 const BPM: Record<TrackId, number> = {
@@ -1299,6 +1619,9 @@ const BPM: Record<TrackId, number> = {
   world: 62,
   build: 112,
   work: 102,
+  tv_comedy: 132,
+  tv_action: 118,
+  tv_horror: 66,
 };
 
 const MUSIC_GAIN: Record<TrackId, number> = {
@@ -1307,6 +1630,9 @@ const MUSIC_GAIN: Record<TrackId, number> = {
   world: 0.34,
   build: 0.4,
   work: 0.38,
+  tv_comedy: 0.36,
+  tv_action: 0.38,
+  tv_horror: 0.34,
 };
 
 /** Wet send amount for music reverb/echo (SFX stay dry). */
@@ -1316,6 +1642,9 @@ const MUSIC_WET: Record<TrackId, number> = {
   world: 0.18,
   build: 0.3,
   work: 0.32,
+  tv_comedy: 0.16,
+  tv_action: 0.28,
+  tv_horror: 0.42,
 };
 
 
@@ -1354,10 +1683,16 @@ class AudioManagerImpl {
     return () => this.listeners.delete(cb);
   }
 
-  /** Call from any user gesture so browsers allow audio. */
-  unlock(): void {
-    if (this.unlocked && this.ctx?.state === "running") return;
-    if (this.unlockPromise) return;
+  /**
+   * Call from any user gesture so browsers allow audio.
+   * Resolves once the context is running (and pending music can start).
+   */
+  unlock(): Promise<void> {
+    if (this.unlocked && this.ctx?.state === "running") {
+      this.startPendingMusic();
+      return Promise.resolve();
+    }
+    if (this.unlockPromise) return this.unlockPromise;
 
     const ctx = this.ensure();
     this.unlockPromise = ctx
@@ -1366,14 +1701,12 @@ class AudioManagerImpl {
         this.unlocked = true;
         this.unlockPromise = null;
         this.applyMute();
-        // Only kick off music if nothing is already looping.
-        if (this.track && this.loopTimer === null) {
-          this.scheduleLoop(true);
-        }
+        this.startPendingMusic();
       })
       .catch(() => {
         this.unlockPromise = null;
       });
+    return this.unlockPromise ?? Promise.resolve();
   }
 
   setMuted(muted: boolean): void {
@@ -1391,16 +1724,13 @@ class AudioManagerImpl {
   playMusic(track: TrackId): void {
     if (this.track === track && this.loopTimer !== null) return;
     this.stopMusicTimers();
+    this.ensure();
     this.replaceMusicBus();
     this.track = track;
     this.phraseIndex = 0;
     this.musicGainTarget = MUSIC_GAIN[track];
-    this.ensure();
     this.applyMusicWet(MUSIC_WET[track]);
-    if (this.unlocked && this.ctx?.state === "running") {
-      this.fadeMusic(this.musicGainTarget, 1.2);
-      this.scheduleLoop(true);
-    }
+    this.startPendingMusic();
   }
 
   stopMusic(fade = 0.6): void {
@@ -1425,6 +1755,10 @@ class AudioManagerImpl {
         // Soft pop - short sine hop with a tiny sparkle
         this.pop(now, bus, 740, 0.055, 0.085);
         this.blip(now + 0.03, bus, 1180, 0.05, 0.035, "sine", 4200);
+        break;
+      case "hover":
+        // Barely-there tick for button / chip hover
+        this.blip(now, bus, 920 + Math.random() * 40, 0.028, 0.018, "sine", 4800);
         break;
       case "confirm":
         // Happy little up-arpeggio
@@ -1508,6 +1842,16 @@ class AudioManagerImpl {
         this.blip(now + 0.04, bus, 1397, 0.09, 0.065, "sine", 6000);
         this.blip(now + 0.08, bus, 2093, 0.12, 0.03, "sine", 7000);
         break;
+      case "cash":
+        // Payday: drawer thud + bright register ching cascade
+        this.pop(now, bus, 160, 0.09, 0.11);
+        this.noiseBurst(now + 0.02, bus, 0.07, 0.045, 2400);
+        this.blip(now + 0.08, bus, 784, 0.09, 0.09, "triangle", 3200);
+        this.blip(now + 0.14, bus, 1175, 0.14, 0.11, "sine", 5200);
+        this.blip(now + 0.2, bus, 1568, 0.16, 0.09, "sine", 6400);
+        this.blip(now + 0.28, bus, 2093, 0.14, 0.055, "sine", 7200);
+        this.blip(now + 0.36, bus, 2489, 0.1, 0.03, "sine", 7800);
+        break;
       case "save":
         this.blip(now, bus, 440, 0.07, 0.055, "triangle", 2200);
         this.blip(now + 0.07, bus, 554, 0.08, 0.065, "triangle", 2800);
@@ -1540,6 +1884,67 @@ class AudioManagerImpl {
         this.blip(now + 0.14, bus, 880, 0.12, 0.11, "square", 2400);
         this.blip(now + 0.32, bus, 1175, 0.16, 0.08, "square", 3200);
         this.blip(now + 0.48, bus, 988, 0.18, 0.06, "triangle", 3600);
+        break;
+      case "zoom_in":
+        // Airy rising whoosh as the camera leans in
+        this.noiseBurst(now, bus, 0.14, 0.032, 2600);
+        this.swoop(now, bus, 260, 620, 0.2, 0.055, "sine", 2400);
+        this.swoop(now + 0.025, bus, 400, 860, 0.17, 0.038, "triangle", 3600);
+        this.blip(now + 0.15, bus, 1040, 0.09, 0.028, "sine", 4800);
+        break;
+      case "zoom_out":
+        // Soft falling whoosh as the camera eases back
+        this.noiseBurst(now, bus, 0.12, 0.028, 2000);
+        this.swoop(now, bus, 700, 300, 0.22, 0.05, "sine", 2200);
+        this.swoop(now + 0.02, bus, 520, 240, 0.18, 0.032, "triangle", 2800);
+        break;
+      case "mini_start":
+        // Minigame curtain-up whoosh + bright hop
+        this.noiseBurst(now, bus, 0.1, 0.035, 2200);
+        this.swoop(now, bus, 280, 640, 0.16, 0.06, "sine", 2800);
+        this.blip(now + 0.08, bus, 659, 0.07, 0.07, "triangle", 3200);
+        this.blip(now + 0.14, bus, 880, 0.1, 0.055, "sine", 4800);
+        break;
+      case "mini_hit":
+        // Crisp timing thunk + sparkle
+        this.pop(now, bus, 380, 0.05, 0.085);
+        this.blip(now + 0.02, bus, 784, 0.07, 0.08, "triangle", 3600);
+        this.blip(now + 0.06, bus, 1175, 0.1, 0.045, "sine", 5600);
+        break;
+      case "mini_perfect":
+        // Bigger mid-game perfect - rising triad sparkle
+        this.pop(now, bus, 420, 0.06, 0.09);
+        this.blip(now + 0.02, bus, 659, 0.08, 0.085, "triangle", 3200);
+        this.blip(now + 0.07, bus, 831, 0.1, 0.09, "triangle", 4000);
+        this.blip(now + 0.13, bus, 1047, 0.14, 0.08, "sine", 5200);
+        this.blip(now + 0.18, bus, 1568, 0.12, 0.04, "sine", 6400);
+        break;
+      case "mini_miss":
+        // Soft thud dud - playful, not harsh
+        this.swoop(now, bus, 320, 180, 0.12, 0.055, "triangle", 900);
+        this.noiseBurst(now + 0.015, bus, 0.06, 0.028, 1100);
+        this.blip(now + 0.05, bus, 220, 0.08, 0.04, "sine", 700);
+        break;
+      case "mini_tick":
+        // Soft memory pip flash
+        this.blip(now, bus, 620 + Math.random() * 80, 0.05, 0.055, "sine", 3600);
+        this.blip(now + 0.02, bus, 980 + Math.random() * 60, 0.06, 0.03, "triangle", 4800);
+        break;
+      case "mini_win":
+        // Full perfect fanfare - bigger than success
+        this.pop(now, bus, 200, 0.08, 0.1);
+        this.blip(now + 0.04, bus, 523, 0.1, 0.085, "triangle", 2800);
+        this.blip(now + 0.12, bus, 659, 0.11, 0.09, "triangle", 3200);
+        this.blip(now + 0.22, bus, 784, 0.14, 0.1, "sine", 4000);
+        this.blip(now + 0.28, bus, 1047, 0.18, 0.08, "sine", 5600);
+        this.blip(now + 0.36, bus, 1319, 0.16, 0.05, "sine", 6400);
+        this.blip(now + 0.44, bus, 1568, 0.14, 0.035, "sine", 7200);
+        break;
+      case "mini_ok":
+        // Warm "good enough" chime
+        this.blip(now, bus, 523, 0.09, 0.07, "triangle", 2800);
+        this.blip(now + 0.08, bus, 659, 0.12, 0.075, "sine", 3600);
+        this.blip(now + 0.14, bus, 784, 0.1, 0.04, "sine", 4400);
         break;
     }
   }
@@ -1710,6 +2115,13 @@ class AudioManagerImpl {
     g.cancelScheduledValues(now);
     g.setValueAtTime(g.value, now);
     g.linearRampToValueAtTime(to, now + seconds);
+  }
+
+  /** Begin the queued track once the AudioContext is allowed to run. */
+  private startPendingMusic(): void {
+    if (!this.track || !this.unlocked || this.ctx?.state !== "running") return;
+    if (this.loopTimer !== null) return;
+    this.scheduleLoop(true);
   }
 
   private stopMusicTimers(): void {

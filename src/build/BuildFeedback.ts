@@ -7,6 +7,7 @@ import {
   applyFurnitureRotation,
   createFurnitureMesh,
   furnitureFootprint,
+  furnitureWorldPos,
   nextFurnitureDir,
 } from "../mesh/furniture";
 import type { TownRenderer } from "../render/TownRenderer";
@@ -48,6 +49,7 @@ export class BuildFeedback {
     ty: number,
     rot: Dir,
     ok: boolean,
+    surfaceY = 0,
   ) {
     const { tw, th } = furnitureFootprint(defId, rot);
     this.renderer.setBuildSelection(null);
@@ -55,6 +57,8 @@ export class BuildFeedback {
 
     if (this.ghostDefId !== defId || !this.ghost) {
       const mesh = createFurnitureMesh(defId);
+      const def = furnitureById[defId];
+      if (def?.placeOnSurface) mesh.scale.setScalar(0.85);
       mesh.traverse((o) => {
         if (o instanceof THREE.Mesh) o.raycast = () => {};
       });
@@ -63,12 +67,11 @@ export class BuildFeedback {
       this.ghostDefId = defId;
     }
 
+    // Flush bias measures local Z depth - reset yaw before measuring.
+    this.ghost!.rotation.y = 0;
+    const { x, z } = furnitureWorldPos(defId, tx, ty, rot, this.ghost!);
     applyFurnitureRotation(this.ghost!, rot);
-    this.ghost!.position.set(
-      tx * TILE + (tw * TILE) / 2,
-      0,
-      ty * TILE + (th * TILE) / 2,
-    );
+    this.ghost!.position.set(x, surfaceY, z);
     this.renderer.setGhostTint(ok);
   }
 

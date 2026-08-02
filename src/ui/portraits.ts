@@ -18,6 +18,14 @@ function hex(n: number): string {
   return `#${n.toString(16).padStart(6, "0")}`;
 }
 
+/** Multiply an RGB hex color toward black (mul < 1) or white-ish lift. */
+function toneHex(n: number, mul: number): string {
+  const r = Math.min(255, Math.round(((n >> 16) & 255) * mul));
+  const g = Math.min(255, Math.round(((n >> 8) & 255) * mul));
+  const b = Math.min(255, Math.round((n & 255) * mul));
+  return hex((r << 16) | (g << 8) | b);
+}
+
 function px(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -320,7 +328,7 @@ function drawPlayer(ctx: CanvasRenderingContext2D, look?: PlayerLook) {
     px(ctx, 7, 8, hair);
   }
 
-  // Face silhouette — sex + face style
+  // Face silhouette - sex + face style
   if (face === "round") {
     fillRect(ctx, 8, 8, 16, 13, skin);
     fillRect(ctx, 8, 14, 2, 5, skin);
@@ -345,14 +353,14 @@ function drawPlayer(ctx: CanvasRenderingContext2D, look?: PlayerLook) {
     px(ctx, 20, 15, hex(Palette.blushDark));
   }
 
-  // Blush — stronger on round/soft
+  // Blush - stronger on round/soft
   if (face === "round" || face === "soft" || (sex !== "boy" && face !== "sharp")) {
     const h = face === "round" ? 2 : 1;
     fillRect(ctx, 11, 15, 2, h, hex(Palette.rose));
     fillRect(ctx, 19, 15, 2, h, hex(Palette.rose));
   }
 
-  // Eyes — face style leads; sex is a mild bias
+  // Eyes - face style leads; sex is a mild bias
   if (face === "sharp") {
     fillRect(ctx, 12, 12, 3, 2, hex(Palette.ink));
     fillRect(ctx, 17, 12, 3, 2, hex(Palette.ink));
@@ -391,8 +399,33 @@ function drawPlayer(ctx: CanvasRenderingContext2D, look?: PlayerLook) {
   px(ctx, 13, 16, hex(Palette.inkSoft));
   px(ctx, 18, 16, hex(Palette.inkSoft));
 
-  // Shirt
+  // Shirt + outfit accents
   fillRect(ctx, 8, 22, 16, 10, shirt);
+  const shirtN = look?.shirt ?? 0x7ec8e3;
+  const pantsN = look?.pants ?? 0x5b6b8c;
+  const pants = hex(pantsN);
+  const clothing = look?.clothing ?? "casual";
+  if (clothing === "casual") {
+    fillRect(ctx, 15, 22, 2, 10, toneHex(shirtN, 0.75));
+    px(ctx, 15, 24, "#fff8ee");
+    px(ctx, 15, 27, "#fff8ee");
+    px(ctx, 15, 30, "#fff8ee");
+    fillRect(ctx, 18, 24, 4, 3, toneHex(shirtN, 0.7));
+  } else if (clothing === "cozy") {
+    fillRect(ctx, 11, 27, 10, 4, toneHex(shirtN, 0.72));
+    px(ctx, 14, 23, pants);
+    px(ctx, 14, 24, pants);
+    px(ctx, 17, 23, pants);
+    px(ctx, 17, 24, pants);
+  } else if (clothing === "sporty") {
+    fillRect(ctx, 9, 25, 14, 2, pants);
+    fillRect(ctx, 15, 22, 2, 10, toneHex(shirtN, 1.12));
+  } else if (clothing === "fancy") {
+    fillRect(ctx, 12, 22, 3, 1, toneHex(shirtN, 1.1));
+    fillRect(ctx, 17, 22, 3, 1, toneHex(shirtN, 1.1));
+    fillRect(ctx, 15, 23, 2, 7, pants);
+    px(ctx, 15, 23, toneHex(pantsN, 0.8));
+  }
   if (sex === "enby") {
     px(ctx, 10, 24, hex(Palette.mint));
     px(ctx, 11, 25, hex(Palette.sunflower));

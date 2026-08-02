@@ -115,7 +115,7 @@ export function socialBlockedReason(
   needs: NeedsState,
   isWet = false,
 ): string | null {
-  if (isWet) return "You're wet — shower first!";
+  if (isWet) return "You're wet - shower first!";
   if (needs.energy < NEED_CRITICAL) return "Too exhausted to hang out.";
   if (needs.bladder < 5) return "Bathroom emergency - social later!";
   if (needs.hygiene < 8) return "Maybe shower before company…";

@@ -1,5 +1,12 @@
 import * as THREE from "three";
-import type { Build, FaceStyle, Height, PlayerLook, Sex } from "../data/character";
+import type {
+  Build,
+  ClothingStyle,
+  FaceStyle,
+  Height,
+  PlayerLook,
+  Sex,
+} from "../data/character";
 import type { Dir } from "../data/types";
 import { Palette } from "../game/palette";
 import { AssetLibrary } from "../render/AssetLibrary";
@@ -176,7 +183,7 @@ function applyHeightStyle(body: THREE.Object3D, height: Height) {
   }
 
   if (tall) {
-    // Extra waist length — raise shoulders/head a bit more than hips.
+    // Extra waist length - raise shoulders/head a bit more than hips.
     const waist = 1.6;
     for (const p of [neck, head, armL, armR, torso]) {
       if (p) p.position.y += waist;
@@ -292,7 +299,7 @@ function applyFaceStyle(body: THREE.Object3D, face: FaceStyle) {
       browR.rotation.z = -0.05;
     }
   } else if (face === "soft") {
-    // Gentle oval, medium eyes, warm blush — readable baseline
+    // Gentle oval, medium eyes, warm blush - readable baseline
     head?.scale.multiply(new THREE.Vector3(1.05, 1.03, 1.04));
     multiplyNamedScale(body, "Eye_L", 1.08, 1.12, 1.05);
     multiplyNamedScale(body, "Eye_R", 1.08, 1.12, 1.05);
@@ -336,7 +343,7 @@ function applyFaceStyle(body: THREE.Object3D, face: FaceStyle) {
       browR.rotation.z = 0.42;
     }
   } else {
-    // Freckled — soft-ish features + cheek freckles
+    // Freckled - soft-ish features + cheek freckles
     head?.scale.multiply(new THREE.Vector3(1.06, 1.0, 1.05));
     multiplyNamedScale(body, "Eye_L", 1.1, 1.08, 1.05);
     multiplyNamedScale(body, "Eye_R", 1.1, 1.08, 1.05);
@@ -392,7 +399,7 @@ function makeInkCurve(
   return mesh;
 }
 
-/** Soft ^ happy eye — one continuous stroke. */
+/** Soft ^ happy eye - one continuous stroke. */
 function makeCaretEye(): THREE.Group {
   const g = new THREE.Group();
   g.name = "SmileCaret";
@@ -411,7 +418,7 @@ function makeCaretEye(): THREE.Group {
   return g;
 }
 
-/** Wide cozy grin — single U-curve with lifted corners. */
+/** Wide cozy grin - single U-curve with lifted corners. */
 function makeSmileMouth(): THREE.Group {
   const g = new THREE.Group();
   g.name = "SmileMouth";
@@ -539,7 +546,7 @@ function applySexStyle(body: THREE.Object3D, sex: Sex, hairColor: number) {
       head.add(accent);
     }
   } else {
-    // Non-binary — mid proportions with a clear geometric accent
+    // Non-binary - mid proportions with a clear geometric accent
     head?.scale.set(1.02, 1.04, 1.0);
     setNamedScale(body, "Eye_L", 1.08);
     setNamedScale(body, "Eye_R", 1.08);
@@ -626,6 +633,119 @@ function stripAuthoredShadowDisc(body: THREE.Object3D) {
   });
 }
 
+function shadeColor(hex: number, mul: number): number {
+  return new THREE.Color(hex).multiplyScalar(mul).getHex();
+}
+
+function liftColor(hex: number, amount: number): number {
+  return new THREE.Color(hex).offsetHSL(0, 0, amount).getHex();
+}
+
+/**
+ * Procedural shirt accents so each ClothingStyle reads clearly
+ * (GLB torsos are mostly silhouette + Shirt tint).
+ */
+function applyOutfitDetails(body: THREE.Object3D, look: PlayerLook) {
+  const torso = AssetLibrary.findNamed(body, "Torso");
+  if (!torso) return;
+  torso.getObjectByName("OutfitAccent")?.removeFromParent();
+
+  const accent = new THREE.Group();
+  accent.name = "OutfitAccent";
+
+  const shirt = look.shirt;
+  const pants = look.pants;
+  const dark = shadeColor(shirt, 0.62);
+  const light = liftColor(shirt, 0.1);
+  const trim = pants;
+
+  const box = (
+    w: number,
+    h: number,
+    d: number,
+    color: number,
+    x: number,
+    y: number,
+    z: number,
+    slot: "Primary" | "Secondary" | "Shirt" = "Secondary",
+  ) => {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      mat(color, { name: slot, flat: true }),
+    );
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.userData.noOutline = true;
+    accent.add(mesh);
+    return mesh;
+  };
+
+  const button = (x: number, y: number, z: number, color: number) => {
+    const mesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.42, 0.32, 8),
+      mat(color, { name: "Primary", flat: true }),
+    );
+    mesh.rotation.x = Math.PI / 2;
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.userData.noOutline = true;
+    accent.add(mesh);
+  };
+
+  const style: ClothingStyle = look.clothing;
+  if (style === "casual") {
+    // Button placket + breast pocket
+    box(1.15, 10.5, 0.35, dark, 0, 20.2, 5.05);
+    for (const y of [23.6, 21.2, 18.8, 16.4]) button(0, y, 5.35, light);
+    box(2.9, 2.5, 0.55, dark, 2.85, 21.0, 5.0);
+    box(2.7, 0.4, 0.6, light, 2.85, 22.15, 5.15);
+  } else if (style === "cozy") {
+    // Hoodie: collar band, drawstrings, kangaroo pocket
+    box(6.2, 1.5, 0.7, dark, 0, 25.0, 4.55);
+    box(6.8, 3.6, 0.75, dark, 0, 17.2, 5.0);
+    box(0.35, 4.2, 0.35, trim, -1.15, 22.4, 5.25);
+    box(0.35, 4.2, 0.35, trim, 1.15, 22.4, 5.25);
+    const tipL = new THREE.Mesh(
+      new THREE.SphereGeometry(0.45, 8, 6),
+      mat(trim, { name: "Primary", flat: true }),
+    );
+    tipL.position.set(-1.15, 20.1, 5.35);
+    tipL.userData.noOutline = true;
+    accent.add(tipL);
+    const tipR = tipL.clone();
+    tipR.position.x = 1.15;
+    accent.add(tipR);
+  } else if (style === "sporty") {
+    // Chest stripe + center zipper + pull
+    box(7.6, 1.15, 0.4, trim, 0, 21.6, 5.05);
+    box(0.5, 11.5, 0.38, light, 0, 20.0, 5.15);
+    box(1.0, 1.0, 0.55, dark, 0, 24.8, 5.4);
+    // Small sleeve-side shoulder ticks (read as jersey trim)
+    box(1.4, 0.55, 0.35, trim, -4.6, 24.2, 3.2);
+    box(1.4, 0.55, 0.35, trim, 4.6, 24.2, 3.2);
+  } else {
+    // Fancy: collar points, necktie, dress buttons
+    const collarL = box(2.4, 0.55, 0.5, light, -1.7, 25.1, 4.85, "Shirt");
+    collarL.rotation.z = 0.4;
+    const collarR = box(2.4, 0.55, 0.5, light, 1.7, 25.1, 4.85, "Shirt");
+    collarR.rotation.z = -0.4;
+    const knot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.85, 8, 6),
+      mat(trim, { name: "Primary", flat: true }),
+    );
+    knot.position.set(0, 24.15, 5.2);
+    knot.scale.set(1.15, 0.7, 0.75);
+    knot.castShadow = true;
+    knot.userData.noOutline = true;
+    accent.add(knot);
+    box(1.55, 7.2, 0.45, trim, 0, 19.6, 5.15, "Primary");
+    box(1.9, 1.3, 0.5, shadeColor(trim, 0.75), 0, 16.0, 5.25, "Primary");
+    for (const y of [22.4, 19.6]) button(-2.15, y, 5.2, light);
+  }
+
+  torso.add(accent);
+}
+
 function assembleActor(look: PlayerLook): { group: THREE.Group; limbs: Limbs } {
   const group = new THREE.Group();
   group.name = "actorBody";
@@ -671,13 +791,14 @@ function assembleActor(look: PlayerLook): { group: THREE.Group; limbs: Limbs } {
     Hair: look.hair,
     Shirt: look.shirt,
     Pants: look.pants,
-    // Accent (shoes) and Ink (eyes/mouth) keep authored colors — never hair-tint.
+    // Accent (shoes) and Ink (eyes/mouth) keep authored colors - never hair-tint.
   });
 
   applySexStyle(body, look.sex, look.hair);
   applyFaceStyle(body, look.face);
   applyHeightStyle(body, look.height);
   applyBuildStyle(body, look.build);
+  applyOutfitDetails(body, look);
 
   // Look scale is applied by createActor each frame (reactions need a clean base).
   body.scale.set(1, 1, 1);
@@ -832,9 +953,6 @@ export function createActor(look: PlayerLook): ActorHandle {
 
   const applySmile = (u: number) => {
     if (!smileFx) smileFx = ensureSmileOverlays(body);
-    const blushL = AssetLibrary.findNamed(body, "Blush_L");
-    const blushR = AssetLibrary.findNamed(body, "Blush_R");
-    const head = headNode();
     // Ease the visible window so it doesn't hard-pop at the edges.
     const showHappy = u > 0.04;
     const ease = u * u * (3 - 2 * u); // smoothstep
@@ -856,37 +974,7 @@ export function createActor(look: PlayerLook): ActorHandle {
       smileFx.mouth.scale.set(0.55 + ease * 0.6, 0.7 + ease * 0.45, 1);
       smileFx.mouth.position.y = smileFx.mouthY - ease * 0.1;
     }
-
-    if (head) {
-      if (head.userData.restScaleX == null) {
-        head.userData.restScaleX = head.scale.x;
-        head.userData.restScaleY = head.scale.y;
-      }
-      const rx = head.userData.restScaleX as number;
-      const ry = head.userData.restScaleY as number;
-      // Soft cheek puff
-      head.scale.x = rx * (1 + ease * 0.06);
-      head.scale.y = ry * (1 - ease * 0.04);
-    }
-
-    if (blushL && faceRest.blushL) {
-      if (blushL.userData.restY == null) blushL.userData.restY = blushL.position.y;
-      blushL.scale.set(
-        faceRest.blushL.x * (1 + ease * 1.15),
-        faceRest.blushL.y * (1 + ease * 0.85),
-        faceRest.blushL.z,
-      );
-      blushL.position.y = (blushL.userData.restY as number) + ease * 0.15;
-    }
-    if (blushR && faceRest.blushR) {
-      if (blushR.userData.restY == null) blushR.userData.restY = blushR.position.y;
-      blushR.scale.set(
-        faceRest.blushR.x * (1 + ease * 1.15),
-        faceRest.blushR.y * (1 + ease * 0.85),
-        faceRest.blushR.z,
-      );
-      blushR.position.y = (blushR.userData.restY as number) + ease * 0.15;
-    }
+    // Keep head / blush at rest - growing cheeks read as a goofy inflate.
   };
 
   const tickFlourish = (dt: number) => {
@@ -949,7 +1037,7 @@ export function createActor(look: PlayerLook): ActorHandle {
       body.position.x = easeToward(body.position.x, 0, dt, 8);
       body.rotation.z = easeToward(body.rotation.z, 0, dt, 8);
       applyBodyScale(1, 1, 1);
-      // Knees up — shortens the on-bed footprint so feet stay on the mattress.
+      // Knees up - shortens the on-bed footprint so feet stay on the mattress.
       limbs.legL.rotation.x = easeToward(limbs.legL.rotation.x, 1.05, dt, 8);
       limbs.legR.rotation.x = easeToward(limbs.legR.rotation.x, 1.0, dt, 8);
       const l = armRest(limbs.armL);
@@ -1043,7 +1131,7 @@ export function createActor(look: PlayerLook): ActorHandle {
     setPose(next) {
       pose = next;
       if (next === "lie") {
-        // Snap onto the mattress — easing from stand would clip through the bed.
+        // Snap onto the mattress - easing from stand would clip through the bed.
         body.rotation.x = -Math.PI / 2;
         body.rotation.z = 0;
         body.position.set(0, LIE_Y, LIE_Z);

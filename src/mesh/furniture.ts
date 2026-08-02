@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { Dir, PetDef, PlacedFurniture } from "../data/types";
-import { TILE } from "../game/constants";
+import { TILE, WALL_T } from "../game/constants";
 import { furnitureById } from "../data/furniture";
 import { AssetLibrary } from "../render/AssetLibrary";
 import { applyTints } from "../render/tint";
@@ -43,6 +43,54 @@ export function applyFurnitureRotation(mesh: THREE.Object3D, rot: Dir = "down") 
   mesh.rotation.y = yawForFurniture(rot);
 }
 
+/** Keep a little air between wall-flush pieces and the shell inner face. */
+const WALL_CLEARANCE = 10;
+
+/**
+ * World XZ for a furniture anchor (footprint centre + optional wall-flush
+ * nudge toward the back). `mesh` must be unrotated - depth is local Z.
+ */
+export function furnitureWorldPos(
+  defId: string,
+  tx: number,
+  ty: number,
+  rot: Dir,
+  mesh?: THREE.Object3D,
+): { x: number; z: number } {
+  const { tw, th } = furnitureFootprint(defId, rot);
+  let x = tx * TILE + (tw * TILE) / 2;
+  let z = ty * TILE + (th * TILE) / 2;
+
+  const def = furnitureById[defId];
+  if (def?.wallFlush && mesh) {
+    const box = new THREE.Box3().setFromObject(mesh);
+    const halfDepth = Math.max(0.5, (box.max.z - box.min.z) / 2);
+    // Depth along the facing axis, in tiles (after rotation).
+    const depthTiles = rot === "left" || rot === "right" ? tw : th;
+    // Pull toward the shell, but leave clearance so pieces don't sink into it.
+    const bias =
+      TILE + (depthTiles * TILE) / 2 - WALL_T - halfDepth - WALL_CLEARANCE;
+    if (bias > 0) {
+      switch (rot) {
+        case "down":
+          z -= bias;
+          break;
+        case "up":
+          z += bias;
+          break;
+        case "right":
+          x -= bias;
+          break;
+        case "left":
+          x += bias;
+          break;
+      }
+    }
+  }
+
+  return { x, z };
+}
+
 export function createFurnitureMesh(defId: string): THREE.Group {
   const root = AssetLibrary.cloneFurniture(defId);
   root.name = `furn_${defId}`;
@@ -58,19 +106,30 @@ export function createFurnitureMesh(defId: string): THREE.Group {
   return root;
 }
 
-export function placeFurniture(f: PlacedFurniture): THREE.Group {
+/** Countertop Y for a host def; 0 if it does not support items. */
+export function surfaceHeightFor(defId: string): number {
+  const def = furnitureById[defId];
+  if (!def?.supportsItems) return 0;
+  return def.surfaceHeight ?? 18;
+}
+
+export function placeFurniture(
+  f: PlacedFurniture,
+  opts?: { surfaceY?: number },
+): THREE.Group {
   const rot = f.rot ?? "down";
   const mesh = createFurnitureMesh(f.defId);
+  const def = furnitureById[f.defId];
+  if (def?.placeOnSurface) {
+    mesh.scale.setScalar(0.85);
+  }
+  const { x, z } = furnitureWorldPos(f.defId, f.tx, f.ty, rot, mesh);
   applyFurnitureRotation(mesh, rot);
-  const { tw, th } = furnitureFootprint(f.defId, rot);
-  mesh.position.set(
-    f.tx * TILE + (tw * TILE) / 2,
-    0,
-    f.ty * TILE + (th * TILE) / 2,
-  );
+  mesh.position.set(x, opts?.surfaceY ?? 0, z);
   mesh.userData.uid = f.uid;
   mesh.userData.defId = f.defId;
   mesh.userData.rot = rot;
+  mesh.userData.parentUid = f.parentUid;
   return mesh;
 }
 

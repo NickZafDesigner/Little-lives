@@ -195,7 +195,7 @@ export class BuildCatalog {
       gridEl.hidden = false;
       toolPanel.hidden = true;
       hintEl.textContent =
-        "Hover for a preview · unlock to buy (everything still costs money) · Esc closes";
+        "Hover for a preview · locked pieces unlock via tasks · Esc closes";
 
       for (const c of CATEGORY_CHIPS) {
         const btn = document.createElement("button");
@@ -239,7 +239,7 @@ export class BuildCatalog {
       } else if (s.buildTool === "floor") {
         title = "Floors";
         body = blush
-          ? "Click a tile for blush flooring ($5) — Homebody unlock!"
+          ? "Click a tile for blush flooring ($5) - Homebody unlock!"
           : "Click a tile for flooring ($5).";
       } else {
         title = "Sell";
@@ -327,7 +327,7 @@ export class BuildCatalog {
       ? progress.done
         ? `
           ${priceLine}
-          <p class="ll-build-tip-hint">Unlocked — available to buy.</p>
+          <p class="ll-build-tip-hint">Unlocked - available to buy.</p>
         `
         : `
           ${priceLine}
@@ -344,7 +344,7 @@ export class BuildCatalog {
         `
       : `
           ${priceLine}
-          <p class="ll-build-tip-hint">Available to buy — click to select, then place.</p>
+          <p class="ll-build-tip-hint">Available to buy - click to select, then place.</p>
         `;
 
     this.tipEl.innerHTML = `

@@ -8,7 +8,7 @@ import type {
 } from "../data/character";
 
 // Bump when re-exporting GLBs so browsers don't keep a stale hair/body kit.
-const ASSET_VER = "20260802ac";
+const ASSET_VER = "20260802ad";
 const assetUrl = (path: string) => `/assets/${path}?v=${ASSET_VER}`;
 
 const CHARACTER_PATHS = {
@@ -50,12 +50,56 @@ const FURNITURE_IDS = [
   "pet_bowl",
   "toy_ball",
   "counter",
+  "kitchen_counter",
   "park_bench",
   "swing_set",
   "slide",
   "shelter_desk",
   "library_desk",
   "clinic_desk",
+  "fern",
+  "storybook",
+  "yarn_ball",
+  "coffee_machine",
+  "microwave",
+  "kettle",
+  "toaster",
+  "lounge_chair",
+  "bean_bag",
+  "reading_lamp",
+  "radio",
+  "dresser",
+  "nightstand",
+  "kitchen_cart",
+  "wall_art",
+  "jukebox",
+  "aquarium",
+  "cat_tree",
+  "nest_basket",
+  "picnic_set",
+  "footstool",
+  "floor_cushion",
+  "side_table",
+  "spice_rack",
+  "welcome_mat",
+  "smoothie_blender",
+  "mini_fridge",
+  "plush_sofa",
+  "love_seat",
+  "writing_desk",
+  "grand_bookshelf",
+  "market_crate",
+  "jam_shelf",
+  "medicine_cabinet",
+  "healing_plant",
+  "canopy_bed",
+  "vanity",
+  "dog_house",
+  "scratching_post",
+  "telescope",
+  "party_lights",
+  "arcade_cabinet",
+  "hammock",
 ] as const;
 
 const WORLD_PATHS = {
@@ -125,16 +169,21 @@ class AssetLibraryImpl {
     return this.ready;
   }
 
-  preload(): Promise<void> {
-    if (this.ready) return Promise.resolve();
+  /** @param onProgress 0–1 as each asset finishes */
+  preload(onProgress?: (p: number) => void): Promise<void> {
+    if (this.ready) {
+      onProgress?.(1);
+      return Promise.resolve();
+    }
     if (this.loadPromise) return this.loadPromise;
-    this.loadPromise = this.loadAll().then(() => {
+    this.loadPromise = this.loadAll(onProgress).then(() => {
       this.ready = true;
+      onProgress?.(1);
     });
     return this.loadPromise;
   }
 
-  private async loadAll(): Promise<void> {
+  private async loadAll(onProgress?: (p: number) => void): Promise<void> {
     const paths: string[] = [
       CHARACTER_PATHS.body,
       ...Object.values(CHARACTER_PATHS.hair),
@@ -143,7 +192,16 @@ class AssetLibraryImpl {
       ...FURNITURE_IDS.map((id) => assetUrl(`furniture/${id}.glb`)),
       WORLD_PATHS.props,
     ];
-    await Promise.all(paths.map((p) => this.loadOne(p)));
+    let done = 0;
+    const total = Math.max(1, paths.length);
+    onProgress?.(0);
+    await Promise.all(
+      paths.map(async (p) => {
+        await this.loadOne(p);
+        done += 1;
+        onProgress?.(done / total);
+      }),
+    );
   }
 
   private async loadOne(url: string): Promise<void> {
@@ -177,58 +235,14 @@ class AssetLibraryImpl {
   }
 
   cloneFurniture(defId: string): THREE.Group {
-    const alias: Record<string, string> = {
-      fern: "plant",
-      storybook: "bookshelf",
-      yarn_ball: "toy_ball",
-      coffee_machine: "fridge",
-      microwave: "fridge",
-      lounge_chair: "sofa",
-      bean_bag: "sofa",
-      reading_lamp: "bookshelf",
-      radio: "tv",
-      dresser: "table",
-      nightstand: "table",
-      kitchen_cart: "table",
-      wall_art: "plant",
-      jukebox: "tv",
-      aquarium: "bookshelf",
-      cat_tree: "pet_bed",
-      nest_basket: "pet_bowl",
-      picnic_set: "park_bench",
-      footstool: "table",
-      floor_cushion: "sofa",
-      side_table: "table",
-      spice_rack: "bookshelf",
-      welcome_mat: "plant",
-      smoothie_blender: "fridge",
-      mini_fridge: "fridge",
-      plush_sofa: "sofa",
-      love_seat: "sofa",
-      writing_desk: "table",
-      grand_bookshelf: "bookshelf",
-      market_crate: "table",
-      jam_shelf: "bookshelf",
-      medicine_cabinet: "bookshelf",
-      healing_plant: "plant",
-      canopy_bed: "bed",
-      vanity: "shower",
-      dog_house: "pet_bed",
-      scratching_post: "pet_bed",
-      telescope: "bookshelf",
-      party_lights: "plant",
-      arcade_cabinet: "tv",
-      hammock: "park_bench",
-    };
-    const meshId = alias[defId] ?? defId;
-    const url = assetUrl(`furniture/${meshId}.glb`);
+    const url = assetUrl(`furniture/${defId}.glb`);
     if (!this.templates.has(url)) {
       return unwrapClone(this.getTemplate(assetUrl("furniture/table.glb")), [
         "table",
         "Root",
       ]);
     }
-    return unwrapClone(this.getTemplate(url), [meshId, "Root"]);
+    return unwrapClone(this.getTemplate(url), [defId, "Root"]);
   }
 
   /** Named children from the world props pack (Bush, Flower, Rock, …). */

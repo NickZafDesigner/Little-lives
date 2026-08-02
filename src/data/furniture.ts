@@ -37,6 +37,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.white,
     accent: Palette.mint,
     blocksMovement: true,
+    wallFlush: true,
     interactions: [
       {
         id: "snack",
@@ -62,6 +63,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.white,
     accent: Palette.water,
     blocksMovement: true,
+    wallFlush: true,
     interactions: [
       {
         id: "use",
@@ -100,6 +102,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.sunflower,
     accent: Palette.wood,
     blocksMovement: true,
+    wallFlush: true,
     interactions: [
       {
         id: "sit",
@@ -119,6 +122,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.ink,
     accent: Palette.sky,
     blocksMovement: true,
+    wallFlush: true,
     unlockTaskId: "cafe_shifts_3",
     interactions: [
       {
@@ -139,12 +143,36 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.wood,
     accent: Palette.woodDark,
     blocksMovement: true,
+    supportsItems: true,
+    surfaceHeight: 16,
     interactions: [
       {
         id: "doodle",
         label: "Doodle",
         durationMs: 1000,
         needDeltas: { fun: 12 },
+      },
+    ],
+  },
+  {
+    id: "kitchen_counter",
+    name: "Kitchen Counter",
+    category: "surface",
+    price: 75,
+    width: 2,
+    height: 1,
+    color: Palette.wood,
+    accent: Palette.cream,
+    blocksMovement: true,
+    wallFlush: true,
+    supportsItems: true,
+    surfaceHeight: 18,
+    interactions: [
+      {
+        id: "wipe",
+        label: "Wipe the Counter",
+        durationMs: 800,
+        needDeltas: { fun: 4, hygiene: 6 },
       },
     ],
   },
@@ -177,6 +205,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.woodDark,
     accent: Palette.cream,
     blocksMovement: true,
+    wallFlush: true,
     unlockTaskId: "library_shifts_2",
     interactions: [
       {
@@ -260,6 +289,9 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.wood,
     accent: Palette.cafe,
     blocksMovement: true,
+    wallFlush: true,
+    supportsItems: true,
+    surfaceHeight: 18,
     interactions: [
       {
         id: "work",
@@ -336,6 +368,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.shelter,
     accent: Palette.white,
     blocksMovement: true,
+    wallFlush: true,
     interactions: [
       {
         id: "adopt",
@@ -355,6 +388,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.library,
     accent: Palette.lavender,
     blocksMovement: true,
+    wallFlush: true,
     interactions: [
       {
         id: "work",
@@ -374,6 +408,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.clinic,
     accent: Palette.mint,
     blocksMovement: true,
+    wallFlush: true,
     interactions: [
       {
         id: "work",
@@ -383,7 +418,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
       },
     ],
   },
-  // Collection / cozy-score fillers (reuse existing meshes via AssetLibrary aliases)
+  // Collection / cozy-score fillers
   {
     id: "fern",
     name: "Leafy Fern",
@@ -446,7 +481,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
       },
     ],
   },
-  // Premium unlockables (mesh aliases — see AssetLibrary)
+  // Premium unlockables
   {
     id: "coffee_machine",
     name: "Coffee Machine",
@@ -456,7 +491,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     height: 1,
     color: Palette.ink,
     accent: Palette.cafe,
-    blocksMovement: true,
+    blocksMovement: false,
+    placeOnSurface: true,
     unlockTaskId: "cafe_shifts_5",
     interactions: [
       {
@@ -476,7 +512,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     height: 1,
     color: Palette.white,
     accent: Palette.ink,
-    blocksMovement: true,
+    blocksMovement: false,
+    placeOnSurface: true,
     unlockTaskId: "cafe_promoted",
     interactions: [
       {
@@ -484,6 +521,46 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
         label: "Reheat a Snack",
         durationMs: 1000,
         needDeltas: { hunger: 28, energy: 4 },
+      },
+    ],
+  },
+  {
+    id: "kettle",
+    name: "Kettle",
+    category: "appliance",
+    price: 45,
+    width: 1,
+    height: 1,
+    color: Palette.sky,
+    accent: Palette.ink,
+    blocksMovement: false,
+    placeOnSurface: true,
+    interactions: [
+      {
+        id: "boil",
+        label: "Boil Water",
+        durationMs: 900,
+        needDeltas: { energy: 8, fun: 4, bladder: -3 },
+      },
+    ],
+  },
+  {
+    id: "toaster",
+    name: "Toaster",
+    category: "appliance",
+    price: 40,
+    width: 1,
+    height: 1,
+    color: Palette.cream,
+    accent: Palette.rose,
+    blocksMovement: false,
+    placeOnSurface: true,
+    interactions: [
+      {
+        id: "toast",
+        label: "Make Toast",
+        durationMs: 1000,
+        needDeltas: { hunger: 18, fun: 5 },
       },
     ],
   },
@@ -556,7 +633,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     height: 1,
     color: Palette.rose,
     accent: Palette.cream,
-    blocksMovement: true,
+    blocksMovement: false,
+    placeOnSurface: true,
     unlockTaskId: "market_shifts_3",
     interactions: [
       {
@@ -617,6 +695,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.wood,
     accent: Palette.mint,
     blocksMovement: true,
+    supportsItems: true,
+    surfaceHeight: 19,
     unlockTaskId: "market_shifts_2",
     interactions: [
       {
@@ -800,6 +880,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.wood,
     accent: Palette.cream,
     blocksMovement: true,
+    supportsItems: true,
+    surfaceHeight: 15,
     interactions: [
       {
         id: "set_cup",
@@ -857,7 +939,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     height: 1,
     color: Palette.mint,
     accent: Palette.white,
-    blocksMovement: true,
+    blocksMovement: false,
+    placeOnSurface: true,
     unlockTaskId: "cafe_shifts_3",
     interactions: [
       {

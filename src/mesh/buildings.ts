@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Palette } from "../game/palette";
-import { TILE } from "../game/constants";
-import { LOTS, type LotBounds } from "../world/lots";
+import { TILE, WALL_T } from "../game/constants";
+import { LOTS, LOT_DOOR_TX, type LotBounds } from "../world/lots";
 import { LOT_INTERIORS } from "../world/rooms";
 import type { LotId } from "../data/types";
 import { matFlat, matClone } from "./materials";
@@ -11,9 +11,20 @@ export interface BuildingHandle {
   group: THREE.Group;
   roof: THREE.Group;
   footprint: { minX: number; maxX: number; minZ: number; maxZ: number };
-  /** Open = player inside: roof fades, camera-near walls cut away. */
+  /** Open = player inside: roof / near walls / internals ease over fade secs. */
   setRoofOpen(open: boolean): void;
   containsPoint(x: number, z: number, pad?: number): boolean;
+}
+
+/** Per-mesh data for interior occlusion fade. */
+interface InternalWallData {
+  /** "x" = EW run (plane in Z); "y" = NS run (plane in X). */
+  axis: "x" | "y";
+  /** Span along the long axis (world X for EW, world Z for NS). */
+  min: number;
+  max: number;
+  /** Wall plane position (world Z for EW, world X for NS). */
+  plane: number;
 }
 
 /**
@@ -24,16 +35,15 @@ export interface BuildingHandle {
  * - Roof seats on the outer wall plate
  */
 const WALL_H = 64;
-const WALL_T = 14;
 const INNER_T = 8;
-/** Uniform partition height — mismatched NS/EW heights made junctions look broken. */
+/** Uniform partition height - mismatched NS/EW heights made junctions look broken. */
 const INNER_H = 52;
 const PLINTH_H = 2;
 /** Roof length overhang past the E/W walls. */
 const EAVE = 18;
 /** Roof depth overhang past the N/S walls. */
 const ROOF_OVERHANG_Z = 16;
-/** Pitch from horizontal — steep enough to read under the oblique camera. */
+/** Pitch from horizontal - steep enough to read under the oblique camera. */
 const ROOF_PITCH_DEG = 56;
 const ROOF_RISE_MAX_FRAC = 1.3;
 const ROOF_RISE_MIN_FRAC = 0.75;
@@ -44,6 +54,12 @@ const WIN_W = 28;
 const WIN_H = 34;
 /** Clearance past the door opening before a window may be placed. */
 const WIN_DOOR_PAD = 18;
+/** How far the player can be from the door before it starts opening. */
+const DOOR_APPROACH = TILE * 2.4;
+/** Inward swing (rad). Slightly past 90° so the leaf clears the jamb. */
+const DOOR_OPEN_ANGLE = Math.PI * 0.55;
+/** Ease speed for door swing (matches actor-style damp). */
+const DOOR_SWING_SPEED = 7;
 
 const LOT_STYLE: Partial<
   Record<
@@ -102,15 +118,6 @@ const LOT_STYLE: Partial<
   },
 };
 
-const DOOR_TX: Partial<Record<LotId, number>> = {
-  home: 7,
-  neighbor: 5,
-  cafe: 6,
-  shelter: 6,
-  market: 6,
-  library: 6,
-  clinic: 6,
-};
 
 function box(
   parent: THREE.Object3D,
@@ -136,15 +143,98 @@ function box(
   return mesh;
 }
 
+/** SE camera looks NW - player is behind a wall when on its north/west side. */
+const WALL_FADE_OPACITY = 0.5;
+/** Enter / exit cutaway (roof + near walls) ease duration. */
+const CUTAWAY_FADE_SEC = 0.55;
+/** Internal partition ghost-in / ghost-out duration. */
+const INNER_FADE_SEC = 0.35;
+/** Slight span pad so fade holds near segment ends / doorjambs. */
+const INNER_FADE_SPAN_PAD = TILE * 0.25;
+
+/** Smoothstep - softens linear 0→1 cutaway / wall fades. */
+function easeSmooth(t: number): number {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
+}
+
+function approach(current: number, target: number, step: number): number {
+  if (current < target) return Math.min(target, current + step);
+  if (current > target) return Math.max(target, current - step);
+  return current;
+}
+
+function setMeshFadeOpacity(mesh: THREE.Mesh, opacity: number) {
+  const key = (opacity * 1000 + 0.5) | 0;
+  if (mesh.userData._fadeKey === key) return;
+  mesh.userData._fadeKey = key;
+  const m = mesh.material;
+  if (!(m instanceof THREE.MeshToonMaterial)) return;
+  if (opacity <= 0.01) {
+    mesh.visible = false;
+    return;
+  }
+  mesh.visible = true;
+  if (opacity >= 0.999) {
+    m.transparent = false;
+    m.opacity = 1;
+    m.depthWrite = true;
+  } else {
+    m.transparent = true;
+    m.opacity = opacity;
+    m.depthWrite = false;
+  }
+}
+
+function setGroupFadeOpacity(
+  root: THREE.Object3D,
+  opacity: number,
+  castShadows: boolean,
+) {
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    setMeshFadeOpacity(obj, opacity);
+    if (obj.userData._castShadowWas === undefined) {
+      obj.userData._castShadowWas = obj.castShadow;
+    }
+    obj.castShadow = castShadows && !!obj.userData._castShadowWas;
+  });
+}
+
+function ghostOpacity(t: number): number {
+  return 1 + (WALL_FADE_OPACITY - 1) * easeSmooth(t);
+}
+
+function playerBehindInternalWall(
+  data: InternalWallData,
+  px: number,
+  pz: number,
+): boolean {
+  const half = INNER_T / 2;
+  if (data.axis === "x") {
+    // EW wall: occludes when player is north of it (camera-far).
+    if (pz >= data.plane - half) return false;
+    return px >= data.min - INNER_FADE_SPAN_PAD && px <= data.max + INNER_FADE_SPAN_PAD;
+  }
+  // NS wall: occludes when player is west of it (camera-far).
+  if (px >= data.plane - half) return false;
+  return pz >= data.min - INNER_FADE_SPAN_PAD && pz <= data.max + INNER_FADE_SPAN_PAD;
+}
+
 /**
  * Internal partitions:
  * - EW runs own junction tiles (continuous hallway beams)
  * - NS runs skip those tiles and butt to the EW faces (no cross overlap)
  * - Ends that reach the interior perimeter extend to the outer-wall inner face
  */
-function addInternalWalls(group: THREE.Group, lot: LotBounds, wallColor: number) {
+function addInternalWalls(
+  group: THREE.Group,
+  lot: LotBounds,
+  wallColor: number,
+): THREE.Mesh[] {
+  const meshes: THREE.Mesh[] = [];
   const interior = LOT_INTERIORS[lot.id];
-  if (!interior) return;
+  if (!interior) return meshes;
   const base = 0.35;
   const y = base + INNER_H / 2;
   const noCast = { castShadow: false as const };
@@ -171,6 +261,31 @@ function addInternalWalls(group: THREE.Group, lot: LotBounds, wallColor: number)
 
   const key = (tx: number, ty: number) => `${tx},${ty}`;
 
+  const place = (
+    w: number,
+    d: number,
+    cx: number,
+    cz: number,
+    data: InternalWallData,
+  ) => {
+    // Clone so per-mesh opacity doesn't mutate the shared matFlat cache.
+    const mesh = box(
+      group,
+      w,
+      INNER_H,
+      d,
+      wallColor,
+      cx,
+      y,
+      cz,
+      matClone(wallColor),
+      noCast,
+    );
+    mesh.userData.internalWall = data;
+    mesh.userData.fadeT = 0;
+    meshes.push(mesh);
+  };
+
   for (const run of interior.walls) {
     const doors = new Set(run.doors ?? []);
 
@@ -187,7 +302,12 @@ function addInternalWalls(group: THREE.Group, lot: LotBounds, wallColor: number)
         if (x1 - x0 < 1) return;
         const cx = (x0 + x1) / 2;
         const cz = (lot.ty + run.ry) * TILE + TILE / 2;
-        box(group, x1 - x0, INNER_H, INNER_T, wallColor, cx, y, cz, undefined, noCast);
+        place(x1 - x0, INNER_T, cx, cz, {
+          axis: "x",
+          min: x0,
+          max: x1,
+          plane: cz,
+        });
         return;
       }
 
@@ -224,7 +344,12 @@ function addInternalWalls(group: THREE.Group, lot: LotBounds, wallColor: number)
         if (z1 - z0 >= 1) {
           const cx = col * TILE + TILE / 2;
           const cz = (z0 + z1) / 2;
-          box(group, INNER_T, INNER_H, z1 - z0, wallColor, cx, y, cz, undefined, noCast);
+          place(INNER_T, z1 - z0, cx, cz, {
+            axis: "y",
+            min: z0,
+            max: z1,
+            plane: cx,
+          });
         }
         a = b + 1;
       }
@@ -240,6 +365,8 @@ function addInternalWalls(group: THREE.Group, lot: LotBounds, wallColor: number)
     }
     flush(segStart, run.length - 1);
   }
+
+  return meshes;
 }
 
 function meshFromPositions(
@@ -274,7 +401,7 @@ function pushTri(
 
 /**
  * Clean cottage roof: one thick slab per pitch + inset gable + raised ridge.
- * No overlapping gambrel/knee/ridge faces — those z-fought and looked like the
+ * No overlapping gambrel/knee/ridge faces - those z-fought and looked like the
  * roof was "drawing on the fly" while walking.
  */
 function makePitchedRoof(opts: {
@@ -346,7 +473,7 @@ function makePitchedRoof(opts: {
     group.add(slab);
   }
 
-  // Gables face both ways — single-sided tris vanish under the oblique camera.
+  // Gables face both ways - single-sided tris vanish under the oblique camera.
   gableMat.side = THREE.DoubleSide;
   const gableY = rise * (wallHalfD / span) - 1.5;
   if (gableY > 4) {
@@ -361,7 +488,7 @@ function makePitchedRoof(opts: {
     new THREE.BoxGeometry(length + 4, RIDGE_T, RIDGE_T * 1.6),
     ridgeMat,
   );
-  // Sit clearly above the slab peak — never embedded in the seam.
+  // Sit clearly above the slab peak - never embedded in the seam.
   ridge.position.set(0, rise + ROOF_SLAB_T * 0.35 + RIDGE_T * 0.5, 0);
   ridge.castShadow = true;
   ridge.receiveShadow = false;
@@ -371,24 +498,9 @@ function makePitchedRoof(opts: {
   return { group, rise };
 }
 
-/** Hard cutaway — no translucent ghosts. */
-function setCutawayVisible(root: THREE.Object3D, show: boolean) {
-  root.visible = show;
-  root.traverse((obj) => {
-    if (!(obj instanceof THREE.Mesh)) return;
-    const m = obj.material;
-    if (m instanceof THREE.MeshToonMaterial) {
-      m.transparent = false;
-      m.opacity = 1;
-      m.depthWrite = true;
-    }
-    obj.castShadow = show && obj.userData.castShadow !== false;
-  });
-}
-
 /**
  * Windows sit proud on the OUTER wall face so they stay visible.
- * Frame + glass + sill — reads clearly at oblique camera angles.
+ * Frame + glass + sill - reads clearly at oblique camera angles.
  */
 function addWindows(
   parent: THREE.Object3D,
@@ -408,7 +520,7 @@ function addWindows(
   const glassT = 1.6;
   // Proud of the outer face so panes read clearly from the street.
   const out = 1.6;
-  // Half of sill width — door skip range is widened separately by WIN_DOOR_PAD.
+  // Half of sill width - door skip range is widened separately by WIN_DOOR_PAD.
   const halfExtent = (winW + 5) / 2 + 2;
 
   if (wallFace === "north" || wallFace === "south") {
@@ -483,12 +595,12 @@ function buildHouse(lot: LotBounds): BuildingHandle {
   const southZ = maxZ - t / 2;
   const westX = minX + t / 2;
   const eastX = maxX - t / 2;
-  // E/W walls butt between N/S inner faces — exact fit, no corner overlap.
+  // E/W walls butt between N/S inner faces - exact fit, no corner overlap.
   const sideDepth = outerD - 2 * t;
   const sideCz = cz;
 
   // Door opening in south wall (world X range).
-  const doorCx = (lot.tx + (DOOR_TX[lot.id] ?? 6)) * TILE + TILE / 2;
+  const doorCx = (lot.tx + (LOT_DOOR_TX[lot.id] ?? 6)) * TILE + TILE / 2;
   const doorW = TILE * 1.5;
   const doorX0 = doorCx - doorW / 2;
   const doorX1 = doorCx + doorW / 2;
@@ -497,7 +609,7 @@ function buildHouse(lot: LotBounds): BuildingHandle {
   const leftCx = minX + leftW / 2;
   const rightCx = doorX1 + rightW / 2;
 
-  // Floor slab — wood tones so interiors read apart from pastel walls.
+  // Floor slab - wood tones so interiors read apart from pastel walls.
   box(group, outerW, PLINTH_H, outerD, style.floor, cx, PLINTH_H / 2, cz);
 
   // --- Far walls (always visible): north + west ---
@@ -515,7 +627,7 @@ function buildHouse(lot: LotBounds): BuildingHandle {
   near.name = "near_walls";
 
   // Door-sized opening only. (Old lintel/lower split left a tall empty
-  // column above the short door leaf — shower was visible through it.)
+  // column above the short door leaf - shower was visible through it.)
   const doorH = 56;
   const doorTop = base + doorH;
   const headerH = Math.max(0, wallTopY - doorTop);
@@ -554,16 +666,37 @@ function buildHouse(lot: LotBounds): BuildingHandle {
 
   group.add(near);
 
-  box(
-    group,
-    doorW - 1.5,
+  // Hinged door leaf - pivot on the west jamb, swings inward (+Y).
+  const leafW = doorW - 1.5;
+  const leafD = 2;
+  const hingeX = doorCx - leafW / 2;
+  const doorZ = maxZ - 1;
+  const doorPivot = new THREE.Group();
+  doorPivot.name = "door";
+  doorPivot.position.set(hingeX, base + doorH / 2, doorZ);
+  const doorLeaf = box(
+    doorPivot,
+    leafW,
     doorH,
-    2,
+    leafD,
     style.door,
-    doorCx,
-    base + doorH / 2,
-    maxZ - 1,
+    leafW / 2,
+    0,
+    0,
   );
+  // Small knob on the free edge (street side).
+  box(
+    doorLeaf,
+    3.2,
+    3.2,
+    3.5,
+    new THREE.Color(style.door).offsetHSL(0, 0, -0.12).getHex(),
+    leafW * 0.38,
+    0,
+    leafD / 2 + 1.2,
+  );
+  group.add(doorPivot);
+
   // Canopy just above the door leaf (not the full wall).
   box(
     near,
@@ -576,9 +709,9 @@ function buildHouse(lot: LotBounds): BuildingHandle {
     maxZ + 4,
   );
 
-  addInternalWalls(group, lot, style.wall);
+  const internalWalls = addInternalWalls(group, lot, style.wall);
 
-  // Far walls — tracked so we can mute their indoor shadows during cutaway.
+  // Far walls - tracked so we can mute their indoor shadows during cutaway.
   const farCasters: THREE.Mesh[] = [];
   group.traverse((obj) => {
     if (obj instanceof THREE.Mesh && obj.parent === group && obj.castShadow) {
@@ -655,30 +788,86 @@ function buildHouse(lot: LotBounds): BuildingHandle {
       obj.material = obj.material.clone();
     }
   });
+  // Door leaf shares the front-wall fade; clone so opacity is independent.
+  doorPivot.traverse((obj) => {
+    if (obj instanceof THREE.Mesh && obj.material instanceof THREE.MeshToonMaterial) {
+      obj.material = obj.material.clone();
+    }
+  });
 
   let open = false;
   let wasOpen: boolean | null = null;
+  /** 0 = outside (roof solid), 1 = inside (roof gone, near walls ghosted). */
+  let cutawayT = 0;
+  let doorAngle = 0;
 
-  const applyCutaway = () => {
-    setCutawayVisible(roof, !open);
-    setCutawayVisible(near, !open);
-    // Mute far-wall shadows while open so they don't stripe the floor.
-    for (const m of farCasters) m.castShadow = !open;
+  const applyCutawayT = (t: number) => {
+    const e = easeSmooth(t);
+    // Roof eases out on enter / back in on exit.
+    setGroupFadeOpacity(roof, 1 - e, e < 0.45);
+    // Near walls + door ease to the ghost opacity while inside.
+    const nearOpacity = ghostOpacity(t);
+    setGroupFadeOpacity(near, nearOpacity, e < 0.45);
+    setGroupFadeOpacity(doorPivot, nearOpacity, e < 0.45);
+    // Mute far-wall shadows while mostly open so they don't stripe the floor.
+    for (const m of farCasters) m.castShadow = e < 0.45;
   };
 
   const setRoofOpen = (next: boolean) => {
     if (open === next && wasOpen !== null) return;
     open = next;
     wasOpen = next;
-    applyCutaway();
   };
 
-  const update = (_dt: number) => {
-    // Cutaway is applied immediately in setRoofOpen; keep hook for callers.
+  const updateInternalWallFade = (
+    dt: number,
+    playerX: number,
+    playerZ: number,
+  ) => {
+    if (internalWalls.length === 0) return;
+    const step = dt / INNER_FADE_SEC;
+    for (const mesh of internalWalls) {
+      const data = mesh.userData.internalWall as InternalWallData | undefined;
+      const want =
+        open && data
+          ? playerBehindInternalWall(data, playerX, playerZ)
+          : false;
+      const target = want ? 1 : 0;
+      let t = (mesh.userData.fadeT as number) ?? 0;
+      if (t === target) continue;
+      t = approach(t, target, step);
+      mesh.userData.fadeT = t;
+      setMeshFadeOpacity(mesh, ghostOpacity(t));
+    }
   };
 
-  (group as THREE.Group & { _updateRoof?: (dt: number) => void })._updateRoof =
-    update;
+  const doorTileZ = maxZ - TILE / 2;
+  const approachR2 = DOOR_APPROACH * DOOR_APPROACH;
+
+  const update = (dt: number, playerX: number, playerZ: number) => {
+    const cutawayTarget = open ? 1 : 0;
+    if (cutawayT !== cutawayTarget) {
+      cutawayT = approach(cutawayT, cutawayTarget, dt / CUTAWAY_FADE_SEC);
+      applyCutawayT(cutawayT);
+    }
+
+    updateInternalWallFade(dt, playerX, playerZ);
+
+    const dx = playerX - doorCx;
+    const dz = playerZ - doorTileZ;
+    const nearDoor = dx * dx + dz * dz < approachR2;
+    // Proximity only - swings shut once you walk in past the doorway.
+    const target = nearDoor ? DOOR_OPEN_ANGLE : 0;
+    doorAngle += (target - doorAngle) * Math.min(1, dt * DOOR_SWING_SPEED);
+    if (Math.abs(doorAngle - target) < 0.001) doorAngle = target;
+    doorPivot.rotation.y = doorAngle;
+  };
+
+  (
+    group as THREE.Group & {
+      _updateRoof?: (dt: number, playerX: number, playerZ: number) => void;
+    }
+  )._updateRoof = update;
 
   return {
     lotId: lot.id,
@@ -695,7 +884,7 @@ function buildHouse(lot: LotBounds): BuildingHandle {
 export function buildBuildings(): {
   group: THREE.Group;
   buildings: BuildingHandle[];
-  update: (dt: number) => void;
+  update: (dt: number, playerX: number, playerZ: number) => void;
 } {
   const group = new THREE.Group();
   group.name = "buildings";
@@ -711,10 +900,12 @@ export function buildBuildings(): {
   return {
     group,
     buildings,
-    update(dt: number) {
+    update(dt: number, playerX: number, playerZ: number) {
       for (const b of buildings) {
-        const g = b.group as THREE.Group & { _updateRoof?: (dt: number) => void };
-        g._updateRoof?.(dt);
+        const g = b.group as THREE.Group & {
+          _updateRoof?: (dt: number, px: number, pz: number) => void;
+        };
+        g._updateRoof?.(dt, playerX, playerZ);
       }
     },
   };

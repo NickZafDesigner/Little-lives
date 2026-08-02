@@ -125,7 +125,7 @@ export class DialogueBox {
     this.cancelExit();
     const wasEmpty = this.queue.length === 0;
     this.queue.push(...lines);
-    // After a choice pick, active stays true — still need to drain the reply.
+    // After a choice pick, active stays true - still need to drain the reply.
     if (!this.typing && (!this.active || wasEmpty)) this.playNext();
   }
 
@@ -187,7 +187,7 @@ export class DialogueBox {
   advance() {
     if (!this.visible || this.exiting) return;
     // Nested chats call offerChoices while reply lines still play. Block only
-    // when buttons are actually showing — otherwise Space/click can never drain
+    // when buttons are actually showing - otherwise Space/click can never drain
     // the queue (Pickle "Truce?" softlock).
     if (this.choicesVisible()) return;
 
@@ -200,7 +200,7 @@ export class DialogueBox {
       return;
     }
 
-    // Line fully shown — always allow next/dismiss (do not apply the
+    // Line fully shown - always allow next/dismiss (do not apply the
     // open-line ignore window; short lines finish typing before it ends).
     this.playNext();
   }

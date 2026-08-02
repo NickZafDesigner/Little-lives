@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 /**
- * Outlines are disabled — the soft toon shading reads cleaner without
+ * Outlines are disabled - the soft toon shading reads cleaner without
  * inverted-hull ink shells. This stays as a no-op (and strips any leftovers)
  * so call sites can remain; re-enable by restoring extrusion logic later.
  */

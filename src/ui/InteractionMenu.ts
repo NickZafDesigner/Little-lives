@@ -171,7 +171,7 @@ export class InteractionMenu {
     btn.className = "ll-menu-chip";
     btn.disabled = Boolean(opt.disabled);
     btn.style.setProperty("--ll-i", String(delayIndex));
-    btn.title = opt.sub ? `${opt.label} — ${opt.sub}` : opt.label;
+    btn.title = opt.sub ? `${opt.label} - ${opt.sub}` : opt.label;
     btn.setAttribute("role", "menuitem");
     btn.textContent = toneChipLabel(opt.label);
     btn.addEventListener("click", (e) => this.handlePick(e, opt));

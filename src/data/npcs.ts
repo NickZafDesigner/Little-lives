@@ -64,7 +64,7 @@ export const RELATIONSHIP_FRIEND = 40;
 export const RELATIONSHIP_CLOSE = 70;
 export const RELATIONSHIP_CRUSH = 75;
 
-/** How you choose to speak — shown before other social actions. */
+/** How you choose to speak - shown before other social actions. */
 export const DIALOGUE_TONES: Array<{
   id: DialogueTone;
   label: string;

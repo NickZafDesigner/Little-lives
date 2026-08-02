@@ -1,6 +1,7 @@
 import type { ScreenRouter } from "./ScreenRouter";
 import { TownRenderer } from "../render/TownRenderer";
 import { Audio } from "../audio/AudioManager";
+import { installHoverSounds } from "../ui/hoverSounds";
 
 export class App {
   readonly canvas: HTMLCanvasElement;
@@ -17,8 +18,11 @@ export class App {
     gameRoot.appendChild(this.canvas);
 
     this.renderer = new TownRenderer(this.canvas);
+    installHoverSounds();
 
-    const unlock = () => Audio.unlock();
+    const unlock = () => {
+      void Audio.unlock();
+    };
     window.addEventListener("pointerdown", unlock, { once: false });
     window.addEventListener("keydown", unlock, { once: false });
 

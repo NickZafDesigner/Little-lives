@@ -31,85 +31,111 @@ import { interiorFurniture } from "../world/rooms";
 function parkOutdoorFurniture(): PlacedFurniture[] {
   const park = LOTS.find((l) => l.id === "park")!;
   return [
+    // Benches on the ring, facing the pond.
     {
       uid: "p_bench",
       defId: "park_bench",
       tx: park.tx + 3,
-      ty: park.ty + 4,
+      ty: park.ty + 6,
       lotId: "park",
       rot: "right",
     },
     {
       uid: "p_bench2",
       defId: "park_bench",
-      tx: park.tx + 15,
-      ty: park.ty + 4,
+      tx: park.tx + 16,
+      ty: park.ty + 6,
       lotId: "park",
       rot: "left",
     },
     {
       uid: "p_bench3",
       defId: "park_bench",
-      tx: park.tx + 4,
-      ty: park.ty + 11,
+      tx: park.tx + 6,
+      ty: park.ty + 2,
       lotId: "park",
-      rot: "up",
+      rot: "down",
     },
     {
       uid: "p_bench4",
       defId: "park_bench",
-      tx: park.tx + 14,
+      tx: park.tx + 12,
+      ty: park.ty + 2,
+      lotId: "park",
+      rot: "down",
+    },
+    {
+      uid: "p_bench5",
+      defId: "park_bench",
+      tx: park.tx + 6,
       ty: park.ty + 11,
       lotId: "park",
       rot: "up",
     },
     {
+      uid: "p_bench6",
+      defId: "park_bench",
+      tx: park.tx + 12,
+      ty: park.ty + 11,
+      lotId: "park",
+      rot: "up",
+    },
+    {
+      uid: "p_picnic",
+      defId: "picnic_set",
+      tx: park.tx + 4,
+      ty: park.ty + 8,
+      lotId: "park",
+      rot: "right",
+    },
+    {
       uid: "p_table",
       defId: "table",
-      tx: park.tx + 16,
+      tx: park.tx + 15,
       ty: park.ty + 8,
       lotId: "park",
     },
+    // Corner planters outside the ring.
     {
       uid: "p_plant1",
       defId: "plant",
       tx: park.tx + 1,
-      ty: park.ty + 2,
+      ty: park.ty + 1,
       lotId: "park",
     },
     {
       uid: "p_plant2",
       defId: "fern",
       tx: park.tx + 1,
-      ty: park.ty + 11,
+      ty: park.ty + 12,
       lotId: "park",
     },
     {
       uid: "p_plant3",
       defId: "plant",
       tx: park.tx + 18,
-      ty: park.ty + 2,
+      ty: park.ty + 1,
       lotId: "park",
     },
     {
       uid: "p_plant4",
       defId: "fern",
       tx: park.tx + 18,
-      ty: park.ty + 11,
+      ty: park.ty + 12,
       lotId: "park",
     },
     {
       uid: "p_plant5",
       defId: "plant",
-      tx: park.tx + 6,
-      ty: park.ty + 2,
+      tx: park.tx + 8,
+      ty: park.ty + 1,
       lotId: "park",
     },
     {
       uid: "p_plant6",
       defId: "fern",
-      tx: park.tx + 12,
-      ty: park.ty + 2,
+      tx: park.tx + 11,
+      ty: park.ty + 1,
       lotId: "park",
     },
   ];
@@ -316,20 +342,40 @@ export class GameState {
     this.ensureWorkplaceFurniture();
   }
 
-  /** Ensure workplace hop-stations exist for job tasks (older saves). */
+  /**
+   * Keep authored workplace / NPC interior pieces on their designed tiles/rots,
+   * and backfill any missing hop-stations for older saves.
+   * Home starters only come from seedStarterFurniture - players may rearrange them.
+   */
   ensureWorkplaceFurniture() {
     const byUid = new Map(this.furniture.map((f) => [f.uid, f]));
-    for (const lotId of ["cafe", "market", "library", "clinic"] as const) {
+    for (const lotId of [
+      "neighbor",
+      "cafe",
+      "shelter",
+      "market",
+      "library",
+      "clinic",
+    ] as const) {
       for (const piece of interiorFurniture(lotId)) {
-        if (byUid.has(piece.uid)) continue;
-        this.furniture.push({
-          uid: piece.uid,
-          defId: piece.defId,
-          tx: piece.tx,
-          ty: piece.ty,
-          lotId: piece.lotId,
-        });
-        byUid.set(piece.uid, this.furniture[this.furniture.length - 1]);
+        const existing = byUid.get(piece.uid);
+        if (existing) {
+          existing.tx = piece.tx;
+          existing.ty = piece.ty;
+          existing.rot = piece.rot ?? "down";
+          existing.defId = piece.defId;
+          existing.lotId = piece.lotId;
+        } else {
+          this.furniture.push({
+            uid: piece.uid,
+            defId: piece.defId,
+            tx: piece.tx,
+            ty: piece.ty,
+            lotId: piece.lotId,
+            rot: piece.rot,
+          });
+          byUid.set(piece.uid, this.furniture[this.furniture.length - 1]);
+        }
       }
     }
   }
@@ -483,6 +529,7 @@ export class GameState {
       furniture: this.furniture.map((f) => ({
         ...f,
         rot: f.rot ?? "down",
+        ...(f.parentUid ? { parentUid: f.parentUid } : {}),
       })),
       walls: [...this.walls].map((k) => {
         const [tx, ty] = k.split(",").map(Number);

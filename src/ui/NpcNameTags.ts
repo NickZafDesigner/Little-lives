@@ -11,7 +11,7 @@ interface TagState {
 }
 
 /**
- * Floating name pills above characters — shown while the cursor hovers them.
+ * Floating name pills above characters - shown while the cursor hovers them.
  */
 export class NpcNameTags {
   private root: HTMLElement;

@@ -2,6 +2,8 @@
  * Skill-based work mini-games: timing combo, memory sequence, steady hold.
  */
 
+import { Audio } from "../audio/AudioManager";
+
 export type MiniKind = "timing" | "sequence" | "hold";
 export type MiniGrade = "perfect" | "ok" | "miss";
 
@@ -11,14 +13,26 @@ export function gradeScore(grade: MiniGrade): number {
   return 0.15;
 }
 
+const RESULT_HOLD_MS = 900;
+const GRADE_LABEL: Record<MiniGrade, string> = {
+  perfect: "PERFECT!",
+  ok: "NICE!",
+  miss: "OOF…",
+};
+
 export class WorkMinigame {
   private root: HTMLElement;
+  private card: HTMLElement;
   private titleEl: HTMLElement;
   private stage: HTMLElement;
   private hintEl: HTMLElement;
+  private resultEl: HTMLElement;
+  private resultGradeEl: HTMLElement;
   private open = false;
   private kind: MiniKind = "timing";
   private onDone: ((grade: MiniGrade) => void) | null = null;
+  /** Fires as soon as the grade is known (during the result flash). */
+  private onGrade: ((grade: MiniGrade) => void) | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private keyUpHandler: ((e: KeyboardEvent) => void) | null = null;
   private pointerDown: ((e: PointerEvent) => void) | null = null;
@@ -27,6 +41,7 @@ export class WorkMinigame {
   private lastMs = 0;
   private bornMs = 0;
   private resolved = false;
+  private wasInZone = false;
 
   // timing
   private marker = 0;
@@ -57,6 +72,7 @@ export class WorkMinigame {
   private inZoneAcc = 0;
   private outZoneAcc = 0;
   private needSteady = 1.65;
+  private enterTimer = 0;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement("div");
@@ -64,14 +80,24 @@ export class WorkMinigame {
     this.root.hidden = true;
     this.root.innerHTML = `
       <div class="ll-work-mini-card">
+        <p class="ll-work-mini-kicker">Work challenge</p>
         <p class="ll-work-mini-title"></p>
         <div class="ll-work-mini-stage"></div>
         <p class="ll-work-mini-hint"></p>
+        <div class="ll-mini-result" hidden>
+          <span class="ll-mini-result-burst" aria-hidden="true"></span>
+          <span class="ll-mini-result-grade"></span>
+        </div>
       </div>
     `;
+    this.card = this.root.querySelector(".ll-work-mini-card") as HTMLElement;
     this.titleEl = this.root.querySelector(".ll-work-mini-title") as HTMLElement;
     this.stage = this.root.querySelector(".ll-work-mini-stage") as HTMLElement;
     this.hintEl = this.root.querySelector(".ll-work-mini-hint") as HTMLElement;
+    this.resultEl = this.root.querySelector(".ll-mini-result") as HTMLElement;
+    this.resultGradeEl = this.root.querySelector(
+      ".ll-mini-result-grade",
+    ) as HTMLElement;
     parent.appendChild(this.root);
   }
 
@@ -79,10 +105,16 @@ export class WorkMinigame {
     return this.open;
   }
 
-  play(kind: MiniKind, label: string, onDone: (grade: MiniGrade) => void) {
+  play(
+    kind: MiniKind,
+    label: string,
+    onDone: (grade: MiniGrade) => void,
+    onGrade?: (grade: MiniGrade) => void,
+  ) {
     this.close();
     this.kind = kind;
     this.onDone = onDone;
+    this.onGrade = onGrade ?? null;
     this.open = true;
     this.resolved = false;
     this.lastMs = performance.now();
@@ -111,13 +143,32 @@ export class WorkMinigame {
     this.inZoneAcc = 0;
     this.outZoneAcc = 0;
     this.needSteady = 1.35;
+    this.wasInZone = false;
     this.titleEl.textContent = label;
+    this.resultEl.hidden = true;
+    this.resultEl.classList.remove("is-perfect", "is-ok", "is-miss");
     this.root.hidden = false;
-    this.root.classList.remove("is-out", "is-perfect", "is-ok", "is-miss");
+    this.root.classList.remove(
+      "is-out",
+      "is-open",
+      "is-in",
+      "is-enter",
+      "is-perfect",
+      "is-ok",
+      "is-miss",
+      "is-hit",
+      "is-perfect-hit",
+    );
     void this.root.offsetWidth;
-    this.root.classList.add("is-in");
+    this.root.classList.add("is-open", "is-in", "is-enter");
+    if (this.enterTimer) window.clearTimeout(this.enterTimer);
+    this.enterTimer = window.setTimeout(() => {
+      this.enterTimer = 0;
+      this.root.classList.remove("is-in", "is-enter");
+    }, 450);
     this.buildStage();
     this.bindInput();
+    Audio.sfx("mini_start");
     this.raf = requestAnimationFrame(this.frame);
   }
 
@@ -140,13 +191,18 @@ export class WorkMinigame {
 
   private buildStage() {
     if (this.kind === "timing") {
-      this.hintEl.textContent = `Hit the green ${this.hitsNeeded} times — Space / click`;
+      this.hintEl.textContent = `Hit the green ${this.hitsNeeded} times · Space / click`;
       this.stage.innerHTML = `
         <div class="ll-mini-timing">
-          <div class="ll-mini-combo"><span class="ll-mini-combo-n">0</span>/${this.hitsNeeded}</div>
+          <div class="ll-mini-combo">
+            <span class="ll-mini-combo-n">0</span>
+            <span class="ll-mini-combo-slash">/</span>
+            <span class="ll-mini-combo-need">${this.hitsNeeded}</span>
+          </div>
           <div class="ll-mini-track">
             <span class="ll-mini-zone"></span>
             <span class="ll-mini-marker"></span>
+            <span class="ll-mini-hit-ring" aria-hidden="true"></span>
           </div>
         </div>
       `;
@@ -232,6 +288,22 @@ export class WorkMinigame {
     const el = this.stage.querySelector(`[data-i="${i}"]`);
     el?.classList.toggle("is-flash", on);
     el?.classList.toggle("is-on", on);
+    if (on) Audio.sfx("mini_tick");
+  }
+
+  private pulseHit(perfect: boolean) {
+    this.root.classList.remove("is-hit", "is-perfect-hit");
+    void this.root.offsetWidth;
+    this.root.classList.add(perfect ? "is-perfect-hit" : "is-hit");
+    const ring = this.stage.querySelector(".ll-mini-hit-ring");
+    if (ring) {
+      ring.classList.remove("is-pop");
+      void (ring as HTMLElement).offsetWidth;
+      ring.classList.add("is-pop");
+    }
+    window.setTimeout(() => {
+      this.root.classList.remove("is-hit", "is-perfect-hit");
+    }, 280);
   }
 
   private onSeqTap(i: number) {
@@ -242,7 +314,11 @@ export class WorkMinigame {
       this.inputIdx += 1;
       const el = this.stage.querySelector(`[data-i="${i}"]`);
       el?.classList.add("is-done");
-      window.setTimeout(() => el?.classList.remove("is-done"), 160);
+      window.setTimeout(() => el?.classList.remove("is-done"), 220);
+      Audio.sfx(
+        this.inputIdx >= this.pattern.length ? "mini_perfect" : "mini_hit",
+      );
+      this.pulseHit(this.inputIdx >= this.pattern.length);
       if (this.inputIdx >= this.pattern.length) {
         const grade: MiniGrade =
           this.seqMistakes === 0
@@ -261,12 +337,15 @@ export class WorkMinigame {
         this.stage
           .querySelector(`[data-i="${i}"]`)
           ?.classList.remove("is-miss");
-      }, 180);
+      }, 220);
       this.inputIdx = 0;
+      Audio.sfx("mini_miss");
+      this.root.classList.add("is-shake");
+      window.setTimeout(() => this.root.classList.remove("is-shake"), 220);
       this.hintEl.textContent =
         this.seqMistakes >= 3
           ? "One more miss and it's a wash…"
-          : "Wrong — start the pattern again!";
+          : "Wrong - start the pattern again!";
       if (this.seqMistakes >= 4) {
         this.resolve("miss");
       }
@@ -328,6 +407,10 @@ export class WorkMinigame {
       this.cooldownUntil = now + 180;
       const n = this.stage.querySelector(".ll-mini-combo-n");
       if (n) n.textContent = String(this.hitsLanded);
+      Audio.sfx(
+        this.hitsLanded >= this.hitsNeeded ? "mini_perfect" : "mini_hit",
+      );
+      this.pulseHit(true);
       this.hintEl.textContent =
         this.hitsLanded >= this.hitsNeeded
           ? "Nailed it!"
@@ -351,7 +434,9 @@ export class WorkMinigame {
       this.cooldownUntil = now + 180;
       const n = this.stage.querySelector(".ll-mini-combo-n");
       if (n) n.textContent = String(this.hitsLanded);
-      this.hintEl.textContent = "OK hit — tighten up!";
+      Audio.sfx("mini_hit");
+      this.pulseHit(false);
+      this.hintEl.textContent = "OK hit - tighten up!";
       if (this.hitsLanded >= this.hitsNeeded) {
         this.resolve("ok");
       }
@@ -359,8 +444,9 @@ export class WorkMinigame {
       this.missHits += 1;
       this.cooldownUntil = now + 220;
       this.hintEl.textContent = "Miss! Wait for the green";
+      Audio.sfx("mini_miss");
       this.root.classList.add("is-shake");
-      window.setTimeout(() => this.root.classList.remove("is-shake"), 180);
+      window.setTimeout(() => this.root.classList.remove("is-shake"), 220);
       if (this.missHits >= 4) this.resolve("miss");
     }
   }
@@ -396,14 +482,16 @@ export class WorkMinigame {
             if (this.flashStep >= this.pattern.length) {
               this.seqPhase = "play";
               this.setSeqInteractive(true);
-              this.hintEl.textContent = "Your turn — tap the pattern";
+              this.hintEl.textContent = "Your turn - tap the pattern";
+              Audio.sfx("chime");
             } else {
               this.flashTimer = 0.22;
             }
           } else if (this.flashStep >= this.pattern.length) {
             this.seqPhase = "play";
             this.setSeqInteractive(true);
-            this.hintEl.textContent = "Your turn — tap the pattern";
+            this.hintEl.textContent = "Your turn - tap the pattern";
+            Audio.sfx("chime");
           } else {
             this.flashPip(this.pattern[this.flashStep]!, true);
             this.flashOn = true;
@@ -435,9 +523,12 @@ export class WorkMinigame {
       const half = 0.14;
       const inZone =
         this.needle >= this.zonePos - half && this.needle <= this.zonePos + half;
+      if (inZone && !this.wasInZone) Audio.sfx("mini_tick");
+      this.wasInZone = inZone;
       if (inZone) this.inZoneAcc += dt;
       else this.outZoneAcc += dt;
       this.layoutSteady();
+      this.card.classList.toggle("is-steady", inZone);
       const u = Math.min(1, this.inZoneAcc / this.needSteady);
       this.hintEl.textContent =
         u >= 1
@@ -478,21 +569,42 @@ export class WorkMinigame {
           ? "Good enough!"
           : "Rough shift…";
     this.root.classList.add(`is-${grade}`);
+    this.card.classList.remove("is-steady");
+    this.resultGradeEl.textContent = GRADE_LABEL[grade];
+    this.resultEl.classList.add(`is-${grade}`);
+    this.resultEl.hidden = false;
+    if (grade === "perfect") Audio.sfx("mini_win");
+    else if (grade === "ok") Audio.sfx("mini_ok");
+    else Audio.sfx("mini_miss");
+    this.onGrade?.(grade);
     const done = this.onDone;
     window.setTimeout(() => {
       this.close();
       done?.(grade);
-    }, 420);
+    }, RESULT_HOLD_MS);
   }
 
   private close() {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
+    if (this.enterTimer) {
+      window.clearTimeout(this.enterTimer);
+      this.enterTimer = 0;
+    }
     this.unbindInput();
     this.open = false;
     this.onDone = null;
+    this.onGrade = null;
     this.holding = false;
-    this.root.classList.remove("is-in", "is-shake");
+    this.root.classList.remove(
+      "is-open",
+      "is-in",
+      "is-enter",
+      "is-shake",
+      "is-hit",
+      "is-perfect-hit",
+    );
+    this.card.classList.remove("is-steady");
     this.root.classList.add("is-out");
     this.root.hidden = true;
   }

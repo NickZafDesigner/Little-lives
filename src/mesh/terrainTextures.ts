@@ -73,7 +73,7 @@ export function grassTexture(): THREE.CanvasTexture {
   return makeTex(
     "grass_v4",
     (ctx, s) => {
-      // Broad global wash — less “stamped tile”, more meadow light.
+      // Broad global wash - less “stamped tile”, more meadow light.
       const base = ctx.createLinearGradient(0, 0, s * 0.85, s);
       base.addColorStop(0, hex(Palette.grassLight));
       base.addColorStop(0.3, hex(Palette.grass));
@@ -130,7 +130,7 @@ export function grassTexture(): THREE.CanvasTexture {
         );
       }
 
-      // Very few blade hints — just a touch of life, not a repeating hash.
+      // Very few blade hints - just a touch of life, not a repeating hash.
       for (let i = 0; i < 16; i++) {
         const x = (i * 31 + 9) % s;
         const y = (i * 47 + 13) % s;

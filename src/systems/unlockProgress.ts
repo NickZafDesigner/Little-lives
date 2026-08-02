@@ -140,6 +140,16 @@ export function listUnlockTasks(state: GameState): UnlockProgress[] {
   return UNLOCK_TASKS.map((t) => getUnlockProgress(t, state));
 }
 
+/** Catalog pieces gated by a given unlock task (buyable only). */
+export function furnitureForUnlockTask(taskId: string): FurnitureDef[] {
+  const out: FurnitureDef[] = [];
+  for (const def of Object.values(furnitureById)) {
+    if (def.unlockTaskId === taskId && def.price > 0) out.push(def);
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
 /** Snapshot of completed unlock task ids (for toast diffs). */
 export function completedUnlockTaskIds(state: GameState): Set<string> {
   const done = new Set<string>();

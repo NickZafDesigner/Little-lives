@@ -87,7 +87,7 @@ function cloudShadow(tx: number, ty: number): number {
   return Math.min(1, Math.max(0, v));
 }
 
-/** Tint for textured grass — quantized so merge batches stay healthy. */
+/** Tint for textured grass - quantized so merge batches stay healthy. */
 function grassCloudTint(tx: number, ty: number): number {
   const sun = cloudShadow(tx, ty);
   const band = Math.round(sun * 5) / 5; // 6 buckets
@@ -199,7 +199,7 @@ export function buildTerrain(map: TownMapData): THREE.Group {
       const cz = ty * TILE + TILE / 2;
 
       if (code === Tile.water) {
-        // Continuous square water — no per-tile discs (those read as blue pads).
+        // Continuous square water - no per-tile discs (those read as blue pads).
         addBox(
           matSmooth(Palette.waterDeep, { map: waterTexture() }),
           cx,
@@ -236,7 +236,7 @@ export function buildTerrain(map: TownMapData): THREE.Group {
 
       let height = 2;
       let y = 0;
-      // Exact tile size — overlap caused crawling z-fight seams while walking.
+      // Exact tile size - overlap caused crawling z-fight seams while walking.
       let size = TILE;
       if (code === Tile.grass || code === Tile.grassVar || code === Tile.flower) {
         // Uniform height - per-tile height jitter draws a dark grid of side faces.
@@ -301,25 +301,88 @@ export function buildTerrain(map: TownMapData): THREE.Group {
         }
       }
       if (code === Tile.bush) {
-        const n = noise(tx * 7.3, ty * 2.9 + 1.3);
-        if (n > 0.72) {
-          addProp(matFlat(Palette.woodDark), stemGeo(2.0, 3.0, 14), cx, 6.5, cz);
-          addProp(matSmooth(Palette.leaf), blobGeo(9.5, 16), cx, 20, cz, 0.92);
-          addProp(matSmooth(Palette.leafLight), blobGeo(6.5, 14), cx + 4.2, 24.5, cz - 2.8, 0.9);
-          addProp(matSmooth(Palette.leaf), blobGeo(6.0, 14), cx - 4.5, 23, cz + 3.2, 0.9);
-          addProp(matSmooth(Palette.leaf), blobGeo(5.0, 12), cx + 1.5, 26, cz + 2, 0.85);
-        } else {
-          const bush = AssetLibrary.cloneWorldProp("Bush");
-          if (bush) {
-            bush.position.set(cx, 0, cz);
-            bush.rotation.y = n * Math.PI * 2;
-            bush.scale.setScalar(0.9 + n * 0.35);
-            addOutline(bush, 1.04);
-            root.add(bush);
-          }
+        const bush = AssetLibrary.cloneWorldProp("Bush");
+        if (bush) {
+          const n = noise(tx * 7.3, ty * 2.9 + 1.3);
+          bush.position.set(cx, 0, cz);
+          bush.rotation.y = n * Math.PI * 2;
+          bush.scale.setScalar(0.9 + n * 0.35);
+          addOutline(bush, 1.04);
+          root.add(bush);
         }
       }
     }
+  }
+
+  const placeTree = (tx: number, ty: number) => {
+    // Trees sit on a 2×2 footprint; mesh is centered in that block.
+    const cx = (tx + 1) * TILE;
+    const cz = (ty + 1) * TILE;
+    const n = noise(tx * 4.1, ty * 6.7);
+    const scale = 0.92 + n * 0.22;
+    const lean = (n - 0.5) * 4;
+    // Taller than cottage roofs (walls 64 + steep pitch ≈ 140+).
+    addProp(
+      matFlat(Palette.woodDark),
+      stemGeo(5.5 * scale, 9 * scale, 88 * scale),
+      cx,
+      44 * scale,
+      cz,
+    );
+    addProp(
+      matSmooth(Palette.leaf),
+      blobGeo(34 * scale, 16),
+      cx + lean,
+      118 * scale,
+      cz,
+      0.92,
+    );
+    addProp(
+      matSmooth(Palette.leafLight),
+      blobGeo(24 * scale, 14),
+      cx + 16 * scale + lean,
+      138 * scale,
+      cz - 12 * scale,
+      0.9,
+    );
+    addProp(
+      matSmooth(Palette.leaf),
+      blobGeo(22 * scale, 14),
+      cx - 18 * scale + lean,
+      132 * scale,
+      cz + 14 * scale,
+      0.9,
+    );
+    addProp(
+      matSmooth(Palette.leaf),
+      blobGeo(18 * scale, 12),
+      cx + 4 * scale,
+      152 * scale,
+      cz + 6 * scale,
+      0.85,
+    );
+  };
+
+  for (const [tx, ty] of map.trees) {
+    placeTree(tx, ty);
+  }
+
+  const lampStem = stemGeo(1.1, 1.4, 18);
+  const lampBase = box(4, 2, 4);
+  const lampHead = box(5, 4, 5);
+  const lampGlow = blobGeo(2.2, 10);
+  const woodMat = matFlat(Palette.woodDeep);
+  const postMat = matFlat(Palette.wood);
+  const headMat = matFlat(Palette.woodLight);
+  const glowMat = matSmooth(0xffe566);
+
+  for (const [tx, ty] of map.lamps) {
+    const cx = tx * TILE + TILE / 2;
+    const cz = ty * TILE + TILE / 2;
+    addProp(postMat, lampBase, cx, 1, cz);
+    addProp(woodMat, lampStem, cx, 11, cz);
+    addProp(headMat, lampHead, cx, 21, cz);
+    addProp(glowMat, lampGlow, cx, 21, cz);
   }
 
   // Scattered rocks & fence posts from the town layout.
@@ -361,7 +424,7 @@ export function buildTerrain(map: TownMapData): THREE.Group {
     if (merged) {
       const mesh = new THREE.Mesh(merged, material);
       mesh.receiveShadow = true;
-      // Ground must not cast — coplanar tops stripe themselves with shadow acne.
+      // Ground must not cast - coplanar tops stripe themselves with shadow acne.
       mesh.castShadow = false;
       mesh.userData.tilePick = true;
       root.add(mesh);

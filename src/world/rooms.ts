@@ -1,4 +1,4 @@
-import type { LotId } from "../data/types";
+import type { Dir, LotId } from "../data/types";
 import { LOTS } from "./lots";
 
 /**
@@ -22,6 +22,8 @@ export interface InteriorFurnitureSeed {
   rx: number;
   ry: number;
   uid: string;
+  /** Front faces this way; omit for "down". Back should sit against a wall. */
+  rot?: Dir;
 }
 
 export interface LotInterior {
@@ -41,6 +43,8 @@ export interface LotInterior {
  *
  * Vertical runs may include the junction tile shared with an EW run; the mesh
  * builder lets EW own that tile and butts the NS wall to its face.
+ *
+ * Interior floor is roughly cols 1–12, rows 1–9 (shell on the perimeter).
  */
 const HOME: LotInterior = {
   walls: [
@@ -49,14 +53,19 @@ const HOME: LotInterior = {
     { rx: 8, ry: 4, length: 6, axis: "y", doors: [2, 3] },
   ],
   furniture: [
-    { defId: "bed", rx: 2, ry: 1, uid: "start_bed" },
-    { defId: "plant", rx: 4, ry: 2, uid: "start_plant" },
-    { defId: "shower", rx: 10, ry: 1, uid: "start_shower" },
-    { defId: "toilet", rx: 12, ry: 1, uid: "start_toilet" },
-    // No starter sofa — the wake-up intro / make_it_home quest asks you to buy one.
-    { defId: "tv", rx: 5, ry: 6, uid: "start_tv" },
-    { defId: "fridge", rx: 11, ry: 5, uid: "start_fridge" },
-    { defId: "table", rx: 10, ry: 7, uid: "start_table" },
+    // Bedroom - bed stays at (2,1) for the wake cutscene; plant as nightstand.
+    { defId: "bed", rx: 2, ry: 1, uid: "start_bed", rot: "down" },
+    { defId: "plant", rx: 1, ry: 1, uid: "start_plant" },
+    // Bath - shower L-walls face west+north; toilet tank against east wall.
+    { defId: "shower", rx: 7, ry: 1, uid: "start_shower", rot: "down" },
+    { defId: "toilet", rx: 12, ry: 2, uid: "start_toilet", rot: "left" },
+    // No starter sofa - the wake-up intro / make_it_home quest asks you to buy one.
+    // Living - TV back against west wall, screen into the room.
+    { defId: "tv", rx: 1, ry: 7, uid: "start_tv", rot: "right" },
+    // Kitchen - fridge against east wall; counter for small appliances; table freestanding.
+    { defId: "fridge", rx: 12, ry: 5, uid: "start_fridge", rot: "left" },
+    { defId: "kitchen_counter", rx: 12, ry: 7, uid: "start_counter", rot: "left" },
+    { defId: "table", rx: 9, ry: 7, uid: "start_table" },
   ],
 };
 
@@ -64,9 +73,10 @@ const HOME: LotInterior = {
 const NEIGHBOR: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
   furniture: [
-    { defId: "bed", rx: 2, ry: 1, uid: "n_bed" },
-    { defId: "sofa", rx: 2, ry: 6, uid: "n_sofa" },
-    { defId: "table", rx: 6, ry: 6, uid: "n_table" },
+    { defId: "bed", rx: 1, ry: 1, uid: "n_bed", rot: "down" },
+    // Sofa back against the bedroom wall, facing into the living room.
+    { defId: "sofa", rx: 2, ry: 5, uid: "n_sofa", rot: "down" },
+    { defId: "table", rx: 6, ry: 7, uid: "n_table" },
   ],
 };
 
@@ -74,10 +84,11 @@ const NEIGHBOR: LotInterior = {
 const CAFE: LotInterior = {
   walls: [{ rx: 7, ry: 1, length: 8, axis: "y", doors: [3, 4] }],
   furniture: [
-    { defId: "counter", rx: 3, ry: 3, uid: "c_counter" },
-    { defId: "table", rx: 9, ry: 5, uid: "c_table" },
-    { defId: "table", rx: 10, ry: 7, uid: "c_table2" },
-    { defId: "plant", rx: 11, ry: 2, uid: "c_plant" },
+    // Counter against west wall, front toward the seating side.
+    { defId: "counter", rx: 1, ry: 2, uid: "c_counter", rot: "right" },
+    { defId: "table", rx: 9, ry: 2, uid: "c_table", rot: "down" },
+    { defId: "table", rx: 9, ry: 7, uid: "c_table2", rot: "down" },
+    { defId: "plant", rx: 12, ry: 1, uid: "c_plant" },
   ],
 };
 
@@ -85,9 +96,9 @@ const CAFE: LotInterior = {
 const SHELTER: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 12, axis: "x", doors: [5, 6] }],
   furniture: [
-    { defId: "shelter_desk", rx: 5, ry: 1, uid: "s_desk" },
-    { defId: "pet_bed", rx: 2, ry: 6, uid: "s_bed" },
-    { defId: "pet_bowl", rx: 10, ry: 6, uid: "s_bowl" },
+    { defId: "shelter_desk", rx: 2, ry: 1, uid: "s_desk", rot: "down" },
+    { defId: "pet_bed", rx: 1, ry: 6, uid: "s_bed" },
+    { defId: "pet_bowl", rx: 12, ry: 8, uid: "s_bowl" },
   ],
 };
 
@@ -95,9 +106,9 @@ const SHELTER: LotInterior = {
 const MARKET: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
   furniture: [
-    { defId: "counter", rx: 4, ry: 2, uid: "m_counter" },
-    { defId: "table", rx: 2, ry: 6, uid: "m_table" },
-    { defId: "plant", rx: 9, ry: 6, uid: "m_plant" },
+    { defId: "counter", rx: 3, ry: 1, uid: "m_counter", rot: "down" },
+    { defId: "table", rx: 1, ry: 6, uid: "m_table", rot: "right" },
+    { defId: "plant", rx: 10, ry: 8, uid: "m_plant" },
   ],
 };
 
@@ -105,9 +116,9 @@ const MARKET: LotInterior = {
 const LIBRARY: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
   furniture: [
-    { defId: "library_desk", rx: 4, ry: 1, uid: "l_desk" },
+    { defId: "library_desk", rx: 2, ry: 1, uid: "l_desk", rot: "down" },
     { defId: "table", rx: 2, ry: 6, uid: "l_table" },
-    { defId: "plant", rx: 9, ry: 6, uid: "l_plant" },
+    { defId: "plant", rx: 10, ry: 1, uid: "l_plant" },
   ],
 };
 
@@ -115,9 +126,10 @@ const LIBRARY: LotInterior = {
 const CLINIC: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 12, axis: "x", doors: [5, 6] }],
   furniture: [
-    { defId: "clinic_desk", rx: 5, ry: 1, uid: "k_desk" },
-    { defId: "sofa", rx: 2, ry: 6, uid: "k_sofa" },
-    { defId: "plant", rx: 11, ry: 6, uid: "k_plant" },
+    { defId: "clinic_desk", rx: 2, ry: 1, uid: "k_desk", rot: "down" },
+    // Waiting sofa against west wall.
+    { defId: "sofa", rx: 1, ry: 6, uid: "k_sofa", rot: "right" },
+    { defId: "plant", rx: 12, ry: 8, uid: "k_plant" },
   ],
 };
 
@@ -164,6 +176,7 @@ export function interiorFurniture(lotId: LotId): Array<{
   tx: number;
   ty: number;
   lotId: LotId;
+  rot?: Dir;
 }> {
   const lot = LOTS.find((l) => l.id === lotId);
   const interior = LOT_INTERIORS[lotId];
@@ -174,5 +187,6 @@ export function interiorFurniture(lotId: LotId): Array<{
     tx: lot.tx + f.rx,
     ty: lot.ty + f.ry,
     lotId,
+    rot: f.rot,
   }));
 }

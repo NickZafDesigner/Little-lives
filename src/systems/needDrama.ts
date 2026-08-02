@@ -32,7 +32,7 @@ export function tickNeedDrama(
     }
   }
 
-  // Bladder emergency — wet yourself with lasting consequences
+  // Bladder emergency - wet yourself with lasting consequences
   if (
     state.needs.bladder <= 0 &&
     now - state.lastBladderAccidentAt > BLADDER_COOLDOWN_MS

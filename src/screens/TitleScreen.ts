@@ -152,7 +152,6 @@ export function createTitleScreen(
                   <ul class="ll-howto-keys">
                     <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span>Move</span></li>
                     <li><kbd>Click</kbd> <span>Walk or interact</span></li>
-                    <li><kbd>Pinch</kbd> / <kbd>+</kbd><kbd>−</kbd> <span>Zoom</span></li>
                   </ul>
                 </section>
                 <section class="ll-howto-section">
@@ -167,7 +166,7 @@ export function createTitleScreen(
                 <section class="ll-howto-section">
                   <h3>Tips</h3>
                   <ul class="ll-howto-tips">
-                    <li>Keep an eye on needs — hungry, sleepy neighbours aren't at their best.</li>
+                    <li>Keep an eye on needs - hungry, sleepy neighbours aren't at their best.</li>
                     <li>Take a job in town, then spend your earnings on furniture and pets.</li>
                     <li>When the day winds down, head home and sleep to start fresh.</li>
                   </ul>

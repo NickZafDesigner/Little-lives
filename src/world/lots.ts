@@ -13,7 +13,7 @@ export interface LotBounds {
   color: number;
 }
 
-/** Town footprint on the 96×68 map — lots spread with a south beach strip. */
+/** Town footprint on the 96×68 map - lots spread with a south beach strip. */
 export const LOTS: LotBounds[] = [
   {
     id: "home",
@@ -135,7 +135,7 @@ export function lotById(id: LotId): LotBounds | undefined {
 }
 
 /** South-wall door tile offset within each lot (matches building shells). */
-const DOOR_TX: Partial<Record<LotId, number>> = {
+export const LOT_DOOR_TX: Partial<Record<LotId, number>> = {
   home: 7,
   neighbor: 5,
   cafe: 6,
@@ -145,14 +145,42 @@ const DOOR_TX: Partial<Record<LotId, number>> = {
   clinic: 6,
 };
 
-/** World XZ of a lot's front door — for hint arrows & nametags. */
+/** Matches building door width in `mesh/buildings.ts`. */
+export const LOT_DOOR_W = TILE * 1.5;
+
+/** World XZ of a lot's front door - for hint arrows & nametags. */
 export function lotDoorWorld(id: LotId): { x: number; z: number } | null {
   const lot = lotById(id);
   if (!lot) return null;
-  const doorTx = DOOR_TX[id] ?? Math.floor(lot.tw / 2);
+  const doorTx = LOT_DOOR_TX[id] ?? Math.floor(lot.tw / 2);
   return {
     x: (lot.tx + doorTx) * TILE + TILE / 2,
     z: (lot.ty + lot.th - 1) * TILE + TILE / 2,
+  };
+}
+
+/**
+ * World pose for a town sign planted beside the front door, flush to the
+ * south wall (street side). `side` is when facing the building from outside.
+ */
+export function lotDoorSignWorld(
+  id: LotId,
+  side: "west" | "east" = "east",
+): { x: number; z: number; tileX: number; tileY: number } | null {
+  const lot = lotById(id);
+  if (!lot) return null;
+  const door = lotDoorWorld(id);
+  if (!door) return null;
+  const maxZ = (lot.ty + lot.th) * TILE;
+  const sideSign = side === "east" ? 1 : -1;
+  // Just past the jamb, still on the frontage; post sits outside the wall face.
+  const x = door.x + sideSign * (LOT_DOOR_W / 2 + TILE * 0.55);
+  const z = maxZ + 3.2;
+  return {
+    x,
+    z,
+    tileX: Math.floor(x / TILE),
+    tileY: Math.floor(z / TILE),
   };
 }
 

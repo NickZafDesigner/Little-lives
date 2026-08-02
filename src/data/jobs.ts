@@ -8,7 +8,7 @@ export const JOBS: JobDef[] = [
     stationDefId: "counter",
     hireNpcId: "jun",
     pay: 55,
-    closedMessage: "Café's closed - come back 9 to 5.",
+    closedMessage: "Café's closed - clock in from 8:30, shifts 9 to 5.",
     tasks: [
       { id: "brew", label: "Brew a drink", furnitureUid: "c_counter", mini: "timing" },
       { id: "wipe", label: "Wipe a table", furnitureUid: "c_table", mini: "sequence" },
@@ -23,7 +23,7 @@ export const JOBS: JobDef[] = [
     stationDefId: "counter",
     hireNpcId: "vera",
     pay: 48,
-    closedMessage: "Market's closed - come back 9 to 5.",
+    closedMessage: "Market's closed - clock in from 8:30, shifts 9 to 5.",
     tasks: [
       { id: "restock", label: "Restock a shelf", furnitureUid: "m_table", mini: "sequence" },
       { id: "ring", label: "Ring up a sale", furnitureUid: "m_counter", mini: "timing" },
@@ -38,7 +38,7 @@ export const JOBS: JobDef[] = [
     stationDefId: "library_desk",
     hireNpcId: "theo",
     pay: 42,
-    closedMessage: "Library's closed - come back 9 to 5.",
+    closedMessage: "Library's closed - clock in from 8:30, shifts 9 to 5.",
     tasks: [
       { id: "help", label: "Help a patron", furnitureUid: "l_desk", mini: "timing" },
       { id: "shelve", label: "Shelve returns", furnitureUid: "l_table", mini: "sequence" },
@@ -53,7 +53,7 @@ export const JOBS: JobDef[] = [
     stationDefId: "clinic_desk",
     hireNpcId: "sage",
     pay: 60,
-    closedMessage: "Clinic's closed - come back 9 to 5.",
+    closedMessage: "Clinic's closed - clock in from 8:30, shifts 9 to 5.",
     tasks: [
       { id: "checkin", label: "Check in a patient", furnitureUid: "k_desk", mini: "timing" },
       { id: "tidy", label: "Tidy waiting chairs", furnitureUid: "k_sofa", mini: "sequence" },
