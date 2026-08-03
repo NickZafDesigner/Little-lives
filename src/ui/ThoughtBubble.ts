@@ -76,13 +76,35 @@ export class ThoughtBubble {
   /**
    * Short player thought.
    * Pass `ms <= 0` to keep it up until replaced (wake-intro beats).
+   * Optional `action` adds a clickable button inside the bubble.
    */
-  showText(text: string, ms = 4200) {
+  showText(
+    text: string,
+    ms = 4200,
+    action?: { label: string; onClick: () => void },
+  ) {
     this.clearSequence();
     this.clearHideTimer();
     this.preview.dispose();
     this.cloud.className = "ll-thought-cloud is-text";
-    this.cloud.textContent = text;
+    if (action) {
+      this.cloud.classList.add("has-action");
+      this.cloud.innerHTML = "";
+      const line = document.createElement("p");
+      line.className = "ll-thought-line";
+      line.textContent = text;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ll-thought-action";
+      btn.textContent = action.label;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        action.onClick();
+      });
+      this.cloud.append(line, btn);
+    } else {
+      this.cloud.textContent = text;
+    }
     this.reveal();
     if (ms > 0) {
       this.hideTimer = window.setTimeout(() => this.hide(), ms);

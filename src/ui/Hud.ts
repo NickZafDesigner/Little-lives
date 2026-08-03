@@ -18,7 +18,7 @@ import { drawPortrait } from "./portraits";
 import { PlayerStatusModal } from "./PlayerStatusModal";
 import { ShopModal, type ShopMode } from "./ShopModal";
 
-const BOOST_PULSE_MS = 1000;
+const BOOST_PULSE_MS = 720;
 const FLOAT_LIFE_MS = 2500;
 
 function clockLabel(dayTime: number): string {
@@ -62,6 +62,8 @@ export class Hud {
   private shopModal: ShopModal;
   private lastPortraitKey = "";
   private prevNeeds: NeedsState | null = null;
+  private prevMatTotal = -1;
+  private prevMoney = -1;
   private boostUntil = 0;
   private boostToken = 0;
   private pendingFloats: Array<{
@@ -333,6 +335,7 @@ export class Hud {
     }
 
     this.detectNeedBoosts();
+    this.detectCollectionBoosts();
 
     this.patchValues({
       money: s.money,
@@ -382,14 +385,40 @@ export class Hud {
       });
       stagger += 90;
     }
-    if (boosted) {
-      this.boostUntil = now + BOOST_PULSE_MS;
-      this.boostToken += 1;
-    }
+    if (boosted) this.triggerAvatarPulse();
     this.prevNeeds = { ...needs };
     this.pendingFloats = this.pendingFloats.filter(
       (f) => now - f.born < FLOAT_LIFE_MS,
     );
+  }
+
+  /** Bounce the avatar when bag loot or cash goes up. */
+  private detectCollectionBoosts() {
+    const mats = this.state.inventory.materials;
+    let total = 0;
+    for (const v of Object.values(mats)) total += v ?? 0;
+    const money = this.state.money;
+    if (this.prevMatTotal < 0) {
+      this.prevMatTotal = total;
+      this.prevMoney = money;
+      return;
+    }
+    if (total > this.prevMatTotal || money > this.prevMoney) {
+      this.triggerAvatarPulse();
+    }
+    this.prevMatTotal = total;
+    this.prevMoney = money;
+  }
+
+  private triggerAvatarPulse() {
+    this.boostUntil = performance.now() + BOOST_PULSE_MS;
+    this.boostToken += 1;
+  }
+
+  /** Pop the bottom-left avatar (gifts, interactions, celebrations, etc.). */
+  pulseAvatar() {
+    this.triggerAvatarPulse();
+    this.syncBoostFx();
   }
 
   private syncBoostFx() {

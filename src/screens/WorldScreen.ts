@@ -149,6 +149,7 @@ import { TvViewer, TV_FULL_WATCH_MS } from "../ui/TvViewer";
 import { TV_SHOWS, type TvShowId } from "../data/tvShows";
 import { ConfettiBurst } from "../ui/ConfettiBurst";
 import { PayCelebration } from "../ui/PayCelebration";
+import { GiftHandoffCard } from "../ui/GiftHandoffCard";
 import { BuildCatalog } from "../ui/BuildCatalog";
 import {
   completedUnlockTaskIds,
@@ -247,6 +248,7 @@ export function createWorldScreen(
   let tvViewer!: TvViewer;
   let confetti!: ConfettiBurst;
   let payCelebration!: PayCelebration;
+  let giftHandoff!: GiftHandoffCard;
   /** NPC under the cursor in live mode (for name tooltips). */
   let hoveredNpcId: string | null = null;
   let menu!: InteractionMenu;
@@ -618,7 +620,7 @@ export function createWorldScreen(
     aspirations.refresh();
   };
 
-  /** Remove from bag, arc the mesh over, then resolve friendship / thanks. */
+  /** Remove from bag, show handoff card + world arc, then resolve thanks. */
   const giveBagGift = (npcId: string, itemId: MaterialId) => {
     const gift = BAG_GIFTS.find((g) => g.itemId === itemId);
     if (!gift || !state.removeMaterial(itemId, 1)) {
@@ -634,24 +636,45 @@ export function createWorldScreen(
       facePlayerToward(p.x, p.z);
     }
 
+    const ambient = isAmbientNpcId(npcId) ? ambientNpcById[npcId] : undefined;
+    const villager = !ambient ? NPCS.find((n) => n.id === npcId) : undefined;
+    const npcName = ambient?.name ?? villager?.name ?? "friend";
+    const itemName = materialById[itemId]?.name ?? gift.label;
+    const handoffMs = 1900;
+
     Audio.sfx("pickup");
     player.playWave();
-    state.startBusy(gift.label, GiftToss.DURATION_MS);
+    state.startBusy(gift.label, handoffMs);
 
-    const from = { x: playerX, y: 16, z: playerZ };
-    if (!giftToss) {
-      // Fallback if FX isn't ready yet — still resolve the gift.
-      delayed(GiftToss.DURATION_MS, () => applyBagGiftResult(npcId, itemId));
-      return;
-    }
-    giftToss.spawn(itemId, from, () => {
-      const target = npcs.find((n) => n.id === npcId);
-      if (!target) return { x: from.x, y: 16, z: from.z };
-      const p = target.actor.getPosition();
-      return { x: p.x, y: 16, z: p.z };
-    }, {
-      onComplete: () => applyBagGiftResult(npcId, itemId),
+    const finish = () => applyBagGiftResult(npcId, itemId);
+
+    giftHandoff?.show({
+      itemId,
+      itemName,
+      playerLook: state.playerLook,
+      playerName: state.playerName,
+      npcId,
+      npcName,
+      npcLook: ambient?.look,
+      durationMs: handoffMs,
+      onDone: finish,
     });
+    hud?.pulseAvatar();
+    confetti?.burst("soft");
+
+    // World-space toss for flavor under the card (result resolves from the card).
+    const from = { x: playerX, y: 16, z: playerZ };
+    giftToss?.spawn(
+      itemId,
+      from,
+      () => {
+        const target = npcs.find((n) => n.id === npcId);
+        if (!target) return { x: from.x, y: 16, z: from.z };
+        const p = target.actor.getPosition();
+        return { x: p.x, y: 16, z: p.z };
+      },
+      { onComplete: () => {} },
+    );
   };
 
   const showBagGiftPicker = (
@@ -1826,7 +1849,20 @@ export function createWorldScreen(
       if (now - nightNudgeAt > 9000) {
         nightNudgeAt = now;
         const t = buildingHintTarget("home");
-        think("It's late - go home to bed and sleep until morning.");
+        thoughtBubble?.showText(
+          "It's late - go home to bed and sleep until morning.",
+          9000,
+          {
+            label: "Take me home",
+            onClick: () => {
+              thoughtBubble?.hide();
+              hintArrow?.hide();
+              placePlayerAtHomeBed();
+              Audio.sfx("zoom_in");
+              nightNudgeAt = performance.now();
+            },
+          },
+        );
         hintArrow?.showAt(t.x, t.z, "Bed", 6000);
         Audio.sfx("chime");
       }
@@ -1957,6 +1993,7 @@ export function createWorldScreen(
     if (result.becameFriend) {
       state.dailyStats.friendsMade += 1;
       Audio.sfx("success");
+      hud?.pulseAvatar();
       state.showDialogue(
         npcId as NpcId,
         defName,
@@ -1964,6 +2001,7 @@ export function createWorldScreen(
       );
     } else if (result.becameClose) {
       Audio.sfx("success");
+      hud?.pulseAvatar();
       state.showDialogue(
         npcId as NpcId,
         defName,
@@ -1971,6 +2009,7 @@ export function createWorldScreen(
       );
     } else if (result.becameBestie) {
       Audio.sfx("success");
+      hud?.pulseAvatar();
       confetti.burst("big");
       state.showDialogue(
         npcId as NpcId,
@@ -2767,6 +2806,7 @@ export function createWorldScreen(
         // Beat 1: payday only - cash + confetti + banner
         Audio.sfx("cash");
         confetti.burst("huge", undefined, "gold");
+        hud?.pulseAvatar();
         payCelebration.show({
           amount: pay,
           title: qualityAvg >= 0.85 && !wasLate ? "Big payday!" : "Payday!",
@@ -2827,8 +2867,13 @@ export function createWorldScreen(
   ) => {
     // Skip mid-task confetti on the last work beat - payday owns the finale.
     if (opts?.finale) return;
-    if (grade === "perfect") confetti.burst("big");
-    else if (grade === "ok") confetti.burst("soft");
+    if (grade === "perfect") {
+      confetti.burst("big");
+      hud?.pulseAvatar();
+    } else if (grade === "ok") {
+      confetti.burst("soft");
+      hud?.pulseAvatar();
+    }
   };
 
   const beginPlayActivity = (
@@ -5078,6 +5123,7 @@ export function createWorldScreen(
       timeMontage = new TimeMontage(ui);
       confetti = new ConfettiBurst(ui);
       payCelebration = new PayCelebration(ui);
+      giftHandoff = new GiftHandoffCard(ui);
       wetTrail = new WetTrail(
         (o) => app.renderer.add(o),
         (o) => app.renderer.remove(o),
@@ -5249,6 +5295,7 @@ export function createWorldScreen(
       tvViewer?.destroy();
       confetti?.destroy();
       payCelebration?.destroy();
+      giftHandoff?.destroy();
       wetTrail?.dispose();
       wetTrail = null;
       lootBurst?.dispose();

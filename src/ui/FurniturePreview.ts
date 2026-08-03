@@ -154,9 +154,23 @@ export class FurniturePreview {
   private defId: string | null = null;
 
   attach(host: HTMLElement, defId: string, size = PREVIEW_SIZE) {
+    this.attachMesh(host, `furn:${defId}`, size, () => createFurnitureMesh(defId));
+  }
+
+  /** Live spinning bag / shop inventory item (same shared WebGL as furniture tips). */
+  attachInventory(host: HTMLElement, id: InventoryThumbId, size = PREVIEW_SIZE) {
+    this.attachMesh(host, id, size, () => createInventoryItemMesh(id));
+  }
+
+  private attachMesh(
+    host: HTMLElement,
+    key: string,
+    size: number,
+    makeMesh: () => THREE.Group,
+  ) {
     const s = getShared(size);
 
-    if (this.host === host && this.defId === defId && s.owner === this && s.mesh) {
+    if (this.host === host && this.defId === key && s.owner === this && s.mesh) {
       startSharedLoop(s);
       return;
     }
@@ -168,15 +182,15 @@ export class FurniturePreview {
     }
 
     this.host = host;
-    this.defId = defId;
+    this.defId = key;
     s.owner = this;
     host.replaceChildren(s.canvas);
 
-    if (s.defId !== defId || !s.mesh) {
+    if (s.defId !== key || !s.mesh) {
       clearSharedMesh(s);
       let mesh: THREE.Group;
       try {
-        mesh = createFurnitureMesh(defId);
+        mesh = makeMesh();
       } catch {
         host.replaceChildren();
         const fallback = document.createElement("div");
@@ -195,7 +209,7 @@ export class FurniturePreview {
       mesh.rotation.set(0, Math.PI * 0.15, 0);
       s.pivot.add(mesh);
       s.mesh = mesh;
-      s.defId = defId;
+      s.defId = key;
       s.pivot.rotation.y = 0;
       fitPreview(mesh, s.camera);
     }
