@@ -434,7 +434,7 @@ export const QUESTS: QuestDef[] = [
       {
         id: "clean",
         event: "park_cleanup",
-        objectiveLabel: "Clear litter near park benches (0/2)",
+        objectiveLabel: "Pick up litter near park benches (0/2)",
         count: 2,
       },
     ],
@@ -581,7 +581,7 @@ export const QUESTS: QuestDef[] = [
       {
         id: "clean",
         event: "pier_cleanup",
-        objectiveLabel: "Clear pier litter (0/2)",
+        objectiveLabel: "Pick up pier litter (0/2)",
         count: 2,
       },
     ],
@@ -709,3 +709,24 @@ export const SHIFT_TIME_ADVANCE = 0.145;
 
 /** Tile where Gordon (Nibs' left shoe) appears during Lost Gordon. */
 export const GORDON_SHOE_TILE = { x: 30, y: 17 } as const;
+
+/** Ground litter piles for Pip's park cleanup (near Town Park benches). */
+export const PARK_LITTER_SPOTS = [
+  { id: "park_litter_a", x: 26, y: 20, label: "Litter" },
+  { id: "park_litter_b", x: 41, y: 20, label: "Litter" },
+] as const;
+
+/** Ground litter piles for Pip's pier sweep. */
+export const PIER_LITTER_SPOTS = [
+  { id: "pier_litter_a", x: 80, y: 70, label: "Pier litter" },
+  { id: "pier_litter_b", x: 86, y: 71, label: "Pier litter" },
+] as const;
+
+export type QuestGroundItemId =
+  | "gordon_shoe"
+  | (typeof PARK_LITTER_SPOTS)[number]["id"]
+  | (typeof PIER_LITTER_SPOTS)[number]["id"];
+
+export function questItemClearedFlag(id: QuestGroundItemId): string {
+  return `quest_item_cleared_${id}`;
+}

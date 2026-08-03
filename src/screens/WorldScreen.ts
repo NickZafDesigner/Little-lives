@@ -53,11 +53,15 @@ import {
 import { petById } from "../data/pets";
 import {
   GORDON_SHOE_TILE,
+  PARK_LITTER_SPOTS,
+  PIER_LITTER_SPOTS,
   WORK_END,
   WORK_LATE,
   WORK_OPEN,
   WORK_START,
+  questItemClearedFlag,
   type QuestEvent,
+  type QuestGroundItemId,
 } from "../data/quests";
 import {
   harvestFootprint,
@@ -175,6 +179,7 @@ import { WetTrail, WET_TRAIL_INDOOR_Y, WET_TRAIL_OUTDOOR_Y } from "../fx/WetTrai
 import { LootBurst } from "../fx/LootBurst";
 import { GiftToss } from "../fx/GiftToss";
 import { createInventoryItemMesh } from "../mesh/inventoryItems";
+import { createQuestItemMesh } from "../mesh/questItems";
 
 interface NpcRuntime {
   id: string;
@@ -242,6 +247,7 @@ export function createWorldScreen(
   let furnitureMeshes = new Map<string, THREE.Group>();
   let harvestHandles = new Map<string, HarvestMeshHandle>();
   let porchMeshes = new Map<string, THREE.Group>();
+  let questItemMeshes = new Map<string, THREE.Group>();
   let lastHarvestDay = -1;
   /** Live shrink/tip while harvesting a node (trees especially). */
   let harvestAnim: {
@@ -520,6 +526,7 @@ export function createWorldScreen(
         if (choiceId === "accept") {
           Audio.sfx("chime");
           quests.emit(offer.askEvent);
+          afterGroundQuestUnlocked(offer.askEvent);
           dialogue.say({
             speakerId: npcId,
             speakerName: defName,
@@ -967,6 +974,7 @@ export function createWorldScreen(
               text: line,
             });
             quests.emit(pending.askEvent);
+            afterGroundQuestUnlocked(pending.askEvent);
             state.showToast(`Side quest: ${pending.def.title}`, 2600);
           });
           return;
@@ -1183,6 +1191,135 @@ export function createWorldScreen(
       if (!porchMeshes.has(drop.uid)) {
         spawnPorchMesh(drop.uid, drop.itemId as MaterialId, drop.x, drop.z);
       }
+    }
+  };
+
+  type ActiveQuestGroundItem = {
+    id: QuestGroundItemId;
+    label: string;
+    tx: number;
+    ty: number;
+    visual: "litter" | "shoe";
+  };
+
+  const activeQuestGroundItems = (): ActiveQuestGroundItem[] => {
+    const out: ActiveQuestGroundItem[] = [];
+    if (
+      quests.isActive("nibs_shoe") &&
+      quests.currentStepId("nibs_shoe") === "find" &&
+      !state.hasStoryFlag(questItemClearedFlag("gordon_shoe"))
+    ) {
+      out.push({
+        id: "gordon_shoe",
+        label: "Gordon (shoe)",
+        tx: GORDON_SHOE_TILE.x,
+        ty: GORDON_SHOE_TILE.y,
+        visual: "shoe",
+      });
+    }
+    if (
+      quests.isActive("pip_pond") &&
+      quests.currentStepId("pip_pond") === "clean"
+    ) {
+      for (const spot of PARK_LITTER_SPOTS) {
+        if (state.hasStoryFlag(questItemClearedFlag(spot.id))) continue;
+        out.push({
+          id: spot.id,
+          label: spot.label,
+          tx: spot.x,
+          ty: spot.y,
+          visual: "litter",
+        });
+      }
+    }
+    if (
+      quests.isActive("pip_pier") &&
+      quests.currentStepId("pip_pier") === "clean"
+    ) {
+      for (const spot of PIER_LITTER_SPOTS) {
+        if (state.hasStoryFlag(questItemClearedFlag(spot.id))) continue;
+        out.push({
+          id: spot.id,
+          label: spot.label,
+          tx: spot.x,
+          ty: spot.y,
+          visual: "litter",
+        });
+      }
+    }
+    return out;
+  };
+
+  const clearQuestItemMeshes = () => {
+    for (const mesh of questItemMeshes.values()) {
+      app.renderer.remove(mesh);
+    }
+    questItemMeshes.clear();
+  };
+
+  const spawnQuestItemMesh = (item: ActiveQuestGroundItem) => {
+    const existing = questItemMeshes.get(item.id);
+    if (existing) {
+      app.renderer.remove(existing);
+      questItemMeshes.delete(item.id);
+    }
+    const mesh = createQuestItemMesh(item.visual);
+    mesh.scale.setScalar(item.visual === "shoe" ? 0.85 : 0.75);
+    mesh.position.set(
+      item.tx * TILE + TILE / 2,
+      1.6,
+      item.ty * TILE + TILE / 2,
+    );
+    mesh.userData.questItemId = item.id;
+    mesh.castShadow = true;
+    app.renderer.add(mesh);
+    questItemMeshes.set(item.id, mesh);
+  };
+
+  const syncQuestItemVisuals = () => {
+    const active = activeQuestGroundItems();
+    const keep = new Set(active.map((i) => i.id));
+    for (const [id, mesh] of questItemMeshes) {
+      if (!keep.has(id as QuestGroundItemId)) {
+        app.renderer.remove(mesh);
+        questItemMeshes.delete(id);
+      }
+    }
+    for (const item of active) {
+      if (!questItemMeshes.has(item.id)) spawnQuestItemMesh(item);
+    }
+  };
+
+  const pointToNearestLitter = (
+    spots: readonly { id: QuestGroundItemId; x: number; y: number }[],
+    label: string,
+  ) => {
+    let best: { x: number; z: number } | null = null;
+    let bestD = Infinity;
+    for (const spot of spots) {
+      if (state.hasStoryFlag(questItemClearedFlag(spot.id))) continue;
+      const x = spot.x * TILE + TILE / 2;
+      const z = spot.y * TILE + TILE / 2;
+      const d = Math.hypot(x - playerX, z - playerZ);
+      if (d < bestD) {
+        bestD = d;
+        best = { x, z };
+      }
+    }
+    if (best) hintArrow?.showAt(best.x, best.z, label, 7000);
+  };
+
+  /** After a find/cleanup ask step unlocks, spawn props and nudge the player. */
+  const afterGroundQuestUnlocked = (askEvent: QuestEvent) => {
+    syncQuestItemVisuals();
+    if (askEvent === "pip_ask_cleanup") {
+      pointToNearestLitter(PARK_LITTER_SPOTS, "Litter");
+    } else if (askEvent === "pip_ask_pier") {
+      pointToNearestLitter(PIER_LITTER_SPOTS, "Litter");
+    } else if (askEvent === "nibs_ask_shoe") {
+      const x = GORDON_SHOE_TILE.x * TILE + TILE / 2;
+      const z = GORDON_SHOE_TILE.y * TILE + TILE / 2;
+      hintArrow?.showAt(x, z, "Gordon", 7000);
     }
   };
 
@@ -1424,19 +1561,14 @@ export function createWorldScreen(
         z: drop.z,
       });
     }
-    if (
-      quests.isActive("nibs_shoe") &&
-      quests.currentStepId("nibs_shoe") === "find"
-    ) {
-      const tx = GORDON_SHOE_TILE.x;
-      const ty = GORDON_SHOE_TILE.y;
+    for (const item of activeQuestGroundItems()) {
       out.push({
         kind: "quest_item",
-        id: "gordon_shoe",
-        label: "Gordon (shoe)",
-        tiles: [{ x: tx, y: ty }],
-        x: tx * TILE + TILE / 2,
-        z: ty * TILE + TILE / 2,
+        id: item.id,
+        label: item.label,
+        tiles: [{ x: item.tx, y: item.ty }],
+        x: item.tx * TILE + TILE / 2,
+        z: item.ty * TILE + TILE / 2,
       });
     }
     // Indoor ↔ outdoor: only tip / interact with things in the same space.
@@ -1481,6 +1613,7 @@ export function createWorldScreen(
       if (handle.root.visible) out.push(handle.root);
     }
     for (const mesh of porchMeshes.values()) out.push(mesh);
+    for (const mesh of questItemMeshes.values()) out.push(mesh);
     for (const npc of npcs) out.push(npc.actor.root);
     if (pet) out.push(pet.root);
     for (const sign of app.renderer.getSigns()) out.push(sign.root);
@@ -1512,6 +1645,13 @@ export function createWorldScreen(
       if (porchUid) {
         return (
           targets.find((t) => t.kind === "porch" && t.id === porchUid) ?? null
+        );
+      }
+      const questItemId = cur.userData.questItemId as string | undefined;
+      if (questItemId) {
+        return (
+          targets.find((t) => t.kind === "quest_item" && t.id === questItemId) ??
+          null
         );
       }
       const npcId = cur.userData.npcId as string | undefined;
@@ -2579,22 +2719,80 @@ export function createWorldScreen(
   };
 
   const beginQuestItemPickup = (target: Target) => {
-    if (target.id !== "gordon_shoe") return;
-    if (
-      !quests.isActive("nibs_shoe") ||
-      quests.currentStepId("nibs_shoe") !== "find"
-    ) {
+    const id = target.id as QuestGroundItemId;
+    if (id === "gordon_shoe") {
+      if (
+        !quests.isActive("nibs_shoe") ||
+        quests.currentStepId("nibs_shoe") !== "find"
+      ) {
+        return;
+      }
+      Audio.sfx("interact");
+      state.startBusy("Picking up Gordon", 700);
+      delayed(700, () => {
+        state.setStoryFlag(questItemClearedFlag("gordon_shoe"));
+        syncQuestItemVisuals();
+        Audio.sfx("chime");
+        confetti.burst("soft");
+        quests.emit("found_gordon_shoe");
+        think("Found Gordon! Better take him back to Nibs.", 3600);
+        player.playReaction("jump");
+      });
       return;
     }
-    Audio.sfx("interact");
-    state.startBusy("Picking up Gordon", 700);
-    delayed(700, () => {
-      Audio.sfx("chime");
-      confetti.burst("soft");
-      quests.emit("found_gordon_shoe");
-      think("Found Gordon! Better take him back to Nibs.", 3600);
-      player.playReaction("jump");
-    });
+
+    const parkSpot = PARK_LITTER_SPOTS.find((s) => s.id === id);
+    if (parkSpot) {
+      if (
+        !quests.isActive("pip_pond") ||
+        quests.currentStepId("pip_pond") !== "clean" ||
+        state.hasStoryFlag(questItemClearedFlag(parkSpot.id))
+      ) {
+        return;
+      }
+      Audio.sfx("interact");
+      state.startBusy("Bagging litter", 900);
+      delayed(900, () => {
+        state.setStoryFlag(questItemClearedFlag(parkSpot.id));
+        syncQuestItemVisuals();
+        Audio.sfx("chime");
+        quests.emit("park_cleanup");
+        const have = quests.stepProgress("pip_pond", "clean");
+        if (have >= 2) {
+          think("Park looks great — Pip will be pleased!", 3600);
+        } else {
+          think(`Litter bagged (${have}/2). One more spot!`, 3200);
+          pointToNearestLitter(PARK_LITTER_SPOTS, "Litter");
+        }
+      });
+      return;
+    }
+
+    const pierSpot = PIER_LITTER_SPOTS.find((s) => s.id === id);
+    if (pierSpot) {
+      if (
+        !quests.isActive("pip_pier") ||
+        quests.currentStepId("pip_pier") !== "clean" ||
+        state.hasStoryFlag(questItemClearedFlag(pierSpot.id))
+      ) {
+        return;
+      }
+      Audio.sfx("interact");
+      state.startBusy("Bagging pier litter", 900);
+      delayed(900, () => {
+        state.setStoryFlag(questItemClearedFlag(pierSpot.id));
+        syncQuestItemVisuals();
+        Audio.sfx("chime");
+        quests.emit("pier_cleanup");
+        const have = quests.stepProgress("pip_pier", "clean");
+        if (have >= 2) {
+          think("Pier's tidy — Pip will be thrilled!", 3600);
+        } else {
+          think(`Pier litter bagged (${have}/2). One more!`, 3200);
+          pointToNearestLitter(PIER_LITTER_SPOTS, "Litter");
+        }
+      });
+    }
   };
 
   const pointToReed = () => {
@@ -2933,29 +3131,6 @@ export function createWorldScreen(
           sub: "For Mabel's baking table",
         });
       }
-      if (
-        quests.isActive("pip_pond") &&
-        quests.currentStepId("pip_pond") === "clean"
-      ) {
-        const have = quests.stepProgress("pip_pond", "clean");
-        options.push({
-          id: "clear_litter",
-          label: "Clear litter",
-          sub: `Bag ${have}/2`,
-        });
-      }
-      if (
-        furn.lotId === "pier" &&
-        quests.isActive("pip_pier") &&
-        quests.currentStepId("pip_pier") === "clean"
-      ) {
-        const have = quests.stepProgress("pip_pier", "clean");
-        options.push({
-          id: "clear_pier_litter",
-          label: "Clear pier litter",
-          sub: `Bag ${have}/2`,
-        });
-      }
     }
 
     // Weekly town beat at matching lot furniture
@@ -3055,36 +3230,6 @@ export function createWorldScreen(
               );
               Audio.sfx("chime");
             });
-          }
-        });
-        return;
-      }
-      if (id === "clear_litter") {
-        Audio.sfx("interact");
-        state.startBusy("Clearing litter", 1000);
-        delayed(1000, () => {
-          Audio.sfx("chime");
-          quests.emit("park_cleanup");
-          const have = quests.stepProgress("pip_pond", "clean");
-          if (have >= 2) {
-            think("Park looks great — Pip will be pleased!", 3600);
-          } else {
-            think(`Litter bagged (${have}/2). One more spot!`, 3200);
-          }
-        });
-        return;
-      }
-      if (id === "clear_pier_litter") {
-        Audio.sfx("interact");
-        state.startBusy("Clearing pier litter", 1000);
-        delayed(1000, () => {
-          Audio.sfx("chime");
-          quests.emit("pier_cleanup");
-          const have = quests.stepProgress("pip_pier", "clean");
-          if (have >= 2) {
-            think("Pier's tidy — Pip will be thrilled!", 3600);
-          } else {
-            think(`Pier litter bagged (${have}/2). One more!`, 3200);
           }
         });
         return;
@@ -4319,6 +4464,7 @@ export function createWorldScreen(
               "Litter near the benches - two bags and we're golden!",
             );
             quests.emit("pip_ask_cleanup");
+            afterGroundQuestUnlocked("pip_ask_cleanup");
           });
           return;
         }
@@ -4432,6 +4578,7 @@ export function createWorldScreen(
               "Windy day trash on the pier - two bags and we're golden!",
             );
             quests.emit("pip_ask_pier");
+            afterGroundQuestUnlocked("pip_ask_pier");
           });
           return;
         }
@@ -5661,6 +5808,7 @@ export function createWorldScreen(
         syncHarvestVisuals();
         syncFlowerVisuals();
         syncPorchVisuals();
+        syncQuestItemVisuals();
       }
       for (const key of state.walls) {
         const [tx, ty] = key.split(",").map(Number);
@@ -5956,6 +6104,7 @@ export function createWorldScreen(
       giftToss?.dispose();
       giftToss = null;
       clearPorchMeshes();
+      clearQuestItemMeshes();
       hoveredNpcId = null;
       interactTip?.hide();
       menu?.destroy();
@@ -6389,6 +6538,7 @@ export function createWorldScreen(
         syncHarvestVisuals();
         syncFlowerVisuals();
       }
+      syncQuestItemVisuals();
       syncInteractTip();
 
       {
