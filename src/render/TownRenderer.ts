@@ -372,7 +372,8 @@ export class TownRenderer {
       this.focusRestore = base;
     } else {
       this.frustumTarget = base;
-      this.zoomDamp = 9;
+      // Soft enough that roof cutaway (~1s) rides with the pull-in / pull-out.
+      this.zoomDamp = 5.5;
     }
   }
 

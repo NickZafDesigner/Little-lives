@@ -27,6 +27,7 @@ import {
   type MaterialId,
 } from "../data/items";
 import { hasTrait } from "../systems/traits";
+import { AMBIENT_NPCS } from "../data/ambientNpcs";
 import { NPCS, RELATIONSHIP_MAX } from "../data/npcs";
 import { tierFromScore, tierLabel } from "../systems/relationshipTiers";
 import type { InventoryThumbId } from "../mesh/inventoryItems";
@@ -455,17 +456,42 @@ export class PlayerStatusModal {
 
   private renderFriends(): string {
     const s = this.state;
-    const rows = NPCS.map((npc) => {
-      const rel = s.relationships[npc.id] ?? { score: 0, met: false };
-      const score = Math.max(0, Math.min(RELATIONSHIP_MAX, rel.score));
-      const tier = tierFromScore(
-        rel.score,
-        rel.met,
-        s.flirtCounts[npc.id] ?? 0,
+    const people: Array<{ id: string; name: string; detail: string }> = [
+      ...NPCS.map((npc) => ({
+        id: npc.id,
+        name: npc.name,
+        detail: npc.traits.join(" · "),
+      })),
+      ...AMBIENT_NPCS.map((npc) => ({
+        id: npc.id,
+        name: npc.name,
+        detail: `${npc.vibe.charAt(0).toUpperCase()}${npc.vibe.slice(1)} · hangabout`,
+      })),
+    ];
+
+    const ranked = people
+      .map((npc) => {
+        const rel = s.relationships[npc.id] ?? { score: 0, met: false };
+        const score = Math.max(0, Math.min(RELATIONSHIP_MAX, rel.score));
+        return { ...npc, rel, score };
+      })
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          Number(b.rel.met) - Number(a.rel.met) ||
+          a.name.localeCompare(b.name),
       );
-      const roommate = s.isRoommate(npc.id);
-      const pct = Math.round((score / RELATIONSHIP_MAX) * 100);
-      return `
+
+    const rows = ranked
+      .map((npc) => {
+        const tier = tierFromScore(
+          npc.rel.score,
+          npc.rel.met,
+          s.flirtCounts[npc.id] ?? 0,
+        );
+        const roommate = s.isRoommate(npc.id);
+        const pct = Math.round((npc.score / RELATIONSHIP_MAX) * 100);
+        return `
         <li class="ll-status-friend${roommate ? " is-roommate" : ""}">
           <div class="ll-status-friend-top">
             <strong>${escapeHtml(npc.name)}</strong>
@@ -475,14 +501,15 @@ export class PlayerStatusModal {
             <i style="width:${pct}%"></i>
           </div>
           <div class="ll-status-friend-meta">
-            <span>${score} / ${RELATIONSHIP_MAX}</span>
-            <span>${escapeHtml(npc.traits.join(" · "))}</span>
+            <span>${npc.score} / ${RELATIONSHIP_MAX}</span>
+            <span>${escapeHtml(npc.detail)}</span>
           </div>
         </li>`;
-    }).join("");
+      })
+      .join("");
 
     return `
-      <p class="ll-status-bag-lead">Gift wildflowers, chat, and hang out to grow friendships. At ${RELATIONSHIP_MAX}, ask them to move in.</p>
+      <p class="ll-status-bag-lead">Gift wildflowers, chat, and hang out to grow friendships. At ${RELATIONSHIP_MAX}, ask a townsfolk to move in.</p>
       <ul class="ll-status-friends">${rows}</ul>
     `;
   }

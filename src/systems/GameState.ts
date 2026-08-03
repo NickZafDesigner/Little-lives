@@ -19,6 +19,7 @@ import {
 } from "../data/items";
 import { STARTING_MONEY } from "../data/jobs";
 import { FULL_NEEDS } from "../data/needs";
+import { AMBIENT_NPCS } from "../data/ambientNpcs";
 import { NPCS, RELATIONSHIP_CLOSE, RELATIONSHIP_FRIEND, RELATIONSHIP_MAX } from "../data/npcs";
 import { FULL_PET_NEEDS, petById, pickShelterPets } from "../data/pets";
 import { emptyQuestProgress, type QuestProgress } from "../data/quests";
@@ -471,6 +472,9 @@ export class GameState {
     for (const npc of NPCS) {
       this.relationships[npc.id] = { score: 0, met: false };
     }
+    for (const npc of AMBIENT_NPCS) {
+      this.relationships[npc.id] = { score: 0, met: false };
+    }
     this.seedStarterFurniture();
   }
 
@@ -576,15 +580,10 @@ export class GameState {
     becameClose: boolean;
     becameBestie: boolean;
   } {
-    const rel = this.relationships[npcId];
+    let rel = this.relationships[npcId];
     if (!rel) {
-      return {
-        before: 0,
-        after: 0,
-        becameFriend: false,
-        becameClose: false,
-        becameBestie: false,
-      };
+      rel = { score: 0, met: false };
+      this.relationships[npcId] = rel;
     }
     const before = rel.score;
     rel.score = Math.max(-100, Math.min(100, rel.score + delta));
@@ -835,6 +834,11 @@ export class GameState {
     );
     this.relationships = structuredClone(data.relationships);
     for (const npc of NPCS) {
+      if (!this.relationships[npc.id]) {
+        this.relationships[npc.id] = { score: 0, met: false };
+      }
+    }
+    for (const npc of AMBIENT_NPCS) {
       if (!this.relationships[npc.id]) {
         this.relationships[npc.id] = { score: 0, met: false };
       }

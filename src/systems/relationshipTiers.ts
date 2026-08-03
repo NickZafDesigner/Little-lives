@@ -9,6 +9,7 @@ import {
 
 export type RelationshipTier =
   | "stranger"
+  | "just_met"
   | "acquaintance"
   | "friend"
   | "close"
@@ -31,7 +32,8 @@ export function tierFromScore(
   }
   if (score >= RELATIONSHIP_CLOSE) return "close";
   if (score >= RELATIONSHIP_FRIEND) return "friend";
-  if (score >= RELATIONSHIP_ACQUAINTANCE || met) return "acquaintance";
+  if (score >= RELATIONSHIP_ACQUAINTANCE) return "acquaintance";
+  if (met) return "just_met";
   return "stranger";
 }
 
@@ -47,8 +49,10 @@ export function tierLabel(tier: RelationshipTier): string {
       return "Friend";
     case "acquaintance":
       return "Acquaintance";
-    default:
+    case "just_met":
       return "Just met";
+    case "stranger":
+      return "Not met";
   }
 }
 

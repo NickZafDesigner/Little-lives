@@ -185,7 +185,7 @@ interface Target {
   z: number;
 }
 
-const WALK_SPEED = 206;
+const WALK_SPEED = 237;
 
 export function createWorldScreen(
   app: App,
@@ -485,6 +485,9 @@ export function createWorldScreen(
       social: 5,
       fun: choice.anim === "jump" ? 10 : choice.anim === "vibrate" ? 8 : 6,
     });
+    const chatDelta =
+      choice.anim === "jump" ? 5 : choice.anim === "vibrate" ? 1 : 3;
+    state.adjustRelationship(npcId, chatDelta, RELATIONSHIP_FRIEND);
 
     const lines: Array<{
       speakerId: string;
@@ -575,15 +578,43 @@ export function createWorldScreen(
     if (isAmbientNpcId(npcId)) {
       const def = ambientNpcById[npcId];
       if (!def) return;
-      Audio.sfx("chime");
+      const { mult, toast } = socialOutcomeMultiplier(
+        state.playerTraits,
+        state.needs.hygiene,
+        moodFromNeeds(state.needs),
+        "friendly",
+        state.isWet,
+      );
+      const result = state.adjustRelationship(
+        npcId,
+        Math.round(gift.delta * mult),
+        RELATIONSHIP_FRIEND,
+      );
       state.needs = applyNeedDeltas(state.needs, { social: 12, fun: 8 });
-      dialogue.say([
-        {
-          speakerId: def.id,
-          speakerName: def.name,
-          text: ambientGiftThanks(def.vibe),
-        },
-      ]);
+      if (result.becameFriend || result.becameClose || result.becameBestie) {
+        if (result.becameFriend) state.dailyStats.friendsMade += 1;
+        Audio.sfx("success");
+        hud?.pulseAvatar();
+        if (result.becameBestie) confetti.burst("big");
+        const text = result.becameBestie
+          ? "Besties. Absolute besties. Don't tell the others."
+          : result.becameClose
+            ? "We're properly close now. Soft high-five."
+            : "Friends! Official street-corner friends.";
+        dialogue.say([
+          { speakerId: def.id, speakerName: def.name, text },
+        ]);
+      } else {
+        Audio.sfx("chime");
+        dialogue.say([
+          {
+            speakerId: def.id,
+            speakerName: def.name,
+            text: ambientGiftThanks(def.vibe),
+          },
+        ]);
+      }
+      if (toast) state.showToast(toast);
       aspirations.refresh();
       return;
     }

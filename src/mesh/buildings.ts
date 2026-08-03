@@ -153,8 +153,10 @@ function box(
 
 /** SE camera looks NW - player is behind a wall when on its north/west side. */
 const WALL_FADE_OPACITY = 0.34;
-/** Enter / exit cutaway (roof + near walls) ease duration. */
-const CUTAWAY_FADE_SEC = 0.55;
+/** Enter / exit cutaway (roof + near walls) ease duration - matches indoor zoom. */
+const CUTAWAY_FADE_SEC = 0.9;
+/** How far the roof lifts while fading open (avoids transparent z-fight glitches). */
+const ROOF_LIFT = 52;
 /** Internal partition ghost-in / ghost-out duration. */
 const INNER_FADE_SEC = 0.22;
 /**
@@ -198,7 +200,8 @@ function setMeshFadeOpacity(mesh: THREE.Mesh, opacity: number) {
     } else {
       m.transparent = true;
       m.opacity = opacity;
-      m.depthWrite = false;
+      // Keep depth writes while mostly solid so pitched slabs don't z-fight.
+      m.depthWrite = opacity > 0.42;
     }
   }
   if (!handled && opacity <= 0.01) mesh.visible = false;
@@ -941,8 +944,11 @@ function buildHouse(lot: LotBounds): BuildingHandle {
 
   const applyCutawayT = (t: number) => {
     const e = easeSmooth(t);
-    // Roof eases out on enter / back in on exit.
-    setGroupFadeOpacity(roof, 1 - e, e < 0.45);
+    // Lift first, then fade - opaque lift avoids roof-slab sorting glitches
+    // during the wake-up / indoor zoom.
+    const fade = easeSmooth(Math.max(0, (t - 0.12) / 0.88));
+    roof.position.y = e * ROOF_LIFT;
+    setGroupFadeOpacity(roof, 1 - fade, fade < 0.55);
     // Near walls + door ease to the ghost opacity while inside.
     const nearOpacity = ghostOpacity(t);
     setGroupFadeOpacity(near, nearOpacity, e < 0.45);
