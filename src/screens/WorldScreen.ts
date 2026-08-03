@@ -5369,7 +5369,16 @@ export function createWorldScreen(
       ) {
         hud.toggleInventory();
       }
-      if (!introActive && justPressed("Tab") && state.mode === "build") catalog.toggle();
+      if (
+        !introActive &&
+        justPressed("Tab") &&
+        state.mode === "build" &&
+        !menu.isOpen() &&
+        !dialogue.isOpen() &&
+        !hud.isAnyModalOpen()
+      ) {
+        catalog.toggle();
+      }
       if (
         !introActive &&
         justPressed("KeyR") &&

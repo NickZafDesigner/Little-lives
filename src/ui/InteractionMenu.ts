@@ -15,6 +15,8 @@ export type MenuPortrait = {
 };
 
 const SOCIAL_IDS = new Set(["joke", "gift", "gift_bag", "hangout"]);
+const OPTION_SELECTOR =
+  ".ll-menu-row:not(:disabled), .ll-menu-chip:not(:disabled)";
 
 function isTone(id: string): boolean {
   return id.startsWith("tone_");
@@ -38,6 +40,9 @@ export class InteractionMenu {
   private onPick: ((id: string) => void) | null = null;
   private onDismiss: (() => void) | null = null;
   private playerLook: PlayerLook | undefined;
+  private options: MenuOption[] = [];
+  private focusIndex = 0;
+  private keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
   constructor(parent: HTMLElement) {
     this.el = document.createElement("div");
@@ -80,6 +85,7 @@ export class InteractionMenu {
     void _x;
     void _y;
     this.onPick = onPick;
+    this.options = options;
     this.el.hidden = false;
     Audio.sfx("menu");
 
@@ -143,6 +149,10 @@ export class InteractionMenu {
         this.close(false);
       });
     });
+
+    this.focusIndex = this.firstEnabledIndex();
+    this.syncFocus(false);
+    this.bindKeys();
   }
 
   private buildList(options: MenuOption[], delayStart: number): HTMLElement {
@@ -153,6 +163,7 @@ export class InteractionMenu {
       btn.type = "button";
       btn.className = "ll-menu-row";
       btn.disabled = Boolean(opt.disabled);
+      btn.dataset.optId = opt.id;
       btn.style.setProperty("--ll-i", String(delayStart + i));
       btn.setAttribute("role", "menuitem");
       btn.innerHTML = `
@@ -160,6 +171,14 @@ export class InteractionMenu {
         ${opt.sub ? `<span class="ll-menu-row-sub">${escapeHtml(opt.sub)}</span>` : ""}
       `;
       btn.addEventListener("click", (e) => this.handlePick(e, opt));
+      btn.addEventListener("pointerenter", () => {
+        if (opt.disabled) return;
+        const idx = this.enabledButtons().indexOf(btn);
+        if (idx >= 0) {
+          this.focusIndex = idx;
+          this.syncFocus(false);
+        }
+      });
       list.appendChild(btn);
     });
     return list;
@@ -170,12 +189,125 @@ export class InteractionMenu {
     btn.type = "button";
     btn.className = "ll-menu-chip";
     btn.disabled = Boolean(opt.disabled);
+    btn.dataset.optId = opt.id;
     btn.style.setProperty("--ll-i", String(delayIndex));
     btn.title = opt.sub ? `${opt.label} - ${opt.sub}` : opt.label;
     btn.setAttribute("role", "menuitem");
     btn.textContent = toneChipLabel(opt.label);
     btn.addEventListener("click", (e) => this.handlePick(e, opt));
+    btn.addEventListener("pointerenter", () => {
+      if (opt.disabled) return;
+      const idx = this.enabledButtons().indexOf(btn);
+      if (idx >= 0) {
+        this.focusIndex = idx;
+        this.syncFocus(false);
+      }
+    });
     return btn;
+  }
+
+  private enabledButtons(): HTMLButtonElement[] {
+    return Array.from(
+      this.el.querySelectorAll<HTMLButtonElement>(OPTION_SELECTOR),
+    );
+  }
+
+  private firstEnabledIndex(): number {
+    return this.enabledButtons().length > 0 ? 0 : -1;
+  }
+
+  private syncFocus(playTick: boolean) {
+    const buttons = this.enabledButtons();
+    buttons.forEach((btn, i) => {
+      const on = i === this.focusIndex;
+      btn.classList.toggle("is-focused", on);
+      if (on) btn.setAttribute("aria-current", "true");
+      else btn.removeAttribute("aria-current");
+    });
+    const focused = buttons[this.focusIndex];
+    if (focused) {
+      focused.scrollIntoView({ block: "nearest" });
+      if (playTick) Audio.sfx("hover");
+    }
+  }
+
+  private moveFocus(delta: number) {
+    const buttons = this.enabledButtons();
+    if (!buttons.length) return;
+    if (this.focusIndex < 0) this.focusIndex = 0;
+    else {
+      this.focusIndex =
+        (this.focusIndex + delta + buttons.length) % buttons.length;
+    }
+    this.syncFocus(true);
+  }
+
+  private activateFocused() {
+    const buttons = this.enabledButtons();
+    const btn = buttons[this.focusIndex];
+    if (!btn) {
+      Audio.sfx("deny");
+      return;
+    }
+    const id = btn.dataset.optId;
+    const opt = this.options.find((o) => o.id === id);
+    if (!opt || opt.disabled) {
+      Audio.sfx("deny");
+      return;
+    }
+    const pick = this.onPick;
+    this.close(true);
+    pick?.(opt.id);
+  }
+
+  private bindKeys() {
+    this.unbindKeys();
+    this.keyHandler = (e: KeyboardEvent) => {
+      if (this.el.hidden) return;
+      const code = e.code;
+      if (
+        code === "Tab" ||
+        code === "ArrowDown" ||
+        code === "ArrowRight" ||
+        code === "ArrowUp" ||
+        code === "ArrowLeft" ||
+        code === "Enter" ||
+        code === "NumpadEnter" ||
+        code === "Space" ||
+        code === "Escape"
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      if (code === "Escape") {
+        Audio.sfx("ui");
+        this.close(false);
+        return;
+      }
+      if (code === "Tab") {
+        this.moveFocus(e.shiftKey ? -1 : 1);
+        return;
+      }
+      if (code === "ArrowDown" || code === "ArrowRight") {
+        this.moveFocus(1);
+        return;
+      }
+      if (code === "ArrowUp" || code === "ArrowLeft") {
+        this.moveFocus(-1);
+        return;
+      }
+      if (code === "Enter" || code === "NumpadEnter" || code === "Space") {
+        this.activateFocused();
+      }
+    };
+    window.addEventListener("keydown", this.keyHandler, true);
+  }
+
+  private unbindKeys() {
+    if (!this.keyHandler) return;
+    window.removeEventListener("keydown", this.keyHandler, true);
+    this.keyHandler = null;
   }
 
   private handlePick(e: Event, opt: MenuOption) {
@@ -191,13 +323,17 @@ export class InteractionMenu {
 
   close(fromPick = false) {
     if (this.el.hidden) return;
+    this.unbindKeys();
     this.el.hidden = true;
     this.el.innerHTML = "";
     this.onPick = null;
+    this.options = [];
+    this.focusIndex = -1;
     if (!fromPick) this.onDismiss?.();
   }
 
   destroy() {
+    this.unbindKeys();
     this.el.remove();
   }
 }

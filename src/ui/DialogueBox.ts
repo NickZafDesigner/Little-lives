@@ -48,6 +48,7 @@ export class DialogueBox {
   private pendingChoices: DialogueChoice[] | null = null;
   private onChoice: ((id: string) => void) | null = null;
   private onClosed: (() => void) | null = null;
+  private choiceFocus = 0;
 
   constructor(parent: HTMLElement) {
     this.wrap = document.createElement("div");
@@ -157,6 +158,7 @@ export class DialogueBox {
   clearChoices() {
     this.pendingChoices = null;
     this.onChoice = null;
+    this.choiceFocus = 0;
     this.choicesEl.hidden = true;
     this.choicesEl.innerHTML = "";
     this.root.classList.remove("has-choices");
@@ -283,25 +285,79 @@ export class DialogueBox {
     this.root.classList.add("is-done", "has-choices");
     this.choicesEl.hidden = false;
     this.choicesEl.innerHTML = "";
+    this.choiceFocus = 0;
 
     for (const choice of this.pendingChoices) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "ll-dialogue-choice";
+      btn.dataset.choiceId = choice.id;
       btn.innerHTML = choice.sub
         ? `<span class="ll-dialogue-choice-label">${escapeHtml(choice.label)}</span><span class="ll-dialogue-choice-sub">${escapeHtml(choice.sub)}</span>`
         : `<span class="ll-dialogue-choice-label">${escapeHtml(choice.label)}</span>`;
       btn.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const pick = this.onChoice;
-        const id = choice.id;
-        this.clearChoices();
-        Audio.sfx("ui");
-        pick?.(id);
+        this.pickChoice(choice.id);
+      });
+      btn.addEventListener("pointerenter", () => {
+        const buttons = this.choiceButtons();
+        const idx = buttons.indexOf(btn);
+        if (idx >= 0) {
+          this.choiceFocus = idx;
+          this.syncChoiceFocus(false);
+        }
       });
       this.choicesEl.appendChild(btn);
     }
+    this.syncChoiceFocus(false);
+  }
+
+  private choiceButtons(): HTMLButtonElement[] {
+    return Array.from(
+      this.choicesEl.querySelectorAll<HTMLButtonElement>(".ll-dialogue-choice"),
+    );
+  }
+
+  private syncChoiceFocus(playTick: boolean) {
+    const buttons = this.choiceButtons();
+    buttons.forEach((btn, i) => {
+      const on = i === this.choiceFocus;
+      btn.classList.toggle("is-focused", on);
+      if (on) btn.setAttribute("aria-current", "true");
+      else btn.removeAttribute("aria-current");
+    });
+    const focused = buttons[this.choiceFocus];
+    if (focused) {
+      focused.scrollIntoView({ block: "nearest" });
+      if (playTick) Audio.sfx("hover");
+    }
+  }
+
+  private moveChoiceFocus(delta: number) {
+    const buttons = this.choiceButtons();
+    if (!buttons.length) return;
+    this.choiceFocus =
+      (this.choiceFocus + delta + buttons.length) % buttons.length;
+    this.syncChoiceFocus(true);
+  }
+
+  private pickChoice(id: string) {
+    const pick = this.onChoice;
+    this.clearChoices();
+    Audio.sfx("ui");
+    pick?.(id);
+  }
+
+  private activateFocusedChoice() {
+    const buttons = this.choiceButtons();
+    const btn = buttons[this.choiceFocus];
+    const id = btn?.dataset.choiceId;
+    if (!id) {
+      Audio.sfx("deny");
+      return;
+    }
+    this.pickChoice(id);
   }
 
   private playNext() {
@@ -361,16 +417,41 @@ export class DialogueBox {
           e.preventDefault();
           e.stopPropagation();
           const choice = this.pendingChoices[idx]!;
-          const pick = this.onChoice;
-          this.clearChoices();
-          Audio.sfx("ui");
-          pick?.(choice.id);
+          this.pickChoice(choice.id);
           return;
         }
-        if (e.code === "Escape") {
+        if (
+          e.code === "Tab" ||
+          e.code === "ArrowDown" ||
+          e.code === "ArrowRight" ||
+          e.code === "ArrowUp" ||
+          e.code === "ArrowLeft" ||
+          e.code === "Enter" ||
+          e.code === "NumpadEnter" ||
+          e.code === "Space" ||
+          e.code === "Escape"
+        ) {
           e.preventDefault();
           e.stopPropagation();
+        }
+        if (e.code === "Escape") {
           this.close();
+          return;
+        }
+        if (e.code === "Tab") {
+          this.moveChoiceFocus(e.shiftKey ? -1 : 1);
+          return;
+        }
+        if (e.code === "ArrowDown" || e.code === "ArrowRight") {
+          this.moveChoiceFocus(1);
+          return;
+        }
+        if (e.code === "ArrowUp" || e.code === "ArrowLeft") {
+          this.moveChoiceFocus(-1);
+          return;
+        }
+        if (e.code === "Enter" || e.code === "NumpadEnter" || e.code === "Space") {
+          this.activateFocusedChoice();
         }
         return;
       }

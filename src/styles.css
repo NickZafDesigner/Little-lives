@@ -3940,7 +3940,7 @@ input:focus-visible {
   background: #fff6e5;
   border: 3px solid var(--ll-wood);
   box-shadow: inset 0 0 0 1px var(--ll-wood-light);
-  align-self: center;
+  align-self: flex-start;
 }
 
 .ll-dialogue-body {
@@ -4034,7 +4034,8 @@ input:focus-visible {
 }
 
 .ll-dialogue-choice:hover,
-.ll-dialogue-choice:focus-visible {
+.ll-dialogue-choice:focus-visible,
+.ll-dialogue-choice.is-focused {
   background: #f0e0c6;
   outline: none;
 }
@@ -4131,7 +4132,7 @@ input:focus-visible {
 .ll-menu-head {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  align-items: center;
+  align-items: start;
   gap: 0.65rem;
   padding: 0.75rem 0.8rem 0.7rem;
   border-bottom: 1.5px solid rgba(92, 58, 30, 0.16);
@@ -4281,7 +4282,8 @@ input:focus-visible {
   color: var(--ll-muted);
 }
 
-.ll-menu-row:hover:not(:disabled) {
+.ll-menu-row:hover:not(:disabled),
+.ll-menu-row.is-focused:not(:disabled) {
   background: linear-gradient(180deg, #ffe3b0, #f0b060);
   border-color: var(--ll-wood-deep);
   color: var(--ll-wood-deep);
@@ -4291,7 +4293,8 @@ input:focus-visible {
   transform: translateY(-1px);
 }
 
-.ll-menu-row:hover:not(:disabled) .ll-menu-row-sub {
+.ll-menu-row:hover:not(:disabled) .ll-menu-row-sub,
+.ll-menu-row.is-focused:not(:disabled) .ll-menu-row-sub {
   color: rgba(74, 42, 18, 0.72);
 }
 
@@ -4342,7 +4345,8 @@ input:focus-visible {
     transform 0.12s ease;
 }
 
-.ll-menu-chip:hover:not(:disabled) {
+.ll-menu-chip:hover:not(:disabled),
+.ll-menu-chip.is-focused:not(:disabled) {
   background: linear-gradient(180deg, #ffe3b0, #f0b060);
   color: var(--ll-wood-deep);
   transform: translateY(-1px);
