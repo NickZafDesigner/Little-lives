@@ -430,6 +430,36 @@ function puzzleTable(): THREE.Group {
   return g;
 }
 
+/** Flat multi-tile rug that sits under furniture. */
+function rug(
+  id: string,
+  tw: number,
+  th: number,
+  fringe = true,
+): () => THREE.Group {
+  return () => {
+    const g = rootNamed(id);
+    const w = tw * 30;
+    const d = th * 30;
+    // Soft pile
+    box(g, w, 1.2, d, PRIMARY, "Primary", 0, 1.4, 0);
+    // Border
+    box(g, w * 0.88, 1.35, d * 0.88, SECONDARY, "Secondary", 0, 1.55, 0);
+    // Center medallion
+    box(g, w * 0.42, 1.5, d * 0.42, ACCENT, "Accent", 0, 1.7, 0);
+    if (fringe) {
+      const fringeW = Math.min(w * 0.9, tw * 28);
+      box(g, fringeW, 0.6, 2.2, ACCENT, "Accent", 0, 1.2, d * 0.5 + 1.2);
+      box(g, fringeW, 0.6, 2.2, ACCENT, "Accent", 0, 1.2, -d * 0.5 - 1.2);
+    }
+    // Rugs don't cast heavy shadows
+    g.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.castShadow = false;
+    });
+    return g;
+  };
+}
+
 const BUILDERS: Record<string, () => THREE.Group> = {
   workbench,
   tool_rack: toolRack,
@@ -446,6 +476,10 @@ const BUILDERS: Record<string, () => THREE.Group> = {
   campfire_pit: campfirePit,
   piano,
   puzzle_table: puzzleTable,
+  rug_sunrise: rug("rug_sunrise", 2, 2),
+  rug_meadow: rug("rug_meadow", 2, 3),
+  rug_hearth: rug("rug_hearth", 3, 2),
+  rug_lavender: rug("rug_lavender", 1, 3, true),
 };
 
 /** Catalog ids that use procedural meshes instead of GLBs. */

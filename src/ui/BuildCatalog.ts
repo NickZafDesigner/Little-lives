@@ -1,5 +1,10 @@
 import type { GameState } from "../systems/GameState";
 import { BUYABLE_FURNITURE } from "../data/furniture";
+import {
+  DEFAULT_FLOOR_STYLE_ID,
+  FLOOR_STYLES,
+  type FloorStyleDef,
+} from "../data/floorStyles";
 import type { FurnitureCategory, FurnitureDef } from "../data/types";
 import { Audio } from "../audio/AudioManager";
 import {
@@ -12,14 +17,14 @@ import { MenuKeyboardNav } from "./menuKeyboard";
 type CategoryFilter = "all" | FurnitureCategory;
 
 const BUILD_OPTION_SELECTOR =
-  ".ll-build-tool, .ll-build-cat, .ll-build-item, .ll-build-start";
+  ".ll-build-tool, .ll-build-cat, .ll-build-item, .ll-build-start, .ll-build-floor";
 
 const CATEGORY_CHIPS: Array<{ id: CategoryFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "seating", label: "Seating" },
   { id: "surface", label: "Surfaces" },
   { id: "appliance", label: "Appliances" },
-  { id: "decor", label: "Decor" },
+  { id: "decor", label: "Decor & rugs" },
   { id: "pet", label: "Pet" },
   { id: "plumbing", label: "Plumbing" },
   { id: "bed", label: "Beds" },
@@ -39,9 +44,14 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function isFloorStyleUnlocked(style: FloorStyleDef, state: GameState): boolean {
+  if (!style.unlockId) return true;
+  return state.hasUnlock(style.unlockId);
+}
+
 export class BuildCatalog {
   private el: HTMLElement;
-  private chip: HTMLButtonElement;
+  private dock: HTMLElement;
   private visible = false;
   private buildActive = false;
   private onChange: () => void;
@@ -78,40 +88,54 @@ export class BuildCatalog {
     this.el.setAttribute("aria-label", "Build catalog");
     parent.appendChild(this.el);
 
-    this.chip = document.createElement("button");
-    this.chip.type = "button";
-    this.chip.className = "ll-build-chip";
-    this.chip.hidden = true;
-    this.chip.textContent = "Catalog · Tab";
-    this.chip.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.show();
-      Audio.sfx("ui");
-      this.onChange();
-    });
-    parent.appendChild(this.chip);
+    this.dock = document.createElement("div");
+    this.dock.className = "ll-build-dock";
+    this.dock.hidden = true;
+    this.dock.innerHTML = `
+      <span class="ll-build-dock-rotate" aria-hidden="true">
+        <kbd>R</kbd>
+        <span>Rotate</span>
+      </span>
+      <span class="ll-build-dock-sep" aria-hidden="true">·</span>
+      <button type="button" class="ll-build-dock-catalog" data-build-open-catalog>
+        <kbd>Tab</kbd> Catalog
+      </button>
+      <span class="ll-build-dock-sep" aria-hidden="true">·</span>
+      <span class="ll-build-dock-exit" aria-hidden="true"><kbd>B</kbd> Exit</span>
+    `;
+    this.dock
+      .querySelector("[data-build-open-catalog]")
+      ?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.show();
+        Audio.sfx("ui");
+        this.onChange();
+      });
+    parent.appendChild(this.dock);
     this.rebuild();
   }
 
-  /** Keeps the reopen chip in sync with build mode. */
+  /** Keeps the build dock in sync with build mode / catalog visibility. */
   setBuildActive(active: boolean) {
     this.buildActive = active;
-    this.syncChip();
+    this.syncDock();
   }
 
-  private syncChip() {
-    this.chip.hidden = !this.buildActive || this.visible;
+  private syncDock() {
+    // One chrome strip while placing; hide under the open catalog modal.
+    this.dock.hidden = !this.buildActive || this.visible;
+    this.dock.classList.toggle("is-placing", this.buildActive && !this.visible);
   }
 
   isVisible(): boolean {
     return this.visible;
   }
 
-  /** Whole overlay blocks the world while open; chip blocks its own rect. */
+  /** Whole overlay blocks the world while open; dock blocks its own rect. */
   containsPoint(clientX: number, clientY: number): boolean {
     if (this.visible) return true;
-    if (this.chip.hidden) return false;
-    const r = this.chip.getBoundingClientRect();
+    if (this.dock.hidden) return false;
+    const r = this.dock.getBoundingClientRect();
     return (
       clientX >= r.left &&
       clientX <= r.right &&
@@ -125,7 +149,7 @@ export class BuildCatalog {
     this.el.hidden = false;
     this.rebuild();
     this.keys.bind();
-    this.syncChip();
+    this.syncDock();
   }
 
   hide() {
@@ -133,7 +157,7 @@ export class BuildCatalog {
     this.visible = false;
     this.el.hidden = true;
     this.hideTip(true);
-    this.syncChip();
+    this.syncDock();
   }
 
   toggle() {
@@ -145,7 +169,6 @@ export class BuildCatalog {
     this.hideTip(true);
     const s = this.state;
     const wallCost = s.hasUnlock("wall_sky") ? 6 : 10;
-    const blush = s.hasUnlock("floor_blush");
 
     this.el.innerHTML = `
       <div class="ll-build-modal-scrim" data-build-close></div>
@@ -195,6 +218,10 @@ export class BuildCatalog {
         e.stopPropagation();
         s.buildTool = t.id;
         if (t.id !== "furniture") s.selectedBuildItem = null;
+        if (t.id !== "floor") s.selectedFloorStyle = null;
+        if (t.id === "floor" && !s.selectedFloorStyle) {
+          s.selectedFloorStyle = DEFAULT_FLOOR_STYLE_ID;
+        }
         Audio.sfx("ui");
         this.rebuild((b) => b.dataset.buildTool === t.id);
         this.onChange();
@@ -215,7 +242,7 @@ export class BuildCatalog {
       gridEl.hidden = false;
       toolPanel.hidden = true;
       hintEl.textContent =
-        "Tab / arrows to browse · Enter to pick · Esc closes";
+        "Pick an item, then click to place · R rotates · Tab / arrows · Esc closes";
 
       for (const c of CATEGORY_CHIPS) {
         const btn = document.createElement("button");
@@ -241,11 +268,27 @@ export class BuildCatalog {
         const ua = isFurnitureUnlocked(a, s) ? 0 : 1;
         const ub = isFurnitureUnlocked(b, s) ? 0 : 1;
         if (ua !== ub) return ua - ub;
+        // Rugs float toward the top of Decor.
+        const ra = a.floorCovering ? 0 : 1;
+        const rb = b.floorCovering ? 0 : 1;
+        if (this.category === "decor" && ra !== rb) return ra - rb;
         return a.name.localeCompare(b.name);
       });
 
       for (const f of items) {
         gridEl.appendChild(this.makeItemTile(f));
+      }
+    } else if (s.buildTool === "floor") {
+      catsEl.hidden = true;
+      gridEl.hidden = false;
+      toolPanel.hidden = true;
+      hintEl.textContent =
+        "Pick a style, then click tiles to paint · R rotates the pattern";
+
+      if (!s.selectedFloorStyle) s.selectedFloorStyle = DEFAULT_FLOOR_STYLE_ID;
+
+      for (const style of FLOOR_STYLES) {
+        gridEl.appendChild(this.makeFloorTile(style));
       }
     } else {
       catsEl.hidden = true;
@@ -258,11 +301,6 @@ export class BuildCatalog {
       if (s.buildTool === "wall") {
         title = "Walls";
         body = `Click a home tile to place or remove walls ($${wallCost} / refund $5).`;
-      } else if (s.buildTool === "floor") {
-        title = "Floors";
-        body = blush
-          ? "Click a tile for blush flooring ($5) - Homebody unlock!"
-          : "Click a tile for flooring ($5).";
       } else {
         title = "Sell";
         body = "Click furniture to sell it for a 60% refund.";
@@ -288,10 +326,52 @@ export class BuildCatalog {
     }
 
     this.keys.reset(prefer, (btn) =>
-      s.buildTool !== "furniture"
-        ? btn.classList.contains("ll-build-start")
-        : btn.dataset.buildTool === s.buildTool,
+      s.buildTool === "floor"
+        ? btn.dataset.floorStyle === s.selectedFloorStyle
+        : s.buildTool !== "furniture"
+          ? btn.classList.contains("ll-build-start")
+          : btn.dataset.buildTool === s.buildTool,
     );
+  }
+
+  private makeFloorTile(style: FloorStyleDef): HTMLElement {
+    const unlocked = isFloorStyleUnlocked(style, this.state);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className =
+      "ll-build-item ll-build-floor" +
+      (this.state.selectedFloorStyle === style.id ? " is-active" : "") +
+      (unlocked ? "" : " is-locked");
+    btn.dataset.floorStyle = style.id;
+    btn.innerHTML = `
+      <span class="ll-build-item-swatch" style="--swatch:${hexColor(style.color)}"></span>
+      <strong>${escapeHtml(style.name)}</strong>
+      <span class="ll-build-item-meta">
+        ${
+          unlocked
+            ? `$${style.price}/tile`
+            : `<i class="ll-build-lock" aria-hidden="true"></i> Homebody`
+        }
+      </span>
+    `;
+    this.keys.attachHover(btn);
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!unlocked) {
+        Audio.sfx("deny");
+        this.state.showToast("Unlock Blush Boards with the Homebody aspiration.");
+        btn.classList.add("is-pulse");
+        window.setTimeout(() => btn.classList.remove("is-pulse"), 320);
+        return;
+      }
+      this.state.selectedFloorStyle = style.id;
+      this.state.buildTool = "floor";
+      this.state.selectedBuildItem = null;
+      Audio.sfx("ui");
+      this.hide();
+      this.onChange();
+    });
+    return btn;
   }
 
   private makeItemTile(f: FurnitureDef): HTMLElement {
@@ -311,7 +391,7 @@ export class BuildCatalog {
       <span class="ll-build-item-meta">
         ${
           unlocked
-            ? `$${f.price}`
+            ? `${f.floorCovering && (f.width > 1 || f.height > 1) ? `${f.width}×${f.height} · ` : ""}$${f.price}`
             : `<i class="ll-build-lock" aria-hidden="true"></i> $${f.price}`
         }
       </span>
@@ -359,7 +439,7 @@ export class BuildCatalog {
       ? progress.done
         ? `
           ${priceLine}
-          <p class="ll-build-tip-hint">Unlocked - available to buy.</p>
+          <p class="ll-build-tip-hint">Unlocked - available to buy (R rotates when placing).</p>
         `
         : `
           ${priceLine}
@@ -376,7 +456,15 @@ export class BuildCatalog {
         `
       : `
           ${priceLine}
-          <p class="ll-build-tip-hint">Available to buy - click to select, then place.</p>
+          <p class="ll-build-tip-hint">${
+            f.floorCovering
+              ? "Rug - place under any furniture. R rotates."
+              : f.placeOnSurface
+                ? "Countertop item - click a free spot on a table or counter."
+                : f.allowsSurface
+                  ? "Place on the floor, or on a free table/counter spot."
+                  : "Available to buy - click to select, then place (R rotates)."
+          }</p>
         `;
 
     this.tipEl.innerHTML = `
@@ -424,7 +512,7 @@ export class BuildCatalog {
     this.keys.unbind();
     this.hideTip(true);
     this.preview.dispose();
-    this.chip.remove();
+    this.dock.remove();
     this.el.remove();
   }
 }

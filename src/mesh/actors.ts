@@ -22,13 +22,23 @@ export type ActorReaction = "vibrate" | "pop" | "jump";
 export type ActorPose = "lie" | "sit" | "stand";
 
 /** Seat height profile - bed sit is taller than outdoor benches. */
-export type SitStyle = "bed" | "bench" | "couch";
+export type SitStyle = "bed" | "bench" | "couch" | "swing" | "slide";
 
-/** Overlay motion while posed (swing sway, slide lean, bounce hop). */
+/**
+ * Overlay motion while posed.
+ * Swing uses `swingPhase` (-1..1 forward/back) + `swingAmp` (0..1 height).
+ * Slide uses `slideT` (0..1 down the chute) with hopY for height drop.
+ */
 export interface PoseMotion {
   swayZ?: number;
   leanX?: number;
   hopY?: number;
+  /** Pendulum phase for swings: -1 back … 0 rest … +1 forward. */
+  swingPhase?: number;
+  /** 0..1 how high the swing is pumped. */
+  swingAmp?: number;
+  /** 0..1 progress down a slide (0 = top). */
+  slideT?: number;
 }
 
 export type HeldTool = "axe" | "pickaxe" | "shovel" | "fishing_rod";
@@ -630,8 +640,14 @@ const SIT_BY_STYLE: Record<
   { y: number; z: number; lean: number; leg: number }
 > = {
   bed: { y: 0.45, z: 6, lean: -0.4, leg: -1.2 },
-  couch: { y: 9.2, z: 3.5, lean: -0.28, leg: -0.95 },
-  bench: { y: 6.8, z: 1.5, lean: -0.28, leg: -0.95 },
+  // Settled couch: hips back, soft recline, knees folded (not a rigid plank).
+  couch: { y: 8.6, z: 4.2, lean: -0.34, leg: -1.05 },
+  // Outdoor bench / picnic: upright-ish, feet nearer the ground.
+  bench: { y: 6.4, z: 1.8, lean: -0.22, leg: -0.88 },
+  // Hang from chains: lighter lean, legs freer to kick.
+  swing: { y: 7.0, z: 0.4, lean: -0.12, leg: -0.55 },
+  // Recline on the chute: hips forward, legs nearly straight, lean back.
+  slide: { y: 5.2, z: 2.4, lean: -0.58, leg: -0.12 },
 };
 
 /**
@@ -872,6 +888,8 @@ export function createActor(look: PlayerLook): ActorHandle {
   let pose: ActorPose = "stand";
   let sitStyle: SitStyle = "bed";
   let poseMotion: PoseMotion | null = null;
+  /** Soft idle clock for seated breathing / fidget. */
+  let sitClock = 0;
   let stretchT = 0;
   let stretchDur = 0;
   let yawnT = 0;
@@ -1124,58 +1142,134 @@ export function createActor(look: PlayerLook): ActorHandle {
       limbs.armL.rotation.z = easeToward(limbs.armL.rotation.z, l.z + 0.35, dt, 6);
       limbs.armR.rotation.z = easeToward(limbs.armR.rotation.z, r.z - 0.35, dt, 6);
     } else if (pose === "sit") {
+      sitClock += dt;
       const seat = SIT_BY_STYLE[sitStyle];
       const sway = poseMotion?.swayZ ?? 0;
       const leanExtra = poseMotion?.leanX ?? 0;
       const hop = poseMotion?.hopY ?? 0;
+      const swingPhase = poseMotion?.swingPhase;
+      const swingAmp = poseMotion?.swingAmp ?? 0;
+      const slideT = poseMotion?.slideT;
+      const swinging = swingPhase != null;
+      const sliding = slideT != null || sitStyle === "slide";
+
+      // Quiet breathing when just sitting - skip while swinging/sliding hard.
+      const breathe =
+        !swinging && !(sliding && (slideT ?? 0) > 0.02)
+          ? Math.sin(sitClock * 2.1) * 0.35
+          : 0;
+      const fidget = !swinging && !sliding ? Math.sin(sitClock * 0.7) * 0.04 : 0;
+
       // Soft sit-up; stretch leans back a little instead of warping limbs.
-      const lean = seat.lean - stretchU * 0.12 + leanExtra;
-      body.rotation.x = easeToward(body.rotation.x, lean, dt, 7);
-      body.position.y = easeToward(body.position.y, seat.y + hop, dt, 7);
-      body.position.z = easeToward(body.position.z, seat.z, dt, 7);
-      body.position.x = easeToward(body.position.x, sway * 2.5, dt, 8);
-      body.rotation.z = easeToward(body.rotation.z, sway * 0.45, dt, 8);
+      let lean = seat.lean - stretchU * 0.12 + leanExtra + fidget;
+      let seatZ = seat.z;
+      let seatY = seat.y + hop + breathe * 0.12;
+      let bodyX = sway * 1.2;
+      let bodyRoll = sway * 0.22;
+
+      if (swinging) {
+        const phase = swingPhase!;
+        const amp = Math.max(0.15, swingAmp);
+        // Tip back at the forward extreme (chains pull up-behind).
+        lean = seat.lean - phase * (0.38 + amp * 0.32) + leanExtra;
+        // Slight forward/back seat shift in local Z as the board tips.
+        seatZ = seat.z + phase * (1.6 + amp * 2.2);
+        seatY = seat.y + hop + Math.abs(phase) * amp * 0.35;
+        bodyX = 0;
+        bodyRoll = phase * 0.06;
+      } else if (sliding) {
+        const t = slideT ?? 0;
+        // Settle deeper into the chute as you pick up speed.
+        lean = seat.lean - 0.08 - t * 0.18 + leanExtra;
+        seatZ = seat.z + t * 1.4;
+        seatY = seat.y + hop;
+        bodyX = Math.sin(sitClock * 9 + t * 6) * t * 0.35;
+        bodyRoll = bodyX * 0.08;
+      }
+
+      body.rotation.x = easeToward(body.rotation.x, lean, dt, swinging ? 11 : 7);
+      body.position.y = easeToward(body.position.y, seatY, dt, swinging ? 12 : 7);
+      body.position.z = easeToward(body.position.z, seatZ, dt, swinging ? 12 : 7);
+      body.position.x = easeToward(body.position.x, bodyX, dt, 8);
+      body.rotation.z = easeToward(body.rotation.z, bodyRoll, dt, 8);
       applyBodyScale(1, 1, 1);
-      limbs.legL.rotation.x = easeToward(limbs.legL.rotation.x, seat.leg, dt, 8);
-      limbs.legR.rotation.x = easeToward(limbs.legR.rotation.x, seat.leg, dt, 8);
+
+      // Legs: slight L/R asymmetry at rest; kick with the swing; straighten on slide.
+      let legL = seat.leg + 0.04;
+      let legR = seat.leg - 0.03;
+      if (swinging) {
+        const phase = swingPhase!;
+        const amp = Math.max(0.15, swingAmp);
+        // Kick forward at the front of the arc, tuck on the way back.
+        const kick = phase * (0.55 + amp * 0.45);
+        legL = seat.leg + kick + 0.06;
+        legR = seat.leg + kick - 0.04;
+      } else if (sliding) {
+        const t = slideT ?? 0;
+        legL = seat.leg + 0.08 + t * 0.1;
+        legR = seat.leg + 0.02 + t * 0.1;
+      } else {
+        legL += Math.sin(sitClock * 0.55) * 0.03;
+        legR += Math.sin(sitClock * 0.55 + 1.2) * 0.025;
+      }
+      limbs.legL.rotation.x = easeToward(limbs.legL.rotation.x, legL, dt, 8);
+      limbs.legR.rotation.x = easeToward(limbs.legR.rotation.x, legR, dt, 8);
 
       const l = armRest(limbs.armL);
       const r = armRest(limbs.armR);
-      // Swing: arms up on the chains. Stretch: gentle reach-up.
-      const swingHold = Math.min(1, Math.abs(sway) * 1.4);
-      const reach = stretchU * 0.55 + swingHold * 0.35;
-      const lift = stretchU * 0.7 + swingHold * 0.85;
+      // Swing: arms locked up on the chains. Slide: light balance arms.
+      // Rest sit: hands ease toward the lap.
+      let armLift = stretchU * 0.7;
+      let armReach = stretchU * 0.55;
+      let armEase = 9;
+      if (swinging) {
+        const amp = Math.max(0.15, swingAmp);
+        const phase = swingPhase ?? 0;
+        armLift = 1.05 + amp * 0.2 + Math.abs(phase) * 0.08;
+        armReach = 0.55 + amp * 0.15;
+        armEase = 14;
+      } else if (sliding) {
+        armLift = 0.35 + (slideT ?? 0) * 0.2;
+        armReach = 0.45;
+        armEase = 10;
+      } else {
+        // Hands settle toward thighs.
+        armLift = stretchU * 0.7 - 0.08;
+        armReach = stretchU * 0.55 + 0.18;
+        armEase = 7;
+      }
       limbs.armL.rotation.x = easeToward(
         limbs.armL.rotation.x,
-        l.x - 0.25 - lift,
+        l.x - 0.22 - armLift,
         dt,
-        9,
+        armEase,
       );
       limbs.armR.rotation.x = easeToward(
         limbs.armR.rotation.x,
-        r.x - 0.25 - lift,
+        r.x - 0.22 - armLift,
         dt,
-        9,
+        armEase,
       );
       limbs.armL.rotation.z = easeToward(
         limbs.armL.rotation.z,
-        l.z + 0.35 + reach,
+        l.z + 0.28 + armReach,
         dt,
-        9,
+        armEase,
       );
       limbs.armR.rotation.z = easeToward(
         limbs.armR.rotation.z,
-        r.z - 0.35 - reach,
+        r.z - 0.28 - armReach,
         dt,
-        9,
+        armEase,
       );
 
       const head = headNode();
       if (head) {
         // Tip back slightly for the yawn - never scale the head (reads as a warp).
+        const swingNod = swinging ? -(swingPhase ?? 0) * 0.12 : 0;
         head.rotation.x = easeToward(
           head.rotation.x,
-          -0.08 - yawnU * 0.28 + sway * 0.08,
+          -0.06 - yawnU * 0.28 + swingNod + fidget * 0.5,
           dt,
           9,
         );
@@ -1257,12 +1351,19 @@ export function createActor(look: PlayerLook): ActorHandle {
         limbs.legR.rotation.x = 1.0;
       } else if (next === "sit") {
         sitStyle = opts?.sitStyle ?? "bed";
+        sitClock = 0;
         const seat = SIT_BY_STYLE[sitStyle];
         // Keep Z on the seat. Snap Y when rising from stand; ease down from lie
         // so the wake sit-up settles onto the mattress instead of teleporting.
         body.position.z = seat.z;
         if (body.position.y < seat.y + 1) {
           body.position.y = seat.y;
+        }
+        // Snap into a readable sit so swings/slides don't ease from a stand T-pose.
+        if (sitStyle === "swing" || sitStyle === "slide") {
+          body.rotation.x = seat.lean;
+          limbs.legL.rotation.x = seat.leg + 0.04;
+          limbs.legR.rotation.x = seat.leg - 0.03;
         }
       } else if (next === "stand") {
         stretchDur = 0;

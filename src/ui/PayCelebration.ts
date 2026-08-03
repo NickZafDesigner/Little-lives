@@ -89,6 +89,10 @@ export class PayCelebration {
     }, 280);
   }
 
+  isVisible(): boolean {
+    return !this.root.hidden;
+  }
+
   destroy() {
     if (this.hideTimer) window.clearTimeout(this.hideTimer);
     if (this.raf) cancelAnimationFrame(this.raf);

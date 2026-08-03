@@ -118,8 +118,19 @@ export class TownRenderer {
   private composer: EffectComposer;
   private gradePass: ShaderPass;
   private weather: WeatherId = "clear";
-  /** Sun offset from follow target - direction changes with time of day. */
+  /** Sun offset from shadow anchor — direction steps with time of day. */
   private sunOffset = new THREE.Vector3(180, 380, 140);
+  /** Grid-snapped shadow-camera centre (avoids crawl while walking). */
+  private sunAnchorX = (MAP_W * TILE) / 2;
+  private sunAnchorZ = (MAP_H * TILE) / 2;
+  /** Last day-time bucket that moved the sun (discrete steps, not per-frame). */
+  private sunAngleStep = -1;
+  /** Half-extent of the local ortho shadow volume. */
+  private static readonly SHADOW_EXTENT = 400;
+  /** Snap shadow volume to this grid so walking doesn't swim the map. */
+  private static readonly SHADOW_SNAP = TILE;
+  /** Sun direction steps per day (~7s each at a 14-min day). */
+  private static readonly SUN_ANGLE_STEPS = 120;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -130,7 +141,8 @@ export class TownRenderer {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(GAME_WIDTH, GAME_HEIGHT, false);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Soft PCF shimmers hard on large/low-res maps; hard PCF stays steadier.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setClearColor(Palette.sky, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -171,26 +183,25 @@ export class TownRenderer {
     this.scene.add(this.hemi);
 
     this.sun = new THREE.DirectionalLight(0xffe4b8, 1.15);
-    // Direction orbits the map centre; the shadow frustum follows the player
-    // so 2048² stays sharp (whole-town coverage was ~1 texel/unit = jaggies).
-    const mapCx = (MAP_W * TILE) / 2;
-    const mapCz = (MAP_H * TILE) / 2;
-    this.sun.target.position.set(mapCx, 0, mapCz);
-    this.sun.position.set(mapCx + 180, 380, mapCz + 140);
+    // Tight local shadow volume around a grid-snapped anchor. Whole-town
+    // coverage was too coarse (shimmer); per-frame player follow crawled.
+    this.sun.target.position.set(this.sunAnchorX, 0, this.sunAnchorZ);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
-    this.sun.shadow.camera.near = 10;
+    const ext = TownRenderer.SHADOW_EXTENT;
+    this.sun.shadow.camera.near = 1;
     this.sun.shadow.camera.far = 900;
-    this.sun.shadow.camera.left = -520;
-    this.sun.shadow.camera.right = 520;
-    this.sun.shadow.camera.top = 520;
-    this.sun.shadow.camera.bottom = -520;
+    this.sun.shadow.camera.left = -ext;
+    this.sun.shadow.camera.right = ext;
+    this.sun.shadow.camera.top = ext;
+    this.sun.shadow.camera.bottom = -ext;
     this.sun.shadow.camera.updateProjectionMatrix();
-    this.sun.shadow.bias = -0.0002;
-    this.sun.shadow.normalBias = 0.08;
-    this.sun.shadow.radius = 2;
+    this.sun.shadow.bias = -0.0005;
+    this.sun.shadow.normalBias = 0.15;
+    this.sun.shadow.radius = 1;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
+    this.placeSun(this.sunAnchorX, this.sunAnchorZ, true);
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -720,21 +731,38 @@ export class TownRenderer {
     this.gradePass.uniforms.warmth!.value = warmth;
     this.gradePass.uniforms.vignette!.value = vignette;
 
-    const angle = (t - 0.25) * Math.PI * 2;
-    this.sunOffset.set(
-      Math.cos(angle) * 280,
-      180 + Math.sin(angle) * 260,
-      Math.sin(angle) * 180,
-    );
+    // Bucket the orbit so the light only steps a few times a minute — continuous
+    // per-frame angle updates reproject the whole shadow map and shimmer.
+    const steps = TownRenderer.SUN_ANGLE_STEPS;
+    const step = Math.round((((t % 1) + 1) % 1) * steps) % steps;
+    if (step !== this.sunAngleStep) {
+      this.sunAngleStep = step;
+      const angle = (step / steps - 0.25) * Math.PI * 2;
+      this.sunOffset.set(
+        Math.cos(angle) * 280,
+        Math.max(40, 180 + Math.sin(angle) * 260),
+        Math.sin(angle) * 180,
+      );
+      this.placeSun(this.sunAnchorX, this.sunAnchorZ, true);
+    }
   }
 
-  /** Keep the shadow frustum glued to the player for sharp local shadows. */
-  private placeSun(playerX: number, playerZ: number) {
-    this.sun.target.position.set(playerX, 0, playerZ);
+  /**
+   * Aim the sun at a grid-snapped world point. Snap keeps the shadow map
+   * frozen while walking; only jumps when crossing a cell.
+   */
+  private placeSun(x: number, z: number, force = false) {
+    const snap = TownRenderer.SHADOW_SNAP;
+    const sx = Math.round(x / snap) * snap;
+    const sz = Math.round(z / snap) * snap;
+    if (!force && sx === this.sunAnchorX && sz === this.sunAnchorZ) return;
+    this.sunAnchorX = sx;
+    this.sunAnchorZ = sz;
+    this.sun.target.position.set(sx, 0, sz);
     this.sun.position.set(
-      playerX + this.sunOffset.x,
+      sx + this.sunOffset.x,
       this.sunOffset.y,
-      playerZ + this.sunOffset.z,
+      sz + this.sunOffset.z,
     );
     this.sun.target.updateMatrixWorld();
   }
@@ -804,17 +832,26 @@ export class TownRenderer {
 
     this.camera.position.copy(this.follow).add(this.camOffset);
     this.camera.quaternion.copy(this.camQuat);
-    this.placeSun(playerX, playerZ);
 
     // Fade / lift the roof only when the player is inside - never hide the
     // whole shell based on camera XZ (that made cafés vanish on approach).
+    let insideLot: LotId | null = null;
     if (this.buildings.length > 0) {
-      const insideLot = playerInsideBuilding(playerX, playerZ, this.buildings);
+      insideLot = playerInsideBuilding(playerX, playerZ, this.buildings);
       for (const b of this.buildings) {
         b.setRoofOpen(insideLot === b.lotId);
         b.group.visible = true;
       }
       this.buildingsUpdate?.(dt, playerX, playerZ);
+    }
+
+    // Indoor floors shimmer under a moving shadow map — kill casting inside.
+    // Outdoors: keep the volume glued to a snapped cell near the player.
+    if (insideLot) {
+      this.sun.castShadow = false;
+    } else {
+      this.sun.castShadow = true;
+      this.placeSun(playerX, playerZ);
     }
 
 

@@ -1878,6 +1878,17 @@ input:focus-visible {
   filter: brightness(1.05);
 }
 
+.ll-title-credit {
+  margin: 0.85rem 0 0;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  color: var(--ll-muted);
+  animation: ll-title-fade 0.55s ease 0.55s both;
+}
+
 .ll-howto {
   position: absolute;
   inset: 0;
@@ -2688,45 +2699,131 @@ input:focus-visible {
 .ll-world-ui .ll-status-modal,
 .ll-world-ui .ll-inv-modal,
 .ll-world-ui .ll-shop-modal,
-.ll-world-ui .ll-build-chip,
+.ll-world-ui .ll-build-dock,
 .ll-world-ui .ll-prologue {
   pointer-events: auto;
 }
 
 /* Hide world chrome while the arrival curtain is up. */
 .ll-world-ui:has(.ll-prologue:not([hidden])) .ll-hud,
-.ll-world-ui:has(.ll-prologue:not([hidden])) .ll-build-chip,
+.ll-world-ui:has(.ll-prologue:not([hidden])) .ll-build-dock,
 .ll-world-ui:has(.ll-prologue:not([hidden])) .ll-nametags,
 .ll-world-ui:has(.ll-prologue:not([hidden])) .ll-building-tags {
   visibility: hidden;
 }
 
-.ll-build-chip {
+/* Single build-mode helper: bottom-right, clear of avatar / status cluster. */
+.ll-build-dock {
   position: absolute;
-  left: 14px;
+  right: 14px;
   bottom: 14px;
+  left: auto;
   z-index: 26;
-  border: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.3rem 0.45rem;
+  max-width: min(56vw, 340px);
+  padding: 0.45rem 0.7rem;
   border-radius: var(--ll-r-sm);
-  padding: 0.55rem 0.9rem;
-  font: inherit;
-  font-weight: 800;
-  font-size: 0.82rem;
-  background: linear-gradient(180deg, #fff6e0, var(--ll-parchment));
-  color: var(--ll-ink);
+  background: linear-gradient(180deg, #fff8ea, #f3e2c0);
   border: 3px solid var(--ll-wood-deep);
   box-shadow:
     inset 0 0 0 2px var(--ll-wood-light),
     var(--ll-sh-md);
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: var(--ll-ink-soft);
+  pointer-events: none;
+}
+
+.ll-build-dock[hidden] {
+  display: none;
+}
+
+.ll-build-dock kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.3rem;
+  margin-right: 0.15rem;
+  border: 2px solid var(--ll-wood-deep);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #fff8ea, #f0dfb4);
+  box-shadow: 0 2px 0 rgba(58, 40, 24, 0.18);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--ll-wood-deep);
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.ll-build-dock-rotate {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.4rem 0.15rem 0.2rem;
+  border-radius: 8px;
+  background: rgba(248, 180, 120, 0.35);
+  color: var(--ll-ink);
+  font-size: 0.8rem;
+}
+
+.ll-build-dock-rotate kbd {
+  min-width: 1.55rem;
+  height: 1.55rem;
+  font-size: 0.82rem;
+  background: linear-gradient(180deg, #ffe8c4, #f8b478);
+  box-shadow: 0 2px 0 rgba(140, 70, 30, 0.28);
+}
+
+.ll-build-dock.is-placing .ll-build-dock-rotate {
+  animation: ll-build-dock-pulse 1.4s ease-in-out infinite;
+}
+
+.ll-build-dock-sep {
+  opacity: 0.45;
+  font-weight: 700;
+}
+
+.ll-build-dock-catalog {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0.2rem 0.45rem;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ll-ink);
+  font: inherit;
+  font-weight: 800;
+  font-size: 0.76rem;
   cursor: pointer;
 }
 
-.ll-build-chip:hover {
-  transform: translateY(-1px);
+.ll-build-dock-catalog:hover {
+  background: #fff6e0;
 }
 
-.ll-build-chip[hidden] {
-  display: none;
+.ll-build-dock-catalog kbd {
+  margin-right: 0.2rem;
+}
+
+@keyframes ll-build-dock-pulse {
+  0%,
+  100% {
+    background: rgba(248, 180, 120, 0.28);
+    transform: scale(1);
+  }
+  50% {
+    background: rgba(248, 180, 120, 0.55);
+    transform: scale(1.04);
+  }
 }
 
 .ll-hud {
@@ -2928,13 +3025,15 @@ input:focus-visible {
 }
 
 .ll-hud-left,
-.ll-hud-objectives {
+.ll-hud-objectives,
+.ll-hud-events {
   position: absolute;
   pointer-events: none;
 }
 
 .ll-hud-left > *,
-.ll-hud-objectives > * {
+.ll-hud-objectives > *,
+.ll-hud-events > * {
   pointer-events: auto;
 }
 
@@ -2946,6 +3045,23 @@ input:focus-visible {
   flex-direction: column;
   gap: 0.45rem;
   z-index: 5;
+}
+
+/* Weekly beat cards sit under the top-right status pills. */
+.ll-hud-events {
+  top: 42px;
+  right: 14px;
+  left: auto;
+  width: min(240px, 42vw);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  z-index: 5;
+}
+
+.ll-hud-events:empty {
+  display: none;
 }
 
 .ll-hud-left {
@@ -3462,18 +3578,19 @@ input:focus-visible {
 
 .ll-beat {
   margin-top: 0;
-  padding: 0.45rem 0.55rem;
+  padding: 0.35rem 0.5rem 0.4rem;
   border-radius: var(--ll-r-md);
   background: linear-gradient(180deg, rgba(255, 236, 179, 0.95), rgba(255, 220, 140, 0.9));
   border: 3px solid var(--ll-wood);
   box-shadow:
     inset 0 0 0 2px rgba(255, 248, 220, 0.65),
     var(--ll-sh-sm);
+  text-align: right;
 }
 
 .ll-beat small {
   display: block;
-  font-size: 0.58rem;
+  font-size: 0.55rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -3482,34 +3599,36 @@ input:focus-visible {
 
 .ll-beat strong {
   display: block;
-  font-size: 0.78rem;
-  margin-top: 0.1rem;
+  font-size: 0.74rem;
+  margin-top: 0.08rem;
+  line-height: 1.2;
 }
 
 .ll-beat > span {
   display: block;
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   color: var(--ll-ink-soft);
-  margin-top: 0.1rem;
+  margin-top: 0.08rem;
 }
 
 .ll-beat-where {
   display: block;
   width: 100%;
-  margin-top: 0.35rem;
-  padding: 0.22rem 0.4rem;
+  margin-top: 0.3rem;
+  padding: 0.2rem 0.35rem;
   border: 2px solid var(--ll-wood-deep);
   border-radius: var(--ll-r-sm, 8px);
   background: linear-gradient(180deg, #fff8e8, #ffe4a8);
   box-shadow: inset 0 0 0 1px rgba(255, 248, 220, 0.7);
   font: inherit;
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 800;
   letter-spacing: 0.02em;
   color: var(--ll-wood-deep);
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
+  text-align: center;
   transition:
     transform 0.12s ease,
     background 0.12s ease,
@@ -5913,7 +6032,13 @@ input:focus-visible {
 
   .ll-hud-objectives {
     left: 8px;
-    width: min(340px, 78vw);
+    width: min(340px, 56vw);
+  }
+
+  .ll-hud-events {
+    top: 38px;
+    right: 8px;
+    width: min(200px, 38vw);
   }
 
   .ll-hud-left {
@@ -6782,7 +6907,7 @@ input:focus-visible {
 }
 .ll-moment-note {
   margin: 0.25rem 0 0;
-  max-width: 26ch;
+  max-width: 32ch;
   font-family: var(--ll-font-display);
   font-size: 0.84rem;
   font-weight: 700;

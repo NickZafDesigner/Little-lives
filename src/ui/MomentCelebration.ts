@@ -1,4 +1,4 @@
-import { paintInventoryThumb } from "./FurniturePreview";
+import { paintFurnitureThumb, paintInventoryThumb } from "./FurniturePreview";
 import type { InventoryThumbId } from "../mesh/inventoryItems";
 
 export type MomentAccent = "gold" | "mint" | "rose";
@@ -13,6 +13,8 @@ export interface MomentCelebrationOpts {
   badge?: string;
   /** Optional inventory thumb (tools / materials). */
   thumbId?: InventoryThumbId;
+  /** Optional furniture mesh thumb (home placement / unlocks). */
+  furnitureDefId?: string;
   accent?: MomentAccent;
   durationMs?: number;
   onDone?: () => void;
@@ -69,15 +71,20 @@ export class MomentCelebration {
     const accent = opts.accent ?? "gold";
     this.card.dataset.accent = accent;
 
-    const hasThumb = Boolean(opts.thumbId);
+    const hasThumb = Boolean(opts.furnitureDefId || opts.thumbId);
     this.thumbHost.hidden = !hasThumb;
     this.badgeEl.hidden = hasThumb;
-    if (hasThumb && opts.thumbId) {
+    if (hasThumb) {
       const canvas = document.createElement("canvas");
       canvas.className = "ll-moment-thumb-canvas";
       canvas.setAttribute("aria-hidden", "true");
       this.thumbHost.replaceChildren(canvas);
-      if (!paintInventoryThumb(canvas, opts.thumbId, 72)) {
+      const painted = opts.furnitureDefId
+        ? paintFurnitureThumb(canvas, opts.furnitureDefId, 72)
+        : opts.thumbId
+          ? paintInventoryThumb(canvas, opts.thumbId, 72)
+          : false;
+      if (!painted) {
         this.thumbHost.hidden = true;
         this.badgeEl.hidden = false;
         this.badgeEl.textContent = opts.badge ?? "★";
@@ -110,6 +117,10 @@ export class MomentCelebration {
       this.root.classList.remove("is-out");
       done?.();
     }, 280);
+  }
+
+  isVisible(): boolean {
+    return !this.root.hidden;
   }
 
   destroy() {

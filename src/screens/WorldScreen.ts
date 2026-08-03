@@ -4,6 +4,10 @@ import type { App } from "../app/App";
 import type { PlayerProfile } from "../data/character";
 import { furnitureById } from "../data/furniture";
 import {
+  DEFAULT_FLOOR_STYLE_ID,
+  floorStyleById,
+} from "../data/floorStyles";
+import {
   JOB_PROMOTIONS,
   PROMOTION_SHIFTS,
   WORK_MISS_LIMIT,
@@ -1066,11 +1070,32 @@ export function createWorldScreen(
       if (lotId && f.lotId !== lotId) continue;
       if (f.tx === tx && f.ty === ty) return f;
     }
+    // Prefer standing furniture over rugs so click picks the sofa, not the mat.
+    let covering: (typeof state.furniture)[number] | null = null;
     for (const f of state.furniture) {
       if (f.parentUid) continue;
       if (lotId && f.lotId !== lotId) continue;
       const def = furnitureById[f.defId];
       if (!def) continue;
+      const { tw, th } = furnitureFootprint(f.defId, f.rot ?? "down");
+      if (tx >= f.tx && ty >= f.ty && tx < f.tx + tw && ty < f.ty + th) {
+        if (def.floorCovering) {
+          covering ??= f;
+          continue;
+        }
+        return f;
+      }
+    }
+    return covering;
+  };
+
+  /** Floor-level piece covering a tile (ignores countertop children + rugs). */
+  const floorFurnitureAt = (tx: number, ty: number, lotId?: LotId) => {
+    for (const f of state.furniture) {
+      if (f.parentUid) continue;
+      if (lotId && f.lotId !== lotId) continue;
+      const def = furnitureById[f.defId];
+      if (!def || def.floorCovering) continue;
       const { tw, th } = furnitureFootprint(f.defId, f.rot ?? "down");
       if (tx >= f.tx && ty >= f.ty && tx < f.tx + tw && ty < f.ty + th) {
         return f;
@@ -1079,13 +1104,13 @@ export function createWorldScreen(
     return null;
   };
 
-  /** Floor-level piece covering a tile (ignores countertop children). */
-  const floorFurnitureAt = (tx: number, ty: number, lotId?: LotId) => {
+  /** Rug / mat covering a tile (floorCovering pieces only). */
+  const floorCoveringAt = (tx: number, ty: number, lotId?: LotId) => {
     for (const f of state.furniture) {
       if (f.parentUid) continue;
       if (lotId && f.lotId !== lotId) continue;
       const def = furnitureById[f.defId];
-      if (!def) continue;
+      if (!def?.floorCovering) continue;
       const { tw, th } = furnitureFootprint(f.defId, f.rot ?? "down");
       if (tx >= f.tx && ty >= f.ty && tx < f.tx + tw && ty < f.ty + th) {
         return f;
@@ -1460,9 +1485,14 @@ export function createWorldScreen(
     app.renderer.add(mesh);
   };
 
-  const addFloor = (tx: number, ty: number) => {
+  const addFloor = (tx: number, ty: number, variant = 1, rot: Dir = "down") => {
     const key = state.wallKey(tx, ty);
-    const mesh = createPaintFloorMesh(tx, ty);
+    const existing = floorMeshes.get(key);
+    if (existing) {
+      app.renderer.remove(existing);
+      floorMeshes.delete(key);
+    }
+    const mesh = createPaintFloorMesh(tx, ty, variant, rot);
     floorMeshes.set(key, mesh);
     app.renderer.add(mesh);
   };
@@ -2092,7 +2122,11 @@ export function createWorldScreen(
     !!timeMontage?.isPlaying() ||
     !!workMini?.isOpen() ||
     !!playMini?.isOpen() ||
-    !!tvViewer?.isOpen();
+    !!tvViewer?.isOpen() ||
+    !!payCelebration?.isVisible() ||
+    !!momentCelebration?.isVisible();
+
+  let sofaAffordQueued = false;
 
   const primaryJobId = (): string | null => {
     if (state.activeJobId) return state.activeJobId;
@@ -2116,13 +2150,26 @@ export function createWorldScreen(
     if (defId === "bed") return "bed";
     if (
       defId === "park_bench" ||
-      defId === "swing_set" ||
       defId === "floor_cushion" ||
       defId === "picnic_set"
     ) {
       return "bench";
     }
     return "couch";
+  };
+
+  /** Offset in the facing direction (down = +Z). */
+  const alongFacing = (dir: Dir, dist: number) => {
+    switch (dir) {
+      case "down":
+        return { x: 0, z: dist };
+      case "up":
+        return { x: 0, z: -dist };
+      case "right":
+        return { x: dist, z: 0 };
+      case "left":
+        return { x: -dist, z: 0 };
+    }
   };
 
   const cancelPlayRide = () => {
@@ -2193,26 +2240,28 @@ export function createWorldScreen(
       playerX = cx;
       playerZ = cz;
       player.setPosition(playerX, playerZ);
-      player.setPose("sit", { sitStyle: "bench" });
+      player.setPose("sit", { sitStyle: "swing" });
+      player.setPoseMotion({ swingPhase: 0, swingAmp: 0.35, hopY: 0 });
     } else if (kind === "slide") {
       // Start near the top of the chute (opposite the facing).
       const rot = furn.rot ?? "down";
       if (rot === "down") {
         playerX = cx;
-        playerZ = furn.ty * TILE + TILE * 0.55;
+        playerZ = furn.ty * TILE + TILE * 0.45;
       } else if (rot === "up") {
         playerX = cx;
-        playerZ = (furn.ty + h) * TILE - TILE * 0.55;
+        playerZ = (furn.ty + h) * TILE - TILE * 0.45;
       } else if (rot === "right") {
-        playerX = furn.tx * TILE + TILE * 0.55;
+        playerX = furn.tx * TILE + TILE * 0.45;
         playerZ = cz;
       } else {
-        playerX = (furn.tx + w) * TILE - TILE * 0.55;
+        playerX = (furn.tx + w) * TILE - TILE * 0.45;
         playerZ = cz;
       }
       player.setPosition(playerX, playerZ);
-      player.setPose("stand");
-      player.setPoseMotion({ leanX: 0.35 });
+      player.setPose("sit", { sitStyle: "slide" });
+      // Perch high at the top until the ride starts.
+      player.setPoseMotion({ slideT: 0, hopY: 12.5, leanX: -0.06 });
     } else if (kind === "bounce") {
       playerX = cx;
       playerZ = cz;
@@ -2242,25 +2291,46 @@ export function createWorldScreen(
     const rot = furn.rot ?? "down";
 
     if (tick.kind === "swing") {
-      const amp = 0.35 + tick.height * 0.65;
-      player.setPoseMotion({ swayZ: tick.angle * amp });
+      // Pendulum along facing: phase -1..1, amp from pump height.
+      const amp = Math.max(0.12, tick.height);
+      const maxAlong = TILE * (0.42 + amp * 0.95);
+      const along = tick.angle * maxAlong;
+      // Rise at the extremes like a real hanging seat.
+      const lift =
+        (1 - Math.cos(tick.angle * (Math.PI * 0.5))) * (2.2 + amp * 5.5);
+      const off = alongFacing(rot, along);
+      playerX = cx + off.x;
+      playerZ = cz + off.z;
+      player.setPosition(playerX, playerZ);
+      player.setPoseMotion({
+        swingPhase: tick.angle,
+        swingAmp: amp,
+        hopY: lift,
+      });
     } else if (tick.kind === "slide") {
       const t = tick.marker;
+      const travel = Math.max(TILE * 1.15, (Math.max(w, h) - 0.85) * TILE);
       if (rot === "down") {
         playerX = cx;
-        playerZ = furn.ty * TILE + TILE * 0.55 + t * Math.max(TILE, (h - 1) * TILE);
+        playerZ = furn.ty * TILE + TILE * 0.45 + t * travel;
       } else if (rot === "up") {
         playerX = cx;
-        playerZ = (furn.ty + h) * TILE - TILE * 0.55 - t * Math.max(TILE, (h - 1) * TILE);
+        playerZ = (furn.ty + h) * TILE - TILE * 0.45 - t * travel;
       } else if (rot === "right") {
-        playerX = furn.tx * TILE + TILE * 0.55 + t * Math.max(TILE, (w - 1) * TILE);
+        playerX = furn.tx * TILE + TILE * 0.45 + t * travel;
         playerZ = cz;
       } else {
-        playerX = (furn.tx + w) * TILE - TILE * 0.55 - t * Math.max(TILE, (w - 1) * TILE);
+        playerX = (furn.tx + w) * TILE - TILE * 0.45 - t * travel;
         playerZ = cz;
       }
       player.setPosition(playerX, playerZ);
-      player.setPoseMotion({ leanX: 0.25 + t * 0.35, hopY: t * 0.08 });
+      // Drop height down the chute; slight ease so the launch feels snappy.
+      const drop = 12.5 * (1 - t) * (1 - t * 0.15);
+      player.setPoseMotion({
+        slideT: t,
+        hopY: drop,
+        leanX: -0.04 - t * 0.1,
+      });
     } else if (tick.kind === "bounce") {
       const hop = Math.abs(Math.sin(((tick.angle + 1) * 0.5) * Math.PI)) * (0.15 + tick.height * 0.55);
       player.setPoseMotion({ hopY: hop });
@@ -2286,12 +2356,13 @@ export function createWorldScreen(
     const start = performance.now();
     const step = (now: number) => {
       const u = Math.min(1, (now - start) / durationMs);
-      const eased = u * u * (3 - 2 * u);
+      // Ease-in then settle - acceleration down the chute.
+      const eased = u * u * (2.2 - 1.2 * u);
       syncPlayPose(furn, {
         kind: "slide",
         angle: 0,
         height: 1,
-        marker: eased,
+        marker: Math.min(1, eased),
       });
       if (u < 1) {
         playRideRaf = requestAnimationFrame(step);
@@ -2303,7 +2374,7 @@ export function createWorldScreen(
     playRideRaf = requestAnimationFrame(step);
   };
 
-  /** One swing arc after the pump mini resolves. */
+  /** Decaying pendulum arc after the pump mini resolves. */
   const playSwingRideOnce = (
     furn: PlacedFurniture,
     height: number,
@@ -2313,11 +2384,12 @@ export function createWorldScreen(
     cancelPlayRide();
     beginPlayPose("swing", furn);
     const start = performance.now();
+    const cycles = 1.65;
     const step = (now: number) => {
       const u = Math.min(1, (now - start) / durationMs);
-      // One full period that settles back to rest.
-      const decay = 1 - u * 0.25;
-      const angle = Math.sin(u * Math.PI * 2) * decay;
+      // Soft landing: amplitude decays toward rest.
+      const decay = (1 - u) * (1 - u * 0.35) + 0.08 * (1 - u);
+      const angle = Math.sin(u * Math.PI * 2 * cycles) * decay;
       syncPlayPose(furn, {
         kind: "swing",
         angle,
@@ -2328,7 +2400,7 @@ export function createWorldScreen(
         playRideRaf = requestAnimationFrame(step);
       } else {
         playRideRaf = 0;
-        player.setPoseMotion(null);
+        player.setPoseMotion({ swingPhase: 0, swingAmp: height * 0.2, hopY: 0 });
         done();
       }
     };
@@ -2364,6 +2436,7 @@ export function createWorldScreen(
     note?: string;
     badge?: string;
     thumbId?: import("../mesh/inventoryItems").InventoryThumbId;
+    furnitureDefId?: string;
     accent?: "gold" | "mint" | "rose";
     confetti?: "soft" | "big" | "huge";
     palette?: "party" | "gold";
@@ -2380,10 +2453,57 @@ export function createWorldScreen(
       note: opts.note,
       badge: opts.badge,
       thumbId: opts.thumbId,
+      furnitureDefId: opts.furnitureDefId,
       accent: opts.accent ?? "gold",
       durationMs: opts.durationMs ?? 3400,
       onDone: opts.onDone,
     });
+  };
+
+  const ownsHomeSofa = () =>
+    state.furniture.some((f) => f.defId === "sofa" && f.lotId === "home");
+
+  /** First time the player can afford a Sunny Sofa - nudge them into build mode. */
+  const queueSofaAffordCelebration = () => {
+    const price = furnitureById.sofa?.price ?? 100;
+    if (sofaAffordQueued || state.hasStoryFlag("first_sofa_afford")) return;
+    if (ownsHomeSofa()) {
+      state.setStoryFlag("first_sofa_afford");
+      return;
+    }
+    if (state.money < price) return;
+
+    sofaAffordQueued = true;
+    let tries = 0;
+    const tryShow = () => {
+      tries += 1;
+      if (uiBusy() && tries < 60) {
+        window.setTimeout(tryShow, 350);
+        return;
+      }
+      sofaAffordQueued = false;
+      if (ownsHomeSofa()) {
+        state.setStoryFlag("first_sofa_afford");
+        return;
+      }
+      if (state.money < price) return;
+      if (!state.setStoryFlag("first_sofa_afford")) return;
+      if (!momentCelebration) return;
+
+      celebrateKeyItem({
+        eyebrow: "You can buy it!",
+        title: "Sunny Sofa",
+        note: "Go home and press B to enter build mode",
+        furnitureDefId: "sofa",
+        badge: "★",
+        accent: "gold",
+        confetti: "big",
+        palette: "gold",
+        sfx: "chime",
+        durationMs: 4200,
+      });
+    };
+    window.setTimeout(tryShow, 0);
   };
 
   /** Side-quest hand-in: wait for dialogue to finish, then banner + confetti. */
@@ -3746,7 +3866,10 @@ export function createWorldScreen(
         }
         if (interaction.moneyDelta) {
           state.money += interaction.moneyDelta;
-          if (interaction.moneyDelta > 0) Audio.sfx("coin");
+          if (interaction.moneyDelta > 0) {
+            Audio.sfx("coin");
+            queueSofaAffordCelebration();
+          }
         }
         Audio.sfx("success");
         if (
@@ -3885,6 +4008,7 @@ export function createWorldScreen(
             }
 
             toastNewUnlocks(state, unlockBefore);
+            queueSofaAffordCelebration();
 
             // Beat 3: home hint once dialogue / other UI clears
             const home = buildingHintTarget("home");
@@ -3999,17 +4123,17 @@ export function createWorldScreen(
           aspirations.refresh();
         };
 
-        // Swing/slide world pose is a one-shot ride after the mini - not a
-        // live mirror of the looping UI meter.
+        // Slide world pose is a one-shot ride after the mini - the looping
+        // meter would otherwise yo-yo them up the chute. Swing mirrors live.
         if (furn && kind === "slide") {
-          const ms = grade === "perfect" ? 900 : grade === "ok" ? 1050 : 1200;
+          const ms = grade === "perfect" ? 1100 : grade === "ok" ? 1300 : 1500;
           playSlideRideOnce(furn, ms, finish);
           return;
         }
         if (furn && kind === "swing") {
           const height =
-            grade === "perfect" ? 1 : grade === "ok" ? 0.7 : 0.35;
-          const ms = grade === "perfect" ? 1100 : grade === "ok" ? 1250 : 1000;
+            grade === "perfect" ? 1 : grade === "ok" ? 0.72 : 0.4;
+          const ms = grade === "perfect" ? 1800 : grade === "ok" ? 1600 : 1300;
           playSwingRideOnce(furn, height, ms, finish);
           return;
         }
@@ -4018,9 +4142,8 @@ export function createWorldScreen(
       celebrateGrade,
       furn
         ? (tick) => {
-            // Keep trampoline / fish / music reacting live; swing & slide wait
-            // for the post-game ride so they don't yo-yo on the looping meter.
-            if (tick.kind === "swing" || tick.kind === "slide") return;
+            // Swing rocks with the meter; slide stays perched until the ride.
+            if (tick.kind === "slide") return;
             syncPlayPose(furn, tick);
           }
         : undefined,
@@ -5486,19 +5609,19 @@ export function createWorldScreen(
     const { tw, th } = furnitureFootprint(defId, rot);
     const home = LOTS.find((l) => l.id === "home")!;
 
-    if (def.placeOnSurface) {
+    const inHomeInterior = (x: number, y: number) =>
+      x > home.tx &&
+      y > home.ty &&
+      x < home.tx + home.tw - 1 &&
+      y < home.ty + home.th - 1;
+
+    /** Countertop / table slot check for surface-only or surface-optional pieces. */
+    const canPlaceOnHost = (): boolean => {
       for (let dy = 0; dy < th; dy++) {
         for (let dx = 0; dx < tw; dx++) {
           const x = tx + dx;
           const y = ty + dy;
-          if (
-            x <= home.tx ||
-            y <= home.ty ||
-            x >= home.tx + home.tw - 1 ||
-            y >= home.ty + home.th - 1
-          ) {
-            return false;
-          }
+          if (!inHomeInterior(x, y)) return false;
           const host = surfaceHostAt(x, y, "home");
           if (!host) return false;
           const child = surfaceChildAt(x, y, "home");
@@ -5506,24 +5629,29 @@ export function createWorldScreen(
         }
       }
       return true;
+    };
+
+    if (def.placeOnSurface) return canPlaceOnHost();
+
+    // Optional surface pieces: prefer a free host tile when one is under the cursor.
+    if (def.allowsSurface && surfaceHostAt(tx, ty, "home")) {
+      return canPlaceOnHost();
     }
 
     for (let dy = 0; dy < th; dy++) {
       for (let dx = 0; dx < tw; dx++) {
         const x = tx + dx;
         const y = ty + dy;
-        if (
-          x <= home.tx ||
-          y <= home.ty ||
-          x >= home.tx + home.tw - 1 ||
-          y >= home.ty + home.th - 1
-        ) {
-          return false;
-        }
+        if (!inHomeInterior(x, y)) return false;
         if (map.ground[y][x] === Tile.door) return false;
         if (baseCollision[y]?.[x]) return false;
         if (state.walls.has(state.wallKey(x, y))) return false;
-        if (floorFurnitureAt(x, y, "home")) return false;
+        if (def.floorCovering) {
+          // Rugs can sit under furniture, but not stack on other rugs.
+          if (floorCoveringAt(x, y, "home")) return false;
+        } else if (floorFurnitureAt(x, y, "home")) {
+          return false;
+        }
       }
     }
     // Held host with children must keep each child on the new footprint.
@@ -5535,6 +5663,42 @@ export function createWorldScreen(
       }
     }
     return true;
+  };
+
+  /** Parent uid when placing onto a table/counter (required or optional). */
+  const surfaceParentUid = (
+    def: (typeof furnitureById)[string],
+    tx: number,
+    ty: number,
+  ): string | undefined => {
+    if (!def?.placeOnSurface && !def?.allowsSurface) return undefined;
+    if (def.allowsSurface && !def.placeOnSurface) {
+      // Only parent when there's actually a free host under the cursor.
+      if (!surfaceHostAt(tx, ty, "home")) return undefined;
+      const child = surfaceChildAt(tx, ty, "home");
+      if (child && child.uid !== heldFurniture?.uid) return undefined;
+    }
+    return surfaceHostAt(tx, ty, "home")?.uid;
+  };
+
+  const denyPlaceThought = (
+    def: (typeof furnitureById)[string],
+    tx: number,
+    ty: number,
+  ) => {
+    if (def?.placeOnSurface) {
+      think(
+        surfaceHostAt(tx, ty, "home")
+          ? "That spot on the surface is taken…"
+          : "Needs a free spot on a counter or table…",
+      );
+    } else if (def?.allowsSurface && surfaceHostAt(tx, ty, "home")) {
+      think("That spot on the surface is taken…");
+    } else if (def?.floorCovering) {
+      think("Can't stack rugs there…");
+    } else {
+      think("Doesn't fit there - try R to rotate.");
+    }
   };
 
   const restoreHeldFurniture = () => {
@@ -5605,6 +5769,7 @@ export function createWorldScreen(
       kids.length > 0 ? ` (+${kids.length} countertop item${kids.length > 1 ? "s" : ""})` : "";
     state.showToast(`Sold ${def?.name ?? "item"}${extra} for $${refund}`);
     catalog.rebuild();
+    queueSofaAffordCelebration();
   };
 
   const toggleBuild = () => {
@@ -5644,7 +5809,7 @@ export function createWorldScreen(
       updateGhost();
       Audio.sfx("build");
       Audio.playMusic("build");
-      state.showToast("Build mode - pick from the catalog, then click to place");
+      state.showToast("Build mode - pick from the catalog · R rotates items");
       quests.emit("opened_build");
       if (quests.isActive("empty_nest")) quests.emit("game_started");
     } else {
@@ -5685,6 +5850,7 @@ export function createWorldScreen(
         state.showToast(`Sold ${def?.name ?? "item"} for $${refund}`);
         catalog.rebuild();
         buildFeedback?.clear();
+        queueSofaAffordCelebration();
         return;
       }
       const hit =
@@ -5715,6 +5881,7 @@ export function createWorldScreen(
         state.money += 5;
         Audio.sfx("sell");
         state.showToast("Wall removed (+$5)");
+        queueSofaAffordCelebration();
       } else {
         const wallCost = state.hasUnlock("wall_sky") ? 6 : 10;
         if (state.money < wallCost) {
@@ -5744,70 +5911,161 @@ export function createWorldScreen(
 
     if (state.buildTool === "floor") {
       const key = state.wallKey(tx, ty);
+      const styleId = state.selectedFloorStyle ?? DEFAULT_FLOOR_STYLE_ID;
+      const style = floorStyleById[styleId];
+      if (!style) {
+        Audio.sfx("deny");
+        state.showToast("Pick a floor style from the catalog (Tab).");
+        return;
+      }
+      if (style.unlockId && !state.hasUnlock(style.unlockId)) {
+        Audio.sfx("deny");
+        state.showToast("That floor style is still locked.");
+        return;
+      }
       if (state.floors.has(key)) {
         Audio.sfx("deny");
         think("Already floored - pick another tile.");
         return;
       }
-      if (state.money < 5) {
+      if (state.money < style.price) {
         Audio.sfx("deny");
-        state.showToast("Flooring costs $5 a tile.");
+        state.showToast(`${style.name} costs $${style.price} a tile.`);
         return;
       }
-      state.money -= 5;
-      state.floors.set(key, 1);
-      addFloor(tx, ty);
+      state.money -= style.price;
+      state.floors.set(key, { variant: style.variant, rot: placeRot });
+      addFloor(tx, ty, style.variant, placeRot);
       Audio.sfx("place");
-      state.showToast("Fresh flooring!");
+      state.showToast(`${style.name} · R to rotate pattern`);
       return;
     }
 
-    // Furniture tool: place held / pick up existing / buy new
-    if (heldFurniture) {
-      const defId = heldFurniture.defId;
-      const placeDef = furnitureById[defId];
-      if (!canPlace(defId, tx, ty, placeRot, { free: true })) {
-        Audio.sfx("deny");
-        think(
-          placeDef?.placeOnSurface
-            ? "Needs a free spot on a counter or table…"
-            : "Doesn't fit there - try R to rotate.",
-        );
+    // Furniture tool: place held / buy from catalog / pick up existing.
+    // When an item is ready to place, prefer placing (onto tables, under sofas,
+    // etc.) instead of picking up whatever mesh was clicked.
+    const placeDefId = heldFurniture?.defId ?? state.selectedBuildItem;
+    const placeDef = placeDefId ? furnitureById[placeDefId] : undefined;
+
+    if (placeDefId && placeDef) {
+      if (!heldFurniture) {
+        if (!isFurnitureUnlocked(placeDef, state)) {
+          Audio.sfx("deny");
+          think("That piece is still locked…");
+          state.selectedBuildItem = null;
+          return;
+        }
+      }
+
+      if (canPlace(placeDefId, tx, ty, placeRot, { free: !!heldFurniture })) {
+        if (heldFurniture) {
+          const hostUid = surfaceParentUid(placeDef, tx, ty);
+          const placed: PlacedFurniture = {
+            ...heldFurniture,
+            tx,
+            ty,
+            rot: placeRot,
+            lotId: "home",
+            parentUid: hostUid,
+          };
+          const kids = heldChildren;
+          heldFurniture = null;
+          heldChildren = [];
+          state.furniture.push(placed);
+          spawnFurniture(placed);
+          for (const { piece, dx, dy } of kids) {
+            const child: PlacedFurniture = {
+              ...piece,
+              tx: tx + dx,
+              ty: ty + dy,
+              lotId: "home",
+              parentUid: placed.uid,
+            };
+            state.furniture.push(child);
+            spawnFurniture(child);
+          }
+          rebuildCollision();
+          Audio.sfx("place");
+          state.showToast(`Placed ${placeDef.name}`);
+          catalog.rebuild();
+          if (state.hasPetSetup()) quests.emit("pet_setup");
+          return;
+        }
+
+        // Buy & place from catalog
+        const unlockBefore = completedUnlockTaskIds(state);
+        state.money -= placeDef.price;
+        const hostUid = surfaceParentUid(placeDef, tx, ty);
+        const placed: PlacedFurniture = {
+          uid: `f_${uidCounter++}`,
+          defId: placeDefId,
+          tx,
+          ty,
+          lotId: "home",
+          rot: placeRot,
+          parentUid: hostUid,
+        };
+        state.selectedBuildItem = null;
+        state.furniture.push(placed);
+        spawnFurniture(placed);
+        rebuildCollision();
+        Audio.sfx("place");
+        if (hasTrait(state.playerTraits, "Creative")) {
+          state.needs = applyNeedDeltas(state.needs, { fun: 4 });
+          think(`Placed ${placeDef.name} - creative spark!`, 2800);
+        } else {
+          state.showToast(
+            hostUid
+              ? `Placed ${placeDef.name} on the surface`
+              : `Placed ${placeDef.name}`,
+          );
+        }
+        catalog.rebuild();
+        if (placeDefId === "sofa") {
+          quests.emit("placed_sofa");
+          if (state.setStoryFlag("first_sofa_place")) {
+            celebrateKeyItem({
+              eyebrow: "Home upgrade!",
+              title: placeDef.name,
+              note: "Your place is starting to feel like yours.",
+              furnitureDefId: placeDefId,
+              badge: "★",
+              accent: "gold",
+              confetti: "big",
+              palette: "gold",
+              sfx: "chime",
+              durationMs: 3400,
+            });
+          }
+        }
+        if (state.hasPetSetup()) quests.emit("pet_setup");
+        aspirations.refresh();
+        toastNewUnlocks(state, unlockBefore);
         return;
       }
-      const host = placeDef?.placeOnSurface
-        ? surfaceHostAt(tx, ty, "home")
-        : undefined;
-      const placed: PlacedFurniture = {
-        ...heldFurniture,
-        tx,
-        ty,
-        rot: placeRot,
-        lotId: "home",
-        parentUid: host?.uid,
-      };
-      const kids = heldChildren;
-      heldFurniture = null;
-      heldChildren = [];
-      state.furniture.push(placed);
-      spawnFurniture(placed);
-      for (const { piece, dx, dy } of kids) {
-        const child: PlacedFurniture = {
-          ...piece,
-          tx: tx + dx,
-          ty: ty + dy,
-          lotId: "home",
-          parentUid: placed.uid,
-        };
-        state.furniture.push(child);
-        spawnFurniture(child);
+
+      // Can't place - maybe free a taken surface slot by picking up the child.
+      if (placeDef.placeOnSurface || placeDef.allowsSurface) {
+        const child = surfaceChildAt(tx, ty, "home");
+        if (child) {
+          pickUpFurniture(child);
+          return;
+        }
+        Audio.sfx("deny");
+        if (!heldFurniture && state.money < placeDef.price) {
+          state.showToast("Not enough money.");
+        } else {
+          denyPlaceThought(placeDef, tx, ty);
+        }
+        return;
       }
-      rebuildCollision();
-      Audio.sfx("place");
-      state.showToast(`Placed ${placeDef?.name ?? "item"}`);
-      catalog.rebuild();
-      if (state.hasPetSetup()) quests.emit("pet_setup");
-      return;
+
+      // Rug / normal furniture: fall through to pick-up if something is there.
+      if (!heldFurniture && state.money < placeDef.price) {
+        Audio.sfx("deny");
+        state.showToast("Not enough money.");
+        return;
+      }
     }
 
     // Prefer mesh uid; fall back to footprint under the tile
@@ -5815,80 +6073,29 @@ export function createWorldScreen(
       state.furniture.find((f) => f.uid === pickedUid && f.lotId === "home") ??
       furnitureAt(tx, ty, "home");
     if (existing) {
+      // Don't yank a table out from under a kettle you're trying to place.
+      if (
+        placeDef &&
+        (placeDef.placeOnSurface || placeDef.allowsSurface) &&
+        furnitureById[existing.defId]?.supportsItems
+      ) {
+        Audio.sfx("deny");
+        denyPlaceThought(placeDef, tx, ty);
+        return;
+      }
       pickUpFurniture(existing);
       return;
     }
 
-    const defId = state.selectedBuildItem;
-    if (!defId) {
-      state.showToast("Open the catalog (Tab) to pick an item, or click furniture to move.");
-      return;
-    }
-    const def = furnitureById[defId];
-    if (!def) return;
-    if (!isFurnitureUnlocked(def, state)) {
+    if (placeDefId && placeDef) {
       Audio.sfx("deny");
-      think("That piece is still locked…");
-      state.selectedBuildItem = null;
+      denyPlaceThought(placeDef, tx, ty);
       return;
     }
-    if (!canPlace(defId, tx, ty, placeRot)) {
-      Audio.sfx("deny");
-      if (state.money < def.price) {
-        state.showToast("Not enough money.");
-      } else {
-        think(
-          def.placeOnSurface
-            ? "Needs a free spot on a counter or table…"
-            : "Doesn't fit - try R to rotate.",
-        );
-      }
-      return;
-    }
-    const unlockBefore = completedUnlockTaskIds(state);
-    state.money -= def.price;
-    const host = def.placeOnSurface
-      ? surfaceHostAt(tx, ty, "home")
-      : undefined;
-    const placed: PlacedFurniture = {
-      uid: `f_${uidCounter++}`,
-      defId,
-      tx,
-      ty,
-      lotId: "home",
-      rot: placeRot,
-      parentUid: host?.uid,
-    };
-    state.furniture.push(placed);
-    spawnFurniture(placed);
-    rebuildCollision();
-    Audio.sfx("place");
-    if (hasTrait(state.playerTraits, "Creative")) {
-      state.needs = applyNeedDeltas(state.needs, { fun: 4 });
-      think(`Placed ${def.name} - creative spark!`, 2800);
-    } else {
-      state.showToast(`Placed ${def.name}`);
-    }
-    catalog.rebuild();
-    if (defId === "sofa") {
-      quests.emit("placed_sofa");
-      if (state.setStoryFlag("first_sofa_place")) {
-        celebrateKeyItem({
-          eyebrow: "Home upgrade!",
-          title: def.name,
-          note: "Your place is starting to feel like yours.",
-          badge: "★",
-          accent: "gold",
-          confetti: "big",
-          palette: "gold",
-          sfx: "chime",
-          durationMs: 3400,
-        });
-      }
-    }
-    if (state.hasPetSetup()) quests.emit("pet_setup");
-    aspirations.refresh();
-    toastNewUnlocks(state, unlockBefore);
+
+    state.showToast(
+      "Open the catalog (Tab) to pick an item, or click furniture to move.",
+    );
   };
 
   const overUi = (cx: number, cy: number) => {
@@ -5929,12 +6136,19 @@ export function createWorldScreen(
         : undefined;
 
       if (pickedFurniture && state.buildTool === "furniture" && !heldFurniture) {
-        lastBuildTile = { tx: pickedFurniture.tx, ty: pickedFurniture.ty };
-        lastBuildPickedUid = pickedFurniture.uid;
+        const placing = Boolean(state.selectedBuildItem);
+        // While placing, use the cursor tile so multi-tile tables get the
+        // correct free slot (not always the host's origin corner).
+        const clickTx =
+          placing && tile ? tile.tx : pickedFurniture.tx;
+        const clickTy =
+          placing && tile ? tile.ty : pickedFurniture.ty;
+        lastBuildTile = { tx: clickTx, ty: clickTy };
+        lastBuildPickedUid = placing ? null : pickedFurniture.uid;
         handleBuildClick(
-          pickedFurniture.tx,
-          pickedFurniture.ty,
-          pickedFurniture.uid,
+          clickTx,
+          clickTy,
+          placing ? undefined : pickedFurniture.uid,
         );
         lastBuildPickedUid = null;
         updateGhost();
@@ -6023,7 +6237,17 @@ export function createWorldScreen(
 
     if (state.buildTool === "floor") {
       const key = state.wallKey(tx, ty);
-      const ok = okTile && !state.floors.has(key) && state.money >= 5;
+      const style =
+        floorStyleById[state.selectedFloorStyle ?? DEFAULT_FLOOR_STYLE_ID];
+      const price = style?.price ?? 5;
+      const unlocked =
+        !style?.unlockId || state.hasUnlock(style.unlockId);
+      const ok =
+        okTile &&
+        !state.floors.has(key) &&
+        unlocked &&
+        !!style &&
+        state.money >= price;
       buildFeedback.showTileTool(tx, ty, ok, "floor");
       return;
     }
@@ -6077,9 +6301,12 @@ export function createWorldScreen(
 
     const ok = canPlace(defId, tx, ty, placeRot, { free: !!heldFurniture });
     let surfaceY = 0;
-    if (furnitureById[defId]?.placeOnSurface) {
+    const ghostDef = furnitureById[defId];
+    if (ghostDef?.placeOnSurface || ghostDef?.allowsSurface) {
       const host = surfaceHostAt(tx, ty, "home");
-      if (host) surfaceY = surfaceHeightFor(host.defId);
+      if (host && (ghostDef.placeOnSurface || canPlace(defId, tx, ty, placeRot, { free: !!heldFurniture }))) {
+        surfaceY = surfaceHeightFor(host.defId);
+      }
     }
     buildFeedback.showFurniturePlace(defId, tx, ty, placeRot, ok, surfaceY);
   };
@@ -6370,9 +6597,9 @@ export function createWorldScreen(
         const [tx, ty] = key.split(",").map(Number);
         addWall(tx, ty);
       }
-      for (const key of state.floors.keys()) {
+      for (const [key, paint] of state.floors.entries()) {
         const [tx, ty] = key.split(",").map(Number);
-        addFloor(tx, ty);
+        addFloor(tx, ty, paint.variant, paint.rot);
       }
       rebuildCollision();
 
@@ -6463,6 +6690,7 @@ export function createWorldScreen(
       momentCelebration = new MomentCelebration(ui);
       quests.onQuestComplete((def) => {
         if (def.side) queueSideQuestCelebration(def);
+        queueSofaAffordCelebration();
       });
       giftHandoff = new GiftHandoffCard(ui);
       wetTrail = new WetTrail(
@@ -6514,8 +6742,30 @@ export function createWorldScreen(
             ty: Math.floor(playerZ / TILE),
           };
         }
+        if (state.selectedBuildItem) {
+          const def = furnitureById[state.selectedBuildItem];
+          const rugNote = def?.floorCovering
+            ? " · sits under furniture"
+            : "";
+          const surfaceNote = def?.placeOnSurface
+            ? " · click a table or counter"
+            : def?.allowsSurface
+              ? " · floor or table"
+              : "";
+          state.showToast(
+            `${def?.name ?? "Item"} ready - R to rotate, click to place${surfaceNote}${rugNote}`,
+          );
+        } else if (state.buildTool === "floor" && state.selectedFloorStyle) {
+          const style = floorStyleById[state.selectedFloorStyle];
+          state.showToast(
+            `${style?.name ?? "Floor"} ready - click tiles · R rotates pattern`,
+          );
+        }
         updateGhost();
       });
+
+      // Catch money from shops / aspirations / saves that already cross the sofa price.
+      queueSofaAffordCelebration();
 
       // Flush any quest journal lines queued during bootstrap.
       const starterLines = state.takeDialogueBatch();
@@ -6790,11 +7040,20 @@ export function createWorldScreen(
         !introActive &&
         justPressed("KeyR") &&
         state.mode === "build" &&
-        state.buildTool === "furniture" &&
+        (state.buildTool === "furniture" || state.buildTool === "floor") &&
         !dialogue.isOpen()
       ) {
-        // Rotate held piece or catalog preview - clear hover-select so ghost shows
-        if (heldFurniture || state.selectedBuildItem) {
+        if (state.buildTool === "floor") {
+          if (!state.selectedFloorStyle) {
+            state.showToast("Pick a floor style from the catalog to rotate");
+          } else {
+            placeRot = rotateDir(placeRot);
+            Audio.sfx("rotate");
+            state.showToast(`Floor pattern facing ${placeRot}`);
+            updateGhost();
+          }
+        } else if (heldFurniture || state.selectedBuildItem) {
+          // Rotate held piece or catalog preview - clear hover-select so ghost shows
           placeRot = rotateDir(placeRot);
           lastBuildPickedUid = null;
           if (!lastBuildTile) {
@@ -7182,6 +7441,7 @@ export function createWorldScreen(
       dialogue.setPlayerLook(state.playerLook);
       dialogue.update(dt);
       hud.update();
+      queueSofaAffordCelebration();
 
       {
         const rect = app.canvas.getBoundingClientRect();

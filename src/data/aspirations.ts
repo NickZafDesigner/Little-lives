@@ -24,7 +24,7 @@ export const ASPIRATIONS: AspirationDef[] = [
     description: "Reach cozy score 70 with a well-loved home.",
     target: 70,
     rewardMoney: 40,
-    rewardToast: "",
+    rewardToast: "Blush Boards unlocked in the floor catalog!",
     unlockId: "floor_blush",
   },
   {

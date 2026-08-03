@@ -96,7 +96,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     id: "sofa",
     name: "Sunny Sofa",
     category: "seating",
-    price: 80,
+    price: 100,
     width: 2,
     height: 1,
     color: Palette.sunflower,
@@ -186,6 +186,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.grass,
     accent: Palette.wood,
     blocksMovement: false,
+    allowsSurface: true,
     interactions: [
       {
         id: "admire",
@@ -369,6 +370,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     accent: Palette.white,
     blocksMovement: true,
     wallFlush: true,
+    supportsItems: true,
+    surfaceHeight: 18,
     interactions: [
       {
         id: "adopt",
@@ -389,6 +392,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     accent: Palette.lavender,
     blocksMovement: true,
     wallFlush: true,
+    supportsItems: true,
+    surfaceHeight: 18,
     interactions: [
       {
         id: "work",
@@ -409,6 +414,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     accent: Palette.mint,
     blocksMovement: true,
     wallFlush: true,
+    supportsItems: true,
+    surfaceHeight: 18,
     interactions: [
       {
         id: "work",
@@ -429,6 +436,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.leaf,
     accent: Palette.wood,
     blocksMovement: false,
+    allowsSurface: true,
     unlockTaskId: "quest_mabel_cookies",
     interactions: [
       {
@@ -449,6 +457,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.lavender,
     accent: Palette.cream,
     blocksMovement: true,
+    allowsSurface: true,
     unlockTaskId: "quest_theo_returns",
     interactions: [
       {
@@ -655,6 +664,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.wood,
     accent: Palette.blush,
     blocksMovement: true,
+    supportsItems: true,
+    surfaceHeight: 17,
     unlockTaskId: "cozy_40",
     interactions: [
       {
@@ -675,6 +686,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.woodDark,
     accent: Palette.cream,
     blocksMovement: true,
+    supportsItems: true,
+    surfaceHeight: 14,
     unlockTaskId: "quest_first_paycheck",
     interactions: [
       {
@@ -901,6 +914,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.woodDark,
     accent: Palette.sunflower,
     blocksMovement: false,
+    allowsSurface: true,
     interactions: [
       {
         id: "sniff",
@@ -920,6 +934,7 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.mint,
     accent: Palette.cream,
     blocksMovement: false,
+    floorCovering: true,
     interactions: [
       {
         id: "wipe_feet",
@@ -928,6 +943,58 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
         needDeltas: { hygiene: 6, fun: 4 },
       },
     ],
+  },
+  {
+    id: "rug_sunrise",
+    name: "Sunrise Rug",
+    category: "decor",
+    price: 55,
+    width: 2,
+    height: 2,
+    color: Palette.sunflower,
+    accent: Palette.rose,
+    blocksMovement: false,
+    floorCovering: true,
+    interactions: [],
+  },
+  {
+    id: "rug_meadow",
+    name: "Meadow Rug",
+    category: "decor",
+    price: 65,
+    width: 2,
+    height: 3,
+    color: Palette.mint,
+    accent: Palette.cream,
+    blocksMovement: false,
+    floorCovering: true,
+    interactions: [],
+  },
+  {
+    id: "rug_hearth",
+    name: "Hearth Rug",
+    category: "decor",
+    price: 60,
+    width: 3,
+    height: 2,
+    color: Palette.blush,
+    accent: Palette.woodDeep,
+    blocksMovement: false,
+    floorCovering: true,
+    interactions: [],
+  },
+  {
+    id: "rug_lavender",
+    name: "Lavender Runner",
+    category: "decor",
+    price: 48,
+    width: 1,
+    height: 3,
+    color: Palette.lavender,
+    accent: Palette.cream,
+    blocksMovement: false,
+    floorCovering: true,
+    interactions: [],
   },
   // Extra locked pieces
   {
@@ -1021,6 +1088,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.woodDark,
     accent: Palette.cream,
     blocksMovement: true,
+    supportsItems: true,
+    surfaceHeight: 16,
     unlockTaskId: "library_shifts_2",
     interactions: [
       {
@@ -1061,6 +1130,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.market,
     accent: Palette.wood,
     blocksMovement: true,
+    supportsItems: true,
+    surfaceHeight: 12,
     unlockTaskId: "market_shifts_2",
     interactions: [
       {
@@ -1312,6 +1383,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     accent: Palette.woodLight,
     blocksMovement: true,
     wallFlush: true,
+    supportsItems: true,
+    surfaceHeight: 18,
     interactions: [
       {
         id: "work",
@@ -1594,6 +1667,8 @@ export const FURNITURE_CATALOG: FurnitureDef[] = [
     color: Palette.woodLight,
     accent: Palette.lavender,
     blocksMovement: true,
+    supportsItems: true,
+    surfaceHeight: 15,
     unlockTaskId: "side_quests_5",
     interactions: [
       {

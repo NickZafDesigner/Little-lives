@@ -86,12 +86,22 @@ export interface FurnitureDef {
    * when placed on the first interior tile (TVs, fridges, etc.).
    */
   wallFlush?: boolean;
-  /** Host can hold placeOnSurface items (one per tile). */
+  /** Host can hold placeOnSurface / allowsSurface items (one per tile). */
   supportsItems?: boolean;
   /** Countertop Y in world units; defaults to 18 when supportsItems. */
   surfaceHeight?: number;
   /** Must be placed on a supportsItems host, not bare floor. */
   placeOnSurface?: boolean;
+  /**
+   * Small piece that can sit on a counter/table OR on the floor.
+   * When dropped on a free host tile, it parents to that surface.
+   */
+  allowsSurface?: boolean;
+  /**
+   * Flat rug / mat that other furniture can sit on top of.
+   * Does not block placement of non-covering pieces.
+   */
+  floorCovering?: boolean;
 }
 
 export interface InteractionDef {
@@ -282,7 +292,14 @@ export interface SaveData {
   };
   furniture: PlacedFurniture[];
   walls: Array<{ tx: number; ty: number; lotId: LotId }>;
-  floors: Array<{ tx: number; ty: number; lotId: LotId; variant: number }>;
+  floors: Array<{
+    tx: number;
+    ty: number;
+    lotId: LotId;
+    variant: number;
+    /** Grain / pattern facing. Default "down". */
+    rot?: Dir;
+  }>;
   relationships: Record<string, RelationshipState>;
   adoptedPet: null | {
     defId: string;

@@ -1,14 +1,19 @@
 import * as THREE from "three";
 import type { Dir, PlacedFurniture } from "../data/types";
 import { furnitureById } from "../data/furniture";
+import {
+  DEFAULT_FLOOR_STYLE_ID,
+  floorStyleByVariant,
+  type FloorStyleDef,
+} from "../data/floorStyles";
 import { TILE } from "../game/constants";
-import { Palette } from "../game/palette";
 import {
   applyFurnitureRotation,
   createFurnitureMesh,
   furnitureFootprint,
   furnitureWorldPos,
   nextFurnitureDir,
+  yawForFurniture,
 } from "../mesh/furniture";
 import type { TownRenderer } from "../render/TownRenderer";
 import { matFlat } from "../mesh/materials";
@@ -84,7 +89,13 @@ export class BuildFeedback {
     this.renderer.setBuildSelection(mesh);
   }
 
-  showTileTool(tx: number, ty: number, ok: boolean, tool: "wall" | "floor" | "sell") {
+  showTileTool(
+    tx: number,
+    ty: number,
+    ok: boolean,
+    tool: "wall" | "floor" | "sell",
+    opts?: { tw?: number; th?: number },
+  ) {
     this.renderer.setGhost(null);
     this.ghost = null;
     this.ghostDefId = null;
@@ -102,7 +113,10 @@ export class BuildFeedback {
           : ok
             ? 0xffb86b
             : 0xff8a9a;
-    this.renderer.setHoverTile({ tx, ty }, { tw: 1, th: 1, ok, fill });
+    this.renderer.setHoverTile(
+      { tx, ty },
+      { tw: opts?.tw ?? 1, th: opts?.th ?? 1, ok, fill },
+    );
   }
 }
 
@@ -110,20 +124,96 @@ export function rotateDir(dir: Dir): Dir {
   return nextFurnitureDir(dir);
 }
 
-export function createPaintFloorMesh(tx: number, ty: number): THREE.Mesh {
-  // Dark stained wood + mint stripe so paint floors read apart from default planks.
+function paintFloorMaterial(style: FloorStyleDef): THREE.Material {
+  if (style.variant === 1 || style.variant === 6) {
+    return matFlat(style.color, { map: woodFloorTexture() });
+  }
+  return matFlat(style.color);
+}
+
+/** Painted floor overlay for a home tile; pattern rotates with `rot`. */
+export function createPaintFloorMesh(
+  tx: number,
+  ty: number,
+  variant = 1,
+  rot: Dir = "down",
+): THREE.Mesh {
+  const style =
+    floorStyleByVariant[variant] ??
+    floorStyleByVariant[1]!;
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(TILE * 0.92, 1.4, TILE * 0.92),
-    matFlat(Palette.woodDeep, { map: woodFloorTexture() }),
+    paintFloorMaterial(style),
   );
   mesh.position.set(tx * TILE + TILE / 2, 1.5, ty * TILE + TILE / 2);
+  mesh.rotation.y = yawForFurniture(rot);
   mesh.receiveShadow = true;
-  const stripe = new THREE.Mesh(
-    new THREE.BoxGeometry(TILE * 0.92, 0.2, TILE * 0.18),
-    matFlat(Palette.mintDark),
-  );
-  stripe.position.set(0, 0.75, 0);
-  mesh.add(stripe);
+
+  if (style.variant === 1) {
+    // Classic mint stripe
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(TILE * 0.92, 0.2, TILE * 0.18),
+      matFlat(style.accent),
+    );
+    stripe.position.set(0, 0.75, 0);
+    mesh.add(stripe);
+  } else if (style.variant === 2) {
+    // Cream checker - two corner pads
+    for (const [x, z] of [
+      [-TILE * 0.22, -TILE * 0.22],
+      [TILE * 0.22, TILE * 0.22],
+    ] as const) {
+      const pad = new THREE.Mesh(
+        new THREE.BoxGeometry(TILE * 0.38, 0.18, TILE * 0.38),
+        matFlat(style.accent),
+      );
+      pad.position.set(x, 0.75, z);
+      mesh.add(pad);
+    }
+  } else if (style.variant === 3) {
+    // Slate with sky grout cross
+    const h = new THREE.Mesh(
+      new THREE.BoxGeometry(TILE * 0.92, 0.16, TILE * 0.1),
+      matFlat(style.accent),
+    );
+    h.position.set(0, 0.75, 0);
+    mesh.add(h);
+    const v = new THREE.Mesh(
+      new THREE.BoxGeometry(TILE * 0.1, 0.16, TILE * 0.92),
+      matFlat(style.accent),
+    );
+    v.position.set(0, 0.75, 0);
+    mesh.add(v);
+  } else if (style.variant === 4) {
+    // Sage wash with cream border
+    const border = new THREE.Mesh(
+      new THREE.BoxGeometry(TILE * 0.78, 0.16, TILE * 0.78),
+      matFlat(style.accent),
+    );
+    border.position.set(0, 0.75, 0);
+    mesh.add(border);
+  } else if (style.variant === 5) {
+    // Clay diamond
+    const diamond = new THREE.Mesh(
+      new THREE.BoxGeometry(TILE * 0.42, 0.18, TILE * 0.42),
+      matFlat(style.accent),
+    );
+    diamond.position.set(0, 0.75, 0);
+    diamond.rotation.y = Math.PI / 4;
+    mesh.add(diamond);
+  } else if (style.variant === 6) {
+    // Blush boards with cream stripe
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(TILE * 0.92, 0.2, TILE * 0.14),
+      matFlat(style.accent),
+    );
+    stripe.position.set(0, 0.75, 0);
+    mesh.add(stripe);
+  }
+
+  mesh.userData.floorVariant = style.variant;
+  mesh.userData.floorRot = rot;
+  mesh.userData.floorStyleId = style.id ?? DEFAULT_FLOOR_STYLE_ID;
   return mesh;
 }
 

@@ -24,6 +24,7 @@ import { NPCS, RELATIONSHIP_CLOSE, RELATIONSHIP_FRIEND, RELATIONSHIP_MAX } from 
 import { FULL_PET_NEEDS, petById, pickShelterPets } from "../data/pets";
 import { emptyQuestProgress, type QuestProgress } from "../data/quests";
 import type {
+  Dir,
   GameMode,
   NeedsState,
   NpcId,
@@ -275,7 +276,8 @@ export class GameState {
   furniture: PlacedFurniture[] = [];
   /** Extra build walls on home lot (tile keys). */
   walls = new Set<string>();
-  floors = new Map<string, number>();
+  /** Painted floor overlays: tile key → style variant + rotation. */
+  floors = new Map<string, { variant: number; rot: Dir }>();
   relationships: Record<string, RelationshipState> = {};
   adoptedPet: null | {
     defId: string;
@@ -334,6 +336,8 @@ export class GameState {
   isWet = false;
   /** Null until the player picks something from the catalog. */
   selectedBuildItem: string | null = null;
+  /** Selected paint-floor style id while using the floor tool. */
+  selectedFloorStyle: string | null = "honey";
   buildTool: "furniture" | "wall" | "floor" | "sell" = "furniture";
   inventory: InventoryState = emptyInventory();
   /** Harvest node placements (static seed; depletion tracked separately). */
@@ -814,9 +818,15 @@ export class GameState {
         const [tx, ty] = k.split(",").map(Number);
         return { tx, ty, lotId: "home" as const };
       }),
-      floors: [...this.floors.entries()].map(([k, variant]) => {
+      floors: [...this.floors.entries()].map(([k, paint]) => {
         const [tx, ty] = k.split(",").map(Number);
-        return { tx, ty, lotId: "home" as const, variant };
+        return {
+          tx,
+          ty,
+          lotId: "home" as const,
+          variant: paint.variant,
+          rot: paint.rot,
+        };
       }),
       relationships: structuredClone(this.relationships),
       adoptedPet: this.adoptedPet
@@ -939,7 +949,10 @@ export class GameState {
     this.ensureParkFurniture();
     this.walls = new Set(data.walls.map((w) => this.wallKey(w.tx, w.ty)));
     this.floors = new Map(
-      data.floors.map((f) => [this.wallKey(f.tx, f.ty), f.variant]),
+      data.floors.map((f) => [
+        this.wallKey(f.tx, f.ty),
+        { variant: f.variant, rot: (f.rot ?? "down") as Dir },
+      ]),
     );
     this.relationships = structuredClone(data.relationships);
     for (const npc of NPCS) {

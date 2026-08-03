@@ -132,6 +132,7 @@ export function createTitleScreen(
               }
             </div>
             <button type="button" class="ll-howto-link" data-act="howto">How to play</button>
+            <p class="ll-title-credit">A game by Nick and Celeste Zafiropoulos</p>
           </div>
           <div class="ll-howto" hidden>
             <div class="ll-howto-scrim" data-act="howto-close"></div>

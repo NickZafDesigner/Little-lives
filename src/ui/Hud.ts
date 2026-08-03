@@ -157,7 +157,7 @@ export class Hud {
     if (this.statusModal.containsPoint(clientX, clientY)) return true;
     if (this.shopModal.containsPoint(clientX, clientY)) return true;
     const clusters = this.panel.querySelectorAll(
-      ".ll-hud-top, .ll-hud-objectives > *, .ll-hud-left > *",
+      ".ll-hud-top, .ll-hud-objectives > *, .ll-hud-events > *, .ll-hud-left > *",
     );
     for (const cluster of clusters) {
       const r = cluster.getBoundingClientRect();
@@ -569,8 +569,8 @@ export class Hud {
       <div class="ll-hud-objectives">
         ${objectiveHtml}
         ${shiftHtml}
-        ${beatHtml}
       </div>
+      <div class="ll-hud-events">${beatHtml}</div>
       <div class="ll-hud-top" role="status">
         <div class="ll-stat" data-stat="money" data-tip="Money · $${s.money}" aria-label="Money: $${s.money}">
           <span class="ll-stat-ico" aria-hidden="true">

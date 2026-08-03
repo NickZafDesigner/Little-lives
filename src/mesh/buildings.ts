@@ -137,7 +137,7 @@ function box(
   y: number,
   z: number,
   material?: THREE.MeshToonMaterial,
-  opts?: { castShadow?: boolean },
+  opts?: { castShadow?: boolean; receiveShadow?: boolean },
 ): THREE.Mesh {
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
@@ -145,7 +145,7 @@ function box(
   );
   mesh.position.set(x, y, z);
   mesh.castShadow = opts?.castShadow ?? true;
-  mesh.receiveShadow = true;
+  mesh.receiveShadow = opts?.receiveShadow ?? true;
   mesh.userData.noOutline = true;
   parent.add(mesh);
   return mesh;
@@ -359,7 +359,8 @@ export function updateWallFlushFurnitureFade(
     root.userData.fadeT = t;
   }
   root.userData._fadeApplied = t === target ? target : -1;
-  setGroupFadeOpacity(root, ghostOpacity(t), t < 0.45);
+  // Cast only while fully solid — avoids mid-fade shadow flicker indoors.
+  setGroupFadeOpacity(root, ghostOpacity(t), t <= 0);
 }
 
 /**
@@ -422,6 +423,7 @@ function addInternalWalls(
       matClone(wallColor),
       noCast,
     );
+    mesh.receiveShadow = false;
     mesh.userData.internalWall = data;
     mesh.userData.fadeT = 0;
     meshes.push(mesh);
@@ -751,6 +753,7 @@ function buildHouse(lot: LotBounds): BuildingHandle {
   const rightCx = doorX1 + rightW / 2;
 
   // Floor slab - wood grain matching terrain; UV repeat so boards stay tile-scale.
+  // Receive-only: casting from a near-ground slab shimmers on itself / terrain.
   const floorMap = woodFloorTexture().clone();
   floorMap.needsUpdate = true;
   floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping;
@@ -765,6 +768,7 @@ function buildHouse(lot: LotBounds): BuildingHandle {
     PLINTH_H / 2,
     cz,
     matFlat(0xffffff, { map: floorMap }),
+    { castShadow: false },
   );
 
   // --- Far walls (always visible): north + west ---
@@ -866,10 +870,13 @@ function buildHouse(lot: LotBounds): BuildingHandle {
 
   const internalWalls = addInternalWalls(group, lot, style.wall);
 
-  // Far walls - tracked so we can mute their indoor shadows during cutaway.
+  // Far walls - tracked so we can mute their shadows while indoors.
   const farCasters: THREE.Mesh[] = [];
   group.traverse((obj) => {
     if (obj instanceof THREE.Mesh && obj.parent === group && obj.castShadow) {
+      obj.userData._castShadowWas = true;
+      // Large wall planes don't need to receive — cuts indoor/outdoor acne.
+      obj.receiveShadow = false;
       farCasters.push(obj);
     }
   });
@@ -942,12 +949,14 @@ function buildHouse(lot: LotBounds): BuildingHandle {
     if (obj instanceof THREE.Mesh && obj.material instanceof THREE.MeshToonMaterial) {
       obj.material = obj.material.clone();
     }
+    if (obj instanceof THREE.Mesh) obj.receiveShadow = false;
   });
   // Door leaf shares the front-wall fade; clone so opacity is independent.
   doorPivot.traverse((obj) => {
     if (obj instanceof THREE.Mesh && obj.material instanceof THREE.MeshToonMaterial) {
       obj.material = obj.material.clone();
     }
+    if (obj instanceof THREE.Mesh) obj.receiveShadow = false;
   });
 
   let open = false;
@@ -962,15 +971,19 @@ function buildHouse(lot: LotBounds): BuildingHandle {
     // during the wake-up / indoor zoom.
     const fade = easeSmooth(Math.max(0, (t - 0.12) / 0.88));
     roof.position.y = e * ROOF_LIFT;
-    setGroupFadeOpacity(roof, 1 - fade, fade < 0.55, true);
+    // Shell casts outdoors only. Mid-fade threshold toggles made indoor
+    // floor shadows shimmer as walls flickered in/out of the shadow map.
+    const shellCasts = t <= 0;
+    setGroupFadeOpacity(roof, 1 - fade, shellCasts, true);
     // Camera-near shell (south/east + door): soft-ghost indoors so the room
     // still reads as architecture while characters stay visible through it.
     // Internal partitions use the same opacity via updateInternalWallFade.
     const nearOpacity = ghostOpacity(t);
-    setGroupFadeOpacity(near, nearOpacity, e < 0.45);
-    setGroupFadeOpacity(doorPivot, nearOpacity, e < 0.45);
-    // Mute far-wall shadows while mostly open so they don't stripe the floor.
-    for (const m of farCasters) m.castShadow = e < 0.45;
+    setGroupFadeOpacity(near, nearOpacity, shellCasts);
+    setGroupFadeOpacity(doorPivot, nearOpacity, shellCasts);
+    for (const m of farCasters) {
+      m.castShadow = shellCasts && !!m.userData._castShadowWas;
+    }
   };
 
   const setRoofOpen = (next: boolean) => {
