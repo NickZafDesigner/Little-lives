@@ -525,7 +525,7 @@ export class Hud {
                   return `<div class="ll-objective-bar" aria-hidden="true"><i style="width:${pct}%"></i></div>`;
                 })()
               : "";
-          return `<button type="button" class="ll-objective${shown.side ? " is-side" : ""}${shown.kind === "goal" ? " is-goal" : ""}" data-objective${questAttr} title="${escapeHtml(tip)}" aria-label="${escapeHtml(`${kindLabel}: ${shown.title}. ${shown.objective}. ${tip}`)}">
+          return `<button type="button" class="ll-objective ll-quest-glow${shown.side ? " is-side" : ""}${shown.kind === "goal" ? " is-goal" : ""}" data-objective${questAttr} title="${escapeHtml(tip)}" aria-label="${escapeHtml(`${kindLabel}: ${shown.title}. ${shown.objective}. ${tip}`)}">
           <span class="ll-objective-kicker">
             <small>${kindLabel}</small>
             <span class="ll-objective-go" aria-hidden="true">Tasks ›</span>

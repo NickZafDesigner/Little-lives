@@ -1,3 +1,9 @@
+@property --ll-glow-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 :root {
   --ll-sky: #8ec8e0;
   --ll-grass: #7fbe52;
@@ -36,6 +42,63 @@
   --ll-sh-lg: 0 6px 0 rgba(58, 40, 24, 0.25), 0 16px 32px rgba(58, 40, 24, 0.16);
 
   --ll-frame: inset 0 0 0 3px var(--ll-wood), inset 0 0 0 5px var(--ll-wood-light);
+
+  --ll-glow-stop-a: #8fc97a;
+  --ll-glow-stop-b: #f0b060;
+  --ll-glow-stop-c: #e08a3c;
+  --ll-glow-stop-d: #5aaa7a;
+}
+
+/** Animated mint→gold→blush border for quests, tasks, and side-quest offers. */
+.ll-quest-glow {
+  --ll-glow-angle: 0deg;
+  border: 3px solid transparent !important;
+  background:
+    linear-gradient(180deg, #fff8e8 0%, var(--ll-parchment) 100%) padding-box,
+    conic-gradient(
+      from var(--ll-glow-angle),
+      var(--ll-glow-stop-a),
+      var(--ll-glow-stop-b),
+      var(--ll-glow-stop-c),
+      var(--ll-glow-stop-d),
+      var(--ll-glow-stop-a)
+    )
+    border-box;
+  animation: ll-quest-glow-spin 3.2s linear infinite;
+}
+
+.ll-quest-glow.is-side,
+.ll-objective.ll-quest-glow.is-side {
+  background:
+    linear-gradient(180deg, #fff8e8 0%, var(--ll-parchment) 100%) padding-box,
+    conic-gradient(
+      from var(--ll-glow-angle),
+      #8fc97a,
+      var(--ll-mint-deep),
+      #f0b060,
+      #8fc97a
+    )
+    border-box;
+}
+
+.ll-quest-glow.is-goal,
+.ll-objective.ll-quest-glow.is-goal {
+  background:
+    linear-gradient(180deg, #fff8e8 0%, var(--ll-parchment) 100%) padding-box,
+    conic-gradient(
+      from var(--ll-glow-angle),
+      #f0b060,
+      var(--ll-blush),
+      #8fc97a,
+      #f0b060
+    )
+    border-box;
+}
+
+@keyframes ll-quest-glow-spin {
+  to {
+    --ll-glow-angle: 360deg;
+  }
 }
 
 * {
@@ -2602,7 +2665,8 @@ input:focus-visible {
 .ll-world-ui .ll-status-modal,
 .ll-world-ui .ll-inv-modal,
 .ll-world-ui .ll-shop-modal,
-.ll-world-ui .ll-build-chip {
+.ll-world-ui .ll-build-chip,
+.ll-world-ui .ll-prologue {
   pointer-events: auto;
 }
 
@@ -3157,6 +3221,10 @@ input:focus-visible {
     transform 0.14s ease,
     box-shadow 0.14s ease,
     border-color 0.14s ease;
+}
+
+.ll-objective.ll-quest-glow {
+  overflow: hidden;
 }
 
 .ll-objective::before {
@@ -3887,6 +3955,27 @@ input:focus-visible {
   white-space: nowrap;
 }
 
+.ll-interact-tip.is-quest-offer.ll-quest-glow {
+  border-radius: var(--ll-r-pill);
+  background:
+    linear-gradient(180deg, #fff8e8, var(--ll-parchment)) padding-box,
+    conic-gradient(
+      from var(--ll-glow-angle),
+      var(--ll-glow-stop-a),
+      var(--ll-glow-stop-b),
+      var(--ll-glow-stop-c),
+      var(--ll-glow-stop-d),
+      var(--ll-glow-stop-a)
+    )
+    border-box;
+}
+
+.ll-interact-tip.is-quest-offer .ll-interact-tip-action {
+  border-color: var(--ll-mint-deep);
+  background: linear-gradient(180deg, #c8e8b0, #8fc97a);
+  box-shadow: inset 0 -2px 0 var(--ll-mint-deep);
+}
+
 .ll-nametag {
   position: absolute;
   left: 0;
@@ -3917,9 +4006,20 @@ input:focus-visible {
   transition: opacity 0.22s ease-out;
 }
 
-.ll-nametag-building {
-  font-size: 0.68rem;
-  background: rgba(62, 44, 34, 0.88);
+.ll-nametag-npc.is-quest-offer.ll-quest-glow {
+  border-radius: var(--ll-r-pill);
+  color: var(--ll-ink);
+  background:
+    linear-gradient(180deg, #fff8e8, var(--ll-parchment)) padding-box,
+    conic-gradient(
+      from var(--ll-glow-angle),
+      var(--ll-glow-stop-a),
+      var(--ll-glow-stop-b),
+      var(--ll-glow-stop-c),
+      var(--ll-glow-stop-d),
+      var(--ll-glow-stop-a)
+    )
+    border-box;
 }
 
 @keyframes ll-nametag-in {
@@ -4368,10 +4468,23 @@ input:focus-visible {
     transform 0.12s ease;
 }
 
-.ll-menu-row-label {
-  font-size: 0.84rem;
-  font-weight: 800;
-  line-height: 1.15;
+.ll-menu-row.is-quest.ll-quest-glow {
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, #fff8e8, #f7ebcf) padding-box,
+    conic-gradient(
+      from var(--ll-glow-angle),
+      var(--ll-glow-stop-a),
+      var(--ll-glow-stop-b),
+      var(--ll-glow-stop-c),
+      var(--ll-glow-stop-d),
+      var(--ll-glow-stop-a)
+    )
+    border-box;
+}
+
+.ll-menu-row.is-quest .ll-menu-row-label {
+  color: var(--ll-mint-deep);
 }
 
 .ll-menu-row-sub {
@@ -5350,6 +5463,20 @@ input:focus-visible {
     background 0.2s ease;
 }
 
+.ll-status-task.ll-quest-glow {
+  background:
+    linear-gradient(180deg, #f3e6c4 0%, var(--ll-sunk) 100%) padding-box,
+    conic-gradient(
+      from var(--ll-glow-angle),
+      var(--ll-glow-stop-a),
+      var(--ll-glow-stop-b),
+      var(--ll-glow-stop-c),
+      var(--ll-glow-stop-d),
+      var(--ll-glow-stop-a)
+    )
+    border-box;
+}
+
 .ll-status-task.is-highlight {
   background: linear-gradient(180deg, #fff6e0, #ffe4b0);
   border-color: var(--ll-blush);
@@ -5883,6 +6010,91 @@ input:focus-visible {
   font-weight: 800;
   color: var(--ll-wood-deep);
   text-align: center;
+}
+
+/* -- New-game arrival prologue (before bed wake) -- */
+.ll-prologue {
+  position: absolute;
+  inset: 0;
+  z-index: 85;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  opacity: 0;
+  cursor: pointer;
+}
+.ll-prologue[hidden] {
+  display: none !important;
+  pointer-events: none !important;
+}
+.ll-prologue.is-in {
+  animation: ll-prologue-in 0.55s ease-out forwards;
+}
+.ll-prologue.is-out {
+  animation: ll-prologue-out 0.42s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes ll-prologue-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ll-prologue-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.ll-prologue-wash {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 28%, rgba(70, 95, 140, 0.22), transparent 55%),
+    radial-gradient(ellipse at 50% 100%, rgba(40, 28, 18, 0.55), transparent 50%),
+    rgba(12, 16, 28, 0.88);
+}
+.ll-prologue-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.15rem;
+  width: min(420px, 86vw);
+  padding: 0 0.5rem;
+  text-align: center;
+}
+.ll-prologue-text {
+  margin: 0;
+  font-family: var(--ll-font-display);
+  font-size: clamp(1.05rem, 3.4vw, 1.35rem);
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  color: #f4ead6;
+  text-shadow: 0 2px 12px rgba(8, 10, 20, 0.55);
+  opacity: 0;
+}
+.ll-prologue-text.is-swap {
+  animation: ll-prologue-line 0.45s ease-out forwards;
+}
+@keyframes ll-prologue-line {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.ll-prologue-continue {
+  font-family: var(--ll-font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(244, 234, 214, 0.55);
+  animation: ll-prologue-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ll-prologue-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.85; }
 }
 
 /* -- Payday celebration (shift complete) -- */

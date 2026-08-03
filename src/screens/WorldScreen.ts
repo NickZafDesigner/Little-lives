@@ -49,6 +49,7 @@ import {
 } from "../data/dialogue";
 import { petById } from "../data/pets";
 import {
+  GORDON_SHOE_TILE,
   WORK_END,
   WORK_LATE,
   WORK_OPEN,
@@ -150,6 +151,10 @@ import { TV_SHOWS, type TvShowId } from "../data/tvShows";
 import { ConfettiBurst } from "../ui/ConfettiBurst";
 import { PayCelebration } from "../ui/PayCelebration";
 import { GiftHandoffCard } from "../ui/GiftHandoffCard";
+import {
+  StoryPrologue,
+  arrivalPrologueLines,
+} from "../ui/StoryPrologue";
 import { BuildCatalog } from "../ui/BuildCatalog";
 import {
   completedUnlockTaskIds,
@@ -174,7 +179,15 @@ interface NpcRuntime {
   ambient?: boolean;
 }
 
-type TargetKind = "furniture" | "npc" | "pet" | "sign" | "harvest" | "flower" | "porch";
+type TargetKind =
+  | "furniture"
+  | "npc"
+  | "pet"
+  | "sign"
+  | "harvest"
+  | "flower"
+  | "porch"
+  | "quest_item";
 
 interface Target {
   kind: TargetKind;
@@ -249,6 +262,7 @@ export function createWorldScreen(
   let confetti!: ConfettiBurst;
   let payCelebration!: PayCelebration;
   let giftHandoff!: GiftHandoffCard;
+  let storyPrologue!: StoryPrologue;
   /** NPC under the cursor in live mode (for name tooltips). */
   let hoveredNpcId: string | null = null;
   let menu!: InteractionMenu;
@@ -456,6 +470,62 @@ export function createWorldScreen(
     if (start.choices?.length) {
       presentChatChoices(npcId, defName, start.choices);
     }
+  };
+
+  /** Proactive side-quest pitch before normal chat when an ask step is pending. */
+  const pitchSideOffer = (
+    npcId: string,
+    defName: string,
+    onDecline: () => void,
+  ) => {
+    const offer = quests.pendingOfferFor(npcId);
+    if (!offer) {
+      onDecline();
+      return;
+    }
+    holdNpcStill(npcId);
+    Audio.sfx("talk");
+    const pitch =
+      offer.def.offerPitch ?? ["Could use a hand with something, if you've got a minute…"];
+    dialogue.say(
+      pitch.map((text) => ({
+        speakerId: npcId,
+        speakerName: defName,
+        text,
+      })),
+    );
+    dialogue.offerChoices(
+      [
+        { id: "accept", label: "Sure, I'll help!", sub: "Accept side quest" },
+        { id: "later", label: "Maybe later", sub: "Just chat" },
+      ],
+      (choiceId) => {
+        if (choiceId === "accept") {
+          Audio.sfx("chime");
+          quests.emit(offer.askEvent);
+          dialogue.say({
+            speakerId: npcId,
+            speakerName: defName,
+            text: "You're a lifesaver!",
+          });
+          state.showToast(`Side quest: ${offer.def.title}`, 2600);
+          return;
+        }
+        onDecline();
+      },
+    );
+  };
+
+  const tryChatWithOffer = (
+    npcId: string,
+    defName: string,
+    startNormal: () => void,
+  ) => {
+    if (quests.hasPendingSideOffer(npcId)) {
+      pitchSideOffer(npcId, defName, startNormal);
+      return;
+    }
+    startNormal();
   };
 
   const presentAmbientChoices = (npcId: string, choices: AmbientChoice[]) => {
@@ -788,13 +858,57 @@ export function createWorldScreen(
     if (!def) return;
     holdNpcStill(def.id);
     const owned = ownedBagGifts();
-    const options: MenuOption[] = [
-      {
-        id: "chat",
-        label: "Have a chat",
-        sub: "Banter · vibes · nonsense",
-      },
-    ];
+    const options: MenuOption[] = [];
+
+    const offer = quests.pendingOfferFor(def.id);
+    if (offer) {
+      options.push({
+        id: "side_offer",
+        label: "Offer to help",
+        sub: offer.def.title,
+        accent: "quest",
+      });
+    }
+
+    if (def.id === "nibs" && quests.isActive("nibs_shoe")) {
+      const step = quests.currentStepId("nibs_shoe");
+      if (step === "deliver") {
+        options.push({
+          id: "nibs_shoe_deliver",
+          label: "Return Gordon",
+          sub: "Left shoe, reunited",
+          accent: "quest",
+        });
+      }
+    }
+    if (def.id === "crumb" && quests.isActive("crumb_snack")) {
+      const step = quests.currentStepId("crumb_snack");
+      if (step === "deliver") {
+        options.push({
+          id: "crumb_snack_deliver",
+          label: "Deliver snack",
+          sub: "From Vera's Market",
+          accent: "quest",
+        });
+      }
+    }
+    if (def.id === "sprocket" && quests.isActive("sprocket_scrap")) {
+      const step = quests.currentStepId("sprocket_scrap");
+      if (step === "deliver") {
+        options.push({
+          id: "sprocket_scrap_deliver",
+          label: "Deliver scrap wood",
+          sub: "For the contraption",
+          accent: "quest",
+        });
+      }
+    }
+
+    options.push({
+      id: "chat",
+      label: "Have a chat",
+      sub: "Banter · vibes · nonsense",
+    });
     if (owned.length > 0) {
       const canGift = state.canGiftNpc(def.id);
       options.push({
@@ -813,8 +927,64 @@ export function createWorldScreen(
       x,
       y,
       (id) => {
+        if (id === "side_offer") {
+          const pending = quests.pendingOfferFor(def.id);
+          if (!pending) return;
+          Audio.sfx("talk");
+          state.startBusy(`Helping ${def.name}`, 900);
+          delayed(900, () => {
+            Audio.sfx("chime");
+            const line =
+              pending.def.offerPitch?.[0] ??
+              "Could use a hand with something…";
+            dialogue.say({
+              speakerId: def.id,
+              speakerName: def.name,
+              text: line,
+            });
+            quests.emit(pending.askEvent);
+            state.showToast(`Side quest: ${pending.def.title}`, 2600);
+          });
+          return;
+        }
+        if (id === "nibs_shoe_deliver") {
+          Audio.sfx("talk");
+          delayed(800, () => {
+            dialogue.say({
+              speakerId: "nibs",
+              speakerName: "Nibs",
+              text: "GORDON! You glorious lace. Brenda will be so jealous.",
+            });
+            quests.emit("delivered_gordon_shoe");
+          });
+          return;
+        }
+        if (id === "crumb_snack_deliver") {
+          Audio.sfx("talk");
+          delayed(800, () => {
+            dialogue.say({
+              speakerId: "crumb",
+              speakerName: "Crumb",
+              text: "Bless. My stomach withdraws the complaint.",
+            });
+            quests.emit("delivered_crumb_snack");
+          });
+          return;
+        }
+        if (id === "sprocket_scrap_deliver") {
+          Audio.sfx("talk");
+          delayed(800, () => {
+            dialogue.say({
+              speakerId: "sprocket",
+              speakerName: "Sprocket",
+              text: "Perfect scrap. This contraption will definitely not explode.",
+            });
+            quests.emit("delivered_sprocket_scrap");
+          });
+          return;
+        }
         if (id === "chat") {
-          talkToAmbient(def.id);
+          tryChatWithOffer(def.id, def.name, () => talkToAmbient(def.id));
           return;
         }
         if (id === "gift_bag") {
@@ -1230,6 +1400,21 @@ export function createWorldScreen(
         z: drop.z,
       });
     }
+    if (
+      quests.isActive("nibs_shoe") &&
+      quests.currentStepId("nibs_shoe") === "find"
+    ) {
+      const tx = GORDON_SHOE_TILE.x;
+      const ty = GORDON_SHOE_TILE.y;
+      out.push({
+        kind: "quest_item",
+        id: "gordon_shoe",
+        label: "Gordon (shoe)",
+        tiles: [{ x: tx, y: ty }],
+        x: tx * TILE + TILE / 2,
+        z: ty * TILE + TILE / 2,
+      });
+    }
     // Indoor ↔ outdoor: only tip / interact with things in the same space.
     // Walking past a house must not autofocus sofas, beds, or people inside.
     const playerLot = app.renderer.buildingLotAt(playerX, playerZ);
@@ -1358,13 +1543,17 @@ export function createWorldScreen(
       return harvestFootprint(node?.defId ?? "") >= 2 ? 56 : 36;
     }
     if (t.kind === "flower") return 22;
-    if (t.kind === "porch") return 18;
+    if (t.kind === "porch" || t.kind === "quest_item") return 18;
     return 28;
   };
 
   /** Primary verb shown on the proximity tip (Talk / Watch TV / Brew Coffee…). */
   const actionLabelFor = (t: Target): string => {
-    if (t.kind === "npc") return "Talk";
+    if (t.kind === "npc") {
+      if (quests.hasPendingSideOffer(t.id)) return "Side quest";
+      return "Talk";
+    }
+    if (t.kind === "quest_item") return "Pick up";
     if (t.kind === "pet") return "Cuddle";
     if (t.kind === "sign") return "Read";
     if (t.kind === "flower") return "Pick";
@@ -1424,18 +1613,21 @@ export function createWorldScreen(
       return;
     }
     tipTarget = t;
+    const questOffer = t.kind === "npc" && quests.hasPendingSideOffer(t.id);
     interactTip?.showAt(
       t.x,
       t.z,
       t.label,
       actionLabelFor(t),
       tipHeightFor(t),
+      { questOffer },
     );
   };
 
   const activateTipTarget = () => {
     if (
       introActive ||
+      storyPrologue?.isOpen() ||
       timeMontage?.isPlaying() ||
       workMini?.isOpen() ||
       playMini?.isOpen() ||
@@ -2163,8 +2355,31 @@ export function createWorldScreen(
       beginPorchPickup(target);
       return;
     }
+    if (target.kind === "quest_item") {
+      beginQuestItemPickup(target);
+      return;
+    }
     const furn = state.furniture.find((f) => f.uid === target.id);
     if (furn) openFurnitureMenu(furn, screen.x, screen.y);
+  };
+
+  const beginQuestItemPickup = (target: Target) => {
+    if (target.id !== "gordon_shoe") return;
+    if (
+      !quests.isActive("nibs_shoe") ||
+      quests.currentStepId("nibs_shoe") !== "find"
+    ) {
+      return;
+    }
+    Audio.sfx("interact");
+    state.startBusy("Picking up Gordon", 700);
+    delayed(700, () => {
+      Audio.sfx("chime");
+      confetti.burst("soft");
+      quests.emit("found_gordon_shoe");
+      state.showToast("Found Gordon! Take him back to Nibs.", 2800);
+      player.playReaction("jump");
+    });
   };
 
   const pointToReed = () => {
@@ -2246,6 +2461,9 @@ export function createWorldScreen(
       rebuildCollision();
       syncHarvestVisuals();
       Audio.sfx("success");
+      if (yields.some((y) => y.itemId === "wood")) {
+        quests.emit("gathered_wood");
+      }
 
       const fp = harvestFootprint(node.defId);
       const cx = (node.tx + fp / 2) * TILE;
@@ -3310,12 +3528,14 @@ export function createWorldScreen(
           id: "mabel_ask",
           label: "Offer to help",
           sub: "She might need something…",
+          accent: "quest",
         });
       } else if (step === "deliver") {
         options.push({
           id: "mabel_deliver",
           label: "Deliver wildflowers",
           sub: "Fresh from the park",
+          accent: "quest",
         });
       }
     }
@@ -3327,6 +3547,7 @@ export function createWorldScreen(
           id: "pip_ask",
           label: "Offer to help",
           sub: "Park could use a tidy-up",
+          accent: "quest",
         });
       }
     }
@@ -3338,6 +3559,7 @@ export function createWorldScreen(
           id: "vera_ask",
           label: "Offer to help",
           sub: "Maybe a delivery…",
+          accent: "quest",
         });
       }
     }
@@ -3349,6 +3571,7 @@ export function createWorldScreen(
           id: "theo_parcel",
           label: "Deliver Vera's parcel",
           sub: "From the market",
+          accent: "quest",
         });
       }
     }
@@ -3360,6 +3583,7 @@ export function createWorldScreen(
           id: "theo_ask",
           label: "Offer to help",
           sub: "Return cart looks heavy",
+          accent: "quest",
         });
       }
     }
@@ -3371,12 +3595,14 @@ export function createWorldScreen(
           id: "sage_ask",
           label: "Offer to help",
           sub: "Clinic supplies?",
+          accent: "quest",
         });
       } else if (step === "deliver") {
         options.push({
           id: "sage_deliver",
           label: "Deliver supplies",
           sub: "From Vera's Market",
+          accent: "quest",
         });
       }
     }
@@ -3388,6 +3614,7 @@ export function createWorldScreen(
           id: "reed_ask",
           label: "Offer to help",
           sub: "Maybe a delivery…",
+          accent: "quest",
         });
       }
     }
@@ -3399,6 +3626,7 @@ export function createWorldScreen(
           id: "jun_planks",
           label: "Deliver Reed's planks",
           sub: "From the workshop",
+          accent: "quest",
         });
       }
     }
@@ -3410,6 +3638,7 @@ export function createWorldScreen(
           id: "pip_pier_ask",
           label: "Offer to help",
           sub: "Pier could use a tidy-up",
+          accent: "quest",
         });
       }
     }
@@ -3424,8 +3653,30 @@ export function createWorldScreen(
         label: "Buy clinic kit ($10)",
         sub: state.money < 10 ? "Not enough money" : "For Dr. Sage",
         disabled: state.money < 10,
+        accent: "quest",
       });
     }
+
+    if (
+      def.id === "vera" &&
+      quests.isActive("crumb_snack") &&
+      quests.currentStepId("crumb_snack") === "buy"
+    ) {
+      options.push({
+        id: "vera_crumb_snack",
+        label: "Buy snack for Crumb ($8)",
+        sub: state.money < 8 ? "Not enough money" : "Street hangabout run",
+        disabled: state.money < 8,
+        accent: "quest",
+      });
+    }
+
+    // Promote glowing side-quest rows to the top of the list.
+    options.sort((a, b) => {
+      const aq = a.accent === "quest" ? 0 : 1;
+      const bq = b.accent === "quest" ? 0 : 1;
+      return aq - bq;
+    });
 
     for (const tone of DIALOGUE_TONES) {
       options.push({
@@ -3532,7 +3783,7 @@ export function createWorldScreen(
       y,
       (id) => {
         if (id === "chat") {
-          startChat(npcId, def.name);
+          tryChatWithOffer(npcId, def.name, () => startChat(npcId, def.name));
           return;
         }
         if (id === "roommate_move_in") {
@@ -3825,6 +4076,15 @@ export function createWorldScreen(
           state.money -= 10;
           Audio.sfx("coin");
           state.showToast("Clinic kit purchased - take it to Sage!");
+          releaseEngagedNpc();
+          return;
+        }
+        if (id === "vera_crumb_snack") {
+          if (state.money < 8) return;
+          state.money -= 8;
+          Audio.sfx("coin");
+          quests.emit("bought_crumb_snack");
+          state.showToast("Snack purchased - take it to Crumb!");
           releaseEngagedNpc();
           return;
         }
@@ -4920,7 +5180,7 @@ export function createWorldScreen(
   const WAKE_THOUGHTS = [
     {
       kind: "text" as const,
-      text: "First morning in my own place… still doesn't feel like mine yet.",
+      text: "First morning here… still doesn't feel quite like mine yet.",
     },
     {
       kind: "text" as const,
@@ -4996,6 +5256,19 @@ export function createWorldScreen(
     player.setWalking(false);
     playerPath = [];
     onArrive = null;
+  };
+
+  /** Arrival story wash, then the bed wake cutscene. */
+  const startArrivalPrologue = () => {
+    introActive = true;
+    player.setPose("lie");
+    player.setWalking(false);
+    playerPath = [];
+    onArrive = null;
+    storyPrologue.play({
+      lines: arrivalPrologueLines(state.playerName),
+      onDone: () => startWakeIntro(),
+    });
   };
 
   /** Advance wake cutscene from real frame time (not wall-clock timeouts). */
@@ -5202,6 +5475,7 @@ export function createWorldScreen(
       confetti = new ConfettiBurst(ui);
       payCelebration = new PayCelebration(ui);
       giftHandoff = new GiftHandoffCard(ui);
+      storyPrologue = new StoryPrologue(ui);
       wetTrail = new WetTrail(
         (o) => app.renderer.add(o),
         (o) => app.renderer.remove(o),
@@ -5345,7 +5619,7 @@ export function createWorldScreen(
       app.renderer.setFollow(playerX, playerZ);
 
       if (!isContinue) {
-        startWakeIntro();
+        startArrivalPrologue();
       } else {
         state.showToast("Welcome back to Little Lives!");
       }
@@ -5374,6 +5648,7 @@ export function createWorldScreen(
       confetti?.destroy();
       payCelebration?.destroy();
       giftHandoff?.destroy();
+      storyPrologue?.destroy();
       wetTrail?.dispose();
       wetTrail = null;
       lootBurst?.dispose();
@@ -5841,6 +6116,7 @@ export function createWorldScreen(
         for (const npc of npcs) {
           positions.set(npc.id, npc.actor.getPosition());
         }
+        nametags.setQuestOfferIds(quests.pendingOfferNpcIds());
         nametags.update(
           positions,
           (x, y, z) => app.renderer.projectToScreen(x, y, z, rect),

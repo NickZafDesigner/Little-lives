@@ -58,7 +58,7 @@ export const ASPIRATIONS: AspirationDef[] = [
     id: "town_helper",
     title: "Town Helper",
     description: "Finish all side quests and join 3 weekly town beats.",
-    target: 8,
+    target: 11,
     rewardMoney: 45,
     rewardToast: "Town Helper! The notice board has your name on it.",
     unlockId: "notice_star",
@@ -101,4 +101,7 @@ export const SIDE_QUEST_IDS = [
   "sage_supplies",
   "reed_planks",
   "pip_pier",
+  "nibs_shoe",
+  "crumb_snack",
+  "sprocket_scrap",
 ] as const;

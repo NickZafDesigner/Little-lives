@@ -7,6 +7,8 @@ export interface MenuOption {
   label: string;
   sub?: string;
   disabled?: boolean;
+  /** Highlight as a side-quest offer row. */
+  accent?: "quest";
 }
 
 export type MenuPortrait = {
@@ -162,6 +164,9 @@ export class InteractionMenu {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "ll-menu-row";
+      if (opt.accent === "quest") {
+        btn.classList.add("is-quest", "ll-quest-glow");
+      }
       btn.disabled = Boolean(opt.disabled);
       btn.dataset.optId = opt.id;
       btn.style.setProperty("--ll-i", String(delayStart + i));

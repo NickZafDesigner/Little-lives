@@ -360,7 +360,7 @@ export class PlayerStatusModal {
       const pct = Math.min(100, Math.round((have / need) * 100));
       const lit = highlightId === id ? " is-highlight" : "";
       questRows.push(`
-        <div class="ll-status-task${lit}" data-quest-id="${escapeHtml(id)}">
+        <div class="ll-status-task ll-quest-glow${lit}" data-quest-id="${escapeHtml(id)}">
           <div class="ll-status-task-top">
             <strong>${escapeHtml(def.title)}</strong>
             <span>${have}/${need}</span>
@@ -393,7 +393,7 @@ export class PlayerStatusModal {
           ? ` data-unlock-thumb="${escapeHtml(primary.id)}"`
           : "";
         return `
-          <div class="ll-status-task ll-status-unlock">
+          <div class="ll-status-task ll-status-unlock ll-quest-glow">
             <div class="ll-status-unlock-thumb"${thumbAttr} aria-hidden="true"></div>
             <div class="ll-status-unlock-body">
               <div class="ll-status-task-top">

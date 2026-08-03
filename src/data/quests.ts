@@ -40,7 +40,16 @@ export type QuestEvent =
   | "reed_ask_delivery"
   | "delivered_planks"
   | "pip_ask_pier"
-  | "pier_cleanup";
+  | "pier_cleanup"
+  | "nibs_ask_shoe"
+  | "found_gordon_shoe"
+  | "delivered_gordon_shoe"
+  | "crumb_ask_snack"
+  | "bought_crumb_snack"
+  | "delivered_crumb_snack"
+  | "sprocket_ask_scrap"
+  | "gathered_wood"
+  | "delivered_sprocket_scrap";
 
 export interface QuestStepDef {
   id: string;
@@ -64,6 +73,10 @@ export interface QuestDef {
     hiredJobId?: string;
   };
   side?: boolean;
+  /** NPC who can offer this side quest while its ask step is pending. */
+  offerNpcId?: string;
+  /** Spoken pitch lines when the giver proactively offers the quest. */
+  offerPitch?: string[];
   /** Skip journal dialogue on start (intro / silent beats). */
   silentStart?: boolean;
   steps: QuestStepDef[];
@@ -338,6 +351,10 @@ export const QUESTS: QuestDef[] = [
     title: "Mabel's Flowers",
     journalLine: "Mabel wants wildflowers from the park for her baking table.",
     side: true,
+    offerNpcId: "mabel",
+    offerPitch: [
+      "Oh! If you've got a minute - could you pick wildflowers at the park for my baking table?",
+    ],
     unlockWhen: { hiredAtCafe: true },
     requires: ["get_a_job"],
     steps: [
@@ -368,6 +385,10 @@ export const QUESTS: QuestDef[] = [
     title: "Park Cleanup",
     journalLine: "Pip could use a hand keeping the park tidy.",
     side: true,
+    offerNpcId: "pip",
+    offerPitch: [
+      "Hey - litter near the benches is getting wild. Two bags and we're golden!",
+    ],
     unlockWhen: { hiredAtCafe: true },
     requires: ["get_a_job"],
     steps: [
@@ -394,6 +415,10 @@ export const QUESTS: QuestDef[] = [
     title: "Market Run",
     journalLine: "Vera needs a parcel walked over to the library.",
     side: true,
+    offerNpcId: "vera",
+    offerPitch: [
+      "Got a parcel that needs walking to Theo at the library - fancy a quick delivery?",
+    ],
     unlockWhen: { hiredJobId: "market_clerk" },
     requires: ["second_gig"],
     steps: [
@@ -419,6 +444,10 @@ export const QUESTS: QuestDef[] = [
     title: "Overdue Returns",
     journalLine: "Theo's return cart is tipping over.",
     side: true,
+    offerNpcId: "theo",
+    offerPitch: [
+      "The return cart is tipping… two shelves would save my spine. Interested?",
+    ],
     unlockWhen: { hiredJobId: "library_aide" },
     requires: ["quiet_hours"],
     steps: [
@@ -445,6 +474,10 @@ export const QUESTS: QuestDef[] = [
     title: "Clinic Supplies",
     journalLine: "Sage is low on bandages - market should have a kit.",
     side: true,
+    offerNpcId: "sage",
+    offerPitch: [
+      "We're low on bandages. Vera's market sells a clinic kit - could you grab one?",
+    ],
     unlockWhen: { hiredJobId: "clinic_aide" },
     requires: ["south_side"],
     steps: [
@@ -470,6 +503,10 @@ export const QUESTS: QuestDef[] = [
     title: "Plank Run",
     journalLine: "Reed needs leftover planks walked over to Jun at the café.",
     side: true,
+    offerNpcId: "reed",
+    offerPitch: [
+      "Leftover planks for Jun at the café. Mind walking them over?",
+    ],
     unlockWhen: { hiredJobId: "workshop_crafter" },
     requires: ["east_workshop"],
     steps: [
@@ -495,6 +532,10 @@ export const QUESTS: QuestDef[] = [
     title: "Pier Sweep",
     journalLine: "Pip says the pier gets messy after windy days.",
     side: true,
+    offerNpcId: "pip",
+    offerPitch: [
+      "Windy day leftovers at the pier. Two tidy bags and I'll buy you a lemonade.",
+    ],
     unlockWhen: { hiredAtCafe: true },
     requires: ["pier_day"],
     steps: [
@@ -516,6 +557,106 @@ export const QUESTS: QuestDef[] = [
       friendshipDelta: 12,
     },
   },
+  {
+    id: "nibs_shoe",
+    title: "Lost Gordon",
+    journalLine: "Nibs lost Gordon - the left shoe - somewhere near Town Park.",
+    side: true,
+    offerNpcId: "nibs",
+    offerPitch: [
+      "Crisis: Gordon is missing. Left shoe. Last seen near Town Park. Can you help?",
+    ],
+    requires: ["settled_in"],
+    steps: [
+      {
+        id: "ask",
+        event: "nibs_ask_shoe",
+        objectiveLabel: "Talk to Nibs about the missing shoe",
+      },
+      {
+        id: "find",
+        event: "found_gordon_shoe",
+        objectiveLabel: "Find Gordon near Town Park",
+      },
+      {
+        id: "deliver",
+        event: "delivered_gordon_shoe",
+        objectiveLabel: "Return Gordon to Nibs",
+      },
+    ],
+    rewards: {
+      money: 18,
+      friendshipNpcId: "nibs",
+      friendshipDelta: 10,
+    },
+  },
+  {
+    id: "crumb_snack",
+    title: "Crumb Run",
+    journalLine: "Crumb is hungry - Vera sells a snack that should do the trick.",
+    side: true,
+    offerNpcId: "crumb",
+    offerPitch: [
+      "My stomach filed a formal complaint. Vera sells snacks - eight bucks? Pretty please?",
+    ],
+    requires: ["second_gig"],
+    steps: [
+      {
+        id: "ask",
+        event: "crumb_ask_snack",
+        objectiveLabel: "Talk to Crumb about a snack run",
+      },
+      {
+        id: "buy",
+        event: "bought_crumb_snack",
+        objectiveLabel: "Buy a snack from Vera ($8)",
+      },
+      {
+        id: "deliver",
+        event: "delivered_crumb_snack",
+        objectiveLabel: "Deliver the snack to Crumb",
+      },
+    ],
+    rewards: {
+      money: 22,
+      friendshipNpcId: "crumb",
+      friendshipDelta: 10,
+    },
+  },
+  {
+    id: "sprocket_scrap",
+    title: "Sprocket Scrap",
+    journalLine: "Sprocket wants leftover wood scraps for a tinkering project.",
+    side: true,
+    offerNpcId: "sprocket",
+    offerPitch: [
+      "Need two armfuls of wood scrap for a contraption. Chop a couple trees?",
+    ],
+    requires: ["east_workshop"],
+    steps: [
+      {
+        id: "ask",
+        event: "sprocket_ask_scrap",
+        objectiveLabel: "Talk to Sprocket about scrap wood",
+      },
+      {
+        id: "gather",
+        event: "gathered_wood",
+        objectiveLabel: "Gather wood from trees (0/2)",
+        count: 2,
+      },
+      {
+        id: "deliver",
+        event: "delivered_sprocket_scrap",
+        objectiveLabel: "Deliver scrap wood to Sprocket",
+      },
+    ],
+    rewards: {
+      money: 26,
+      friendshipNpcId: "sprocket",
+      friendshipDelta: 10,
+    },
+  },
 ];
 
 export const questById = Object.fromEntries(
@@ -531,3 +672,6 @@ export const WORK_END = 17 / 24;
 export const WORK_LATE = 9.25 / 24;
 /** @deprecated Shift now montages to WORK_END instead of a fixed jump. */
 export const SHIFT_TIME_ADVANCE = 0.145;
+
+/** Tile where Gordon (Nibs' left shoe) appears during Lost Gordon. */
+export const GORDON_SHOE_TILE = { x: 30, y: 17 } as const;

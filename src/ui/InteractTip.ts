@@ -58,6 +58,7 @@ export class InteractTip {
     label: string,
     action: string,
     worldY = 36,
+    opts?: { questOffer?: boolean },
   ) {
     this.worldX = worldX;
     this.worldZ = worldZ;
@@ -67,6 +68,8 @@ export class InteractTip {
       this.actionEl.textContent = action;
     }
     this.tip.setAttribute("aria-label", `${action} ${label}`);
+    this.tip.classList.toggle("is-quest-offer", Boolean(opts?.questOffer));
+    this.tip.classList.toggle("ll-quest-glow", Boolean(opts?.questOffer));
     if (!this.visible) {
       this.visible = true;
       this.tip.hidden = false;
@@ -78,7 +81,7 @@ export class InteractTip {
   hide() {
     if (!this.visible) return;
     this.visible = false;
-    this.tip.classList.remove("is-in");
+    this.tip.classList.remove("is-in", "is-quest-offer", "ll-quest-glow");
     this.tip.classList.add("is-out");
     window.setTimeout(() => {
       if (!this.visible) this.tip.hidden = true;

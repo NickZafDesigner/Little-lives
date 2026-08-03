@@ -35,11 +35,15 @@ export interface AmbientNpcDef {
   spawnTx: number;
   spawnTy: number;
   facing: Dir;
+  /** Sit in place (cafe patrons, library readers). Default: stand. */
+  pose?: "stand" | "sit";
+  /** Seat height when pose is sit. Default: couch. */
+  sitStyle?: "bed" | "bench" | "couch";
 }
 
 /**
- * Stationary street hangabouts. Pointless, delightful, and now mildly
- * conversational - reply menus, no relationships, all vibes.
+ * Stationary street hangabouts. Pointless, delightful chat - plus a few
+ * can occasionally offer short side quests once story gates unlock.
  */
 export const AMBIENT_NPCS: AmbientNpcDef[] = [
   {
@@ -1567,6 +1571,780 @@ export const AMBIENT_NPCS: AmbientNpcDef[] = [
                 anim: "jump",
               },
             ],
+          },
+        ],
+      },
+    ],
+  },
+  // --- Indoor patrons (seated scenery with light chat) ---
+  {
+    id: "latte",
+    name: "Latte",
+    vibe: "charming",
+    facing: "down",
+    pose: "sit",
+    sitStyle: "couch",
+    // Café chair north of first table (lot 4,34 → rx9,ry1).
+    spawnTx: 13,
+    spawnTy: 35,
+    look: {
+      sex: "girl",
+      height: "average",
+      build: "slim",
+      face: "soft",
+      clothing: "cozy",
+      hairStyle: "wavy",
+      skin: Palette.skin,
+      hair: 0x5c3d2e,
+      shirt: 0xf4a261,
+      pants: 0x6d6875,
+    },
+    chats: [
+      {
+        open: [
+          "This latte tastes like a warm hug that pays rent.",
+          "Don't rush me. Foam art deserves an audience.",
+        ],
+        choices: [
+          {
+            id: "cheers",
+            label: "Cheers the air",
+            playerLine: "*raises imaginary cup*",
+            npcLines: ["Clink. Official café treaty signed."],
+            anim: "pop",
+          },
+          {
+            id: "foam",
+            label: "Rate the foam",
+            playerLine: "Foam score?",
+            npcLines: ["A soft 9. Lost a point to existential swirl."],
+            anim: "jump",
+          },
+          {
+            id: "steal_sip",
+            label: "Ask for a sip",
+            playerLine: "Tiny sip? For science?",
+            npcLines: ["Absolutely not. Softly. Firmly. No."],
+            anim: "vibrate",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "biscotti",
+    name: "Biscotti",
+    vibe: "funny",
+    facing: "left",
+    pose: "sit",
+    sitStyle: "couch",
+    // Café chair east of first table.
+    spawnTx: 15,
+    spawnTy: 36,
+    look: {
+      sex: "boy",
+      height: "short",
+      build: "stocky",
+      face: "freckled",
+      clothing: "casual",
+      hairStyle: "cap",
+      skin: 0xffe0bd,
+      hair: 0x2f3a45,
+      shirt: 0xe9c46a,
+      pants: 0x264653,
+    },
+    chats: [
+      {
+        open: [
+          "I've been dunking this biscuit for eleven minutes.",
+          "It's a lifestyle now.",
+        ],
+        choices: [
+          {
+            id: "respect",
+            label: "Respect the dunk",
+            playerLine: "Commitment. I see you.",
+            npcLines: ["Finally. A connoisseur of sog."],
+            anim: "jump",
+          },
+          {
+            id: "rescue",
+            label: "Save the biscuit",
+            playerLine: "Pull it out! Before it dissolves!",
+            npcLines: ["Too late. We've entered pudding territory."],
+            anim: "vibrate",
+          },
+          {
+            id: "also_dunk",
+            label: "Dunk with you",
+            playerLine: "*mimes a heroic dunk*",
+            npcLines: ["Synchronized sogginess. Beautiful."],
+            anim: "pop",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "mocha",
+    name: "Mocha",
+    vibe: "cute",
+    facing: "down",
+    pose: "sit",
+    sitStyle: "couch",
+    // Café chair at the back table.
+    spawnTx: 13,
+    spawnTy: 40,
+    look: {
+      sex: "enby",
+      height: "short",
+      build: "average",
+      face: "round",
+      clothing: "fancy",
+      hairStyle: "bun",
+      skin: 0xc68642,
+      hair: 0xe8899a,
+      shirt: 0xbde0fe,
+      pants: 0x4a4e69,
+    },
+    chats: [
+      {
+        open: [
+          "I'm writing a postcard to my future self.",
+          "Subject line: remember the whipped cream.",
+        ],
+        choices: [
+          {
+            id: "write_too",
+            label: "Add a PS",
+            playerLine: "PS: you were cozy today.",
+            npcLines: ["Included. Future me owes you a wink."],
+            anim: "pop",
+          },
+          {
+            id: "cream",
+            label: "Whipped cream truth",
+            playerLine: "Whipped cream is a personality.",
+            npcLines: ["Correct. Mine is extra."],
+            anim: "jump",
+          },
+          {
+            id: "rush",
+            label: "Hurry them",
+            playerLine: "Mail it already!",
+            npcLines: ["Rude to stationery. Softly leave."],
+            anim: "vibrate",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "quarto",
+    name: "Quarto",
+    vibe: "charming",
+    facing: "down",
+    pose: "sit",
+    sitStyle: "bench",
+    // Library bean bag (lot 74,34 → rx8,ry8).
+    spawnTx: 82,
+    spawnTy: 42,
+    look: {
+      sex: "enby",
+      height: "average",
+      build: "slim",
+      face: "sharp",
+      clothing: "fancy",
+      hairStyle: "long",
+      skin: Palette.skin2,
+      hair: 0x3e2723,
+      shirt: 0xd4a373,
+      pants: 0x3c2f2f,
+    },
+    chats: [
+      {
+        open: [
+          "Shh. Chapter twelve just betrayed me.",
+          "I need a moment. And possibly a sequel.",
+        ],
+        choices: [
+          {
+            id: "spoil",
+            label: "No spoilers",
+            playerLine: "I won't ask. Honour among readers.",
+            npcLines: ["Bless you. The plot twist lives another day."],
+            anim: "pop",
+          },
+          {
+            id: "hug_book",
+            label: "Hug your book",
+            playerLine: "That book looks hugged already.",
+            npcLines: ["Emotional support hardcover. Certified."],
+            anim: "jump",
+          },
+          {
+            id: "loud",
+            label: "Loud whisper",
+            playerLine: "WHAT HAPPENED IN CHAPTER TWELVE?",
+            npcLines: ["…The librarian felt that. Rude."],
+            anim: "vibrate",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "folio_reader",
+    name: "Index",
+    vibe: "cute",
+    facing: "left",
+    pose: "sit",
+    sitStyle: "bench",
+    // Library floor cushion (rx9,ry7).
+    spawnTx: 83,
+    spawnTy: 41,
+    look: {
+      sex: "girl",
+      height: "short",
+      build: "slim",
+      face: "freckled",
+      clothing: "cozy",
+      hairStyle: "short",
+      skin: 0xffe0bd,
+      hair: 0xc0554a,
+      shirt: 0xffc8dd,
+      pants: 0x6d6875,
+    },
+    chats: [
+      {
+        open: [
+          "I'm alphabetising my feelings.",
+          "Currently stuck between 'aww' and 'actually'.",
+        ],
+        choices: [
+          {
+            id: "help_sort",
+            label: "Help sort",
+            playerLine: "Want me to hold 'actually'?",
+            npcLines: ["Yes. Careful - it's heavy with footnotes."],
+            anim: "pop",
+          },
+          {
+            id: "aww",
+            label: "File under aww",
+            playerLine: "You're filed under aww.",
+            npcLines: ["Catalogued. Soft squeal pending."],
+            anim: "jump",
+          },
+          {
+            id: "skip",
+            label: "Skip to Z",
+            playerLine: "Jump to Z and call it done.",
+            npcLines: ["Chaos librarian energy. I respect it."],
+            anim: "vibrate",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "waiting_room",
+    name: "Bandage",
+    vibe: "funny",
+    facing: "right",
+    pose: "sit",
+    sitStyle: "couch",
+    // Clinic waiting sofa (lot 28,50 → rx1,ry6) - sit mid-sofa.
+    spawnTx: 29,
+    spawnTy: 56,
+    look: {
+      sex: "boy",
+      height: "tall",
+      build: "average",
+      face: "soft",
+      clothing: "casual",
+      hairStyle: "short",
+      skin: 0x8d5524,
+      hair: 0x1b1b1b,
+      shirt: 0xa8dadc,
+      pants: 0x457b9d,
+    },
+    chats: [
+      {
+        open: [
+          "I'm fine. Totally fine. Waiting-room fine.",
+          "Which is a very specific genre of fine.",
+        ],
+        choices: [
+          {
+            id: "reassure",
+            label: "You'll be okay",
+            playerLine: "You've got this. Softly.",
+            npcLines: ["Thanks. I'm mostly here for the aquarium lore."],
+            anim: "pop",
+          },
+          {
+            id: "fish",
+            label: "Ask about the fish",
+            playerLine: "Have the fish judged you yet?",
+            npcLines: ["Constantly. One of them is a licensed therapist."],
+            anim: "jump",
+          },
+          {
+            id: "cough",
+            label: "Sympathetic cough",
+            playerLine: "*coughs supportively*",
+            npcLines: ["Please don't start a waiting-room choir."],
+            anim: "vibrate",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "espresso",
+    name: "Espresso",
+    vibe: "rude",
+    facing: "right",
+    pose: "sit",
+    sitStyle: "couch",
+    // Café west chair at front table.
+    spawnTx: 12,
+    spawnTy: 36,
+    look: {
+      sex: "enby",
+      height: "tall",
+      build: "slim",
+      face: "sharp",
+      clothing: "fancy",
+      hairStyle: "short",
+      skin: Palette.skin2,
+      hair: 0x1b1b1b,
+      shirt: 0x2d3436,
+      pants: 0x636e72,
+    },
+    chats: [
+      {
+        open: ["If this espresso is weak I will personally audit the beans."],
+        choices: [
+          {
+            id: "bold",
+            label: "Bold take",
+            playerLine: "That's a lot of feelings for a tiny cup.",
+            npcLines: ["Tiny cup. Enormous standards."],
+            anim: "vibrate",
+          },
+          {
+            id: "agree",
+            label: "Same energy",
+            playerLine: "I too fear watery coffee.",
+            npcLines: ["Finally. A peer-reviewed palate."],
+            anim: "pop",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "froth",
+    name: "Froth",
+    vibe: "funny",
+    facing: "right",
+    pose: "sit",
+    sitStyle: "couch",
+    // Café west chair at back table.
+    spawnTx: 12,
+    spawnTy: 41,
+    look: {
+      sex: "girl",
+      height: "short",
+      build: "stocky",
+      face: "round",
+      clothing: "sporty",
+      hairStyle: "cap",
+      skin: 0xffe0bd,
+      hair: 0xe76f51,
+      shirt: 0xffddd2,
+      pants: 0x3d405b,
+    },
+    chats: [
+      {
+        open: ["I'm practicing my barista nod. Very mysterious. Very employable."],
+        choices: [
+          {
+            id: "nod",
+            label: "Nod back",
+            playerLine: "*nods with industrial confidence*",
+            npcLines: ["Hired. Emotionally. Pay is vibes."],
+            anim: "jump",
+          },
+          {
+            id: "critique",
+            label: "Needs work",
+            playerLine: "Your nod has too much neck.",
+            npcLines: ["Harsh. Accurate. Updating the choreography."],
+            anim: "vibrate",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "scone",
+    name: "Scone",
+    vibe: "charming",
+    facing: "left",
+    pose: "sit",
+    sitStyle: "couch",
+    // Café booth love-seat against the east wall.
+    spawnTx: 16,
+    spawnTy: 36,
+    look: {
+      sex: "boy",
+      height: "average",
+      build: "average",
+      face: "soft",
+      clothing: "cozy",
+      hairStyle: "wavy",
+      skin: 0xc68642,
+      hair: 0x5c3d2e,
+      shirt: 0xf1c0e8,
+      pants: 0x4a4e69,
+    },
+    chats: [
+      {
+        open: [
+          "This booth has main-character lighting.",
+          "Don't tell the other tables.",
+        ],
+        choices: [
+          {
+            id: "secret",
+            label: "Your secret's safe",
+            playerLine: "Booth privilege stays between us.",
+            npcLines: ["Deal. Soft handshake. Crumb clause included."],
+            anim: "pop",
+          },
+          {
+            id: "jealous",
+            label: "I'm jealous",
+            playerLine: "Move over. Co-main-character energy.",
+            npcLines: ["Bold. There's room if you bring jam."],
+            anim: "jump",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "queue",
+    name: "Ticket",
+    vibe: "cute",
+    facing: "left",
+    // Standing in the café service queue.
+    spawnTx: 9,
+    spawnTy: 37,
+    look: {
+      sex: "girl",
+      height: "average",
+      build: "slim",
+      face: "freckled",
+      clothing: "casual",
+      hairStyle: "long",
+      skin: Palette.skin,
+      hair: 0xf4a261,
+      shirt: 0x90be6d,
+      pants: 0x577590,
+    },
+    chats: [
+      {
+        open: [
+          "I'm next. I've been rehearsing my order since dawn.",
+          "It's… oat milk. That's the whole speech.",
+        ],
+        choices: [
+          {
+            id: "cheer",
+            label: "You've got this",
+            playerLine: "Oat milk supremacy. Speak your truth.",
+            npcLines: ["Thank you. Knees slightly less jelly."],
+            anim: "pop",
+          },
+          {
+            id: "cut",
+            label: "Mind if I…?",
+            playerLine: "Any chance I can sneak ahead?",
+            npcLines: ["Absolutely not. Softly. With eye contact."],
+            anim: "vibrate",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "margin",
+    name: "Margin",
+    vibe: "funny",
+    facing: "left",
+    pose: "sit",
+    sitStyle: "couch",
+    // Library lounge chair at the writing desk.
+    spawnTx: 82,
+    spawnTy: 40,
+    look: {
+      sex: "boy",
+      height: "tall",
+      build: "slim",
+      face: "sharp",
+      clothing: "fancy",
+      hairStyle: "bun",
+      skin: 0x8d5524,
+      hair: 0x2f3a45,
+      shirt: 0xcdb4db,
+      pants: 0x22223b,
+    },
+    chats: [
+      {
+        open: ["I'm editing the margins of my diary. Very meta. Slightly dizzy."],
+        choices: [
+          {
+            id: "margin_note",
+            label: "Leave a note",
+            playerLine: "*scribbles 'hi' in the air*",
+            npcLines: ["Accepted into the appendix."],
+            anim: "pop",
+          },
+          {
+            id: "dizzy",
+            label: "Take a break",
+            playerLine: "Margins can wait. Snacks cannot.",
+            npcLines: ["Wise. Saving draft as 'existential_snack.doc'."],
+            anim: "jump",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "dogear",
+    name: "Dogear",
+    vibe: "charming",
+    facing: "down",
+    pose: "sit",
+    sitStyle: "bench",
+    // Second library cushion.
+    spawnTx: 83,
+    spawnTy: 42,
+    look: {
+      sex: "enby",
+      height: "short",
+      build: "average",
+      face: "soft",
+      clothing: "cozy",
+      hairStyle: "wavy",
+      skin: Palette.skin,
+      hair: 0x40916c,
+      shirt: 0xb7e4c7,
+      pants: 0x1b4332,
+    },
+    chats: [
+      {
+        open: ["I dog-ear pages. Controversial. Romantic. Slightly illegal."],
+        choices: [
+          {
+            id: "bookmark",
+            label: "Use a bookmark",
+            playerLine: "Have you considered… a bookmark?",
+            npcLines: ["Have you considered living dangerously?"],
+            anim: "vibrate",
+          },
+          {
+            id: "ally",
+            label: "Same crime",
+            playerLine: "I fold corners too. Softly.",
+            npcLines: ["Book club of mild vandalism. Welcome."],
+            anim: "jump",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "browse",
+    name: "Spine",
+    vibe: "cute",
+    facing: "right",
+    // Standing at the west library stacks.
+    spawnTx: 77,
+    spawnTy: 40,
+    look: {
+      sex: "girl",
+      height: "average",
+      build: "slim",
+      face: "round",
+      clothing: "fancy",
+      hairStyle: "bun",
+      skin: 0xffe0bd,
+      hair: 0x6b4226,
+      shirt: 0xffcfd2,
+      pants: 0x3c2f2f,
+    },
+    chats: [
+      {
+        open: [
+          "I'm looking for a book that feels like soup.",
+          "Warm. Soft. Possibly illustrated.",
+        ],
+        choices: [
+          {
+            id: "soup",
+            label: "Soup fiction",
+            playerLine: "Aisle of broth. Metaphorically.",
+            npcLines: ["Perfect. Checking out 'Stew & Consequences'."],
+            anim: "pop",
+          },
+          {
+            id: "picture",
+            label: "Picture books rule",
+            playerLine: "Illustrated is elite literature.",
+            npcLines: ["Correct. Critics can stay un-souped."],
+            anim: "jump",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "splint",
+    name: "Splint",
+    vibe: "charming",
+    facing: "down",
+    pose: "sit",
+    sitStyle: "couch",
+    // Clinic love-seat.
+    spawnTx: 29,
+    spawnTy: 58,
+    look: {
+      sex: "enby",
+      height: "average",
+      build: "stocky",
+      face: "freckled",
+      clothing: "casual",
+      hairStyle: "short",
+      skin: Palette.skin2,
+      hair: 0xe8899a,
+      shirt: 0xcaffbf,
+      pants: 0x22577a,
+    },
+    chats: [
+      {
+        open: ["I stubbed my toe on destiny. Also a chair. Mostly a chair."],
+        choices: [
+          {
+            id: "sympathy",
+            label: "Oof",
+            playerLine: "Destiny is rude furniture.",
+            npcLines: ["Exactly. Filing a complaint with the floor."],
+            anim: "pop",
+          },
+          {
+            id: "brave",
+            label: "You're brave",
+            playerLine: "Toe warriors never quit.",
+            npcLines: ["Promote me. Medal made of ice packs."],
+            anim: "jump",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "produce",
+    name: "Radish",
+    vibe: "funny",
+    facing: "up",
+    // Market shopper by the stock crates.
+    spawnTx: 80,
+    spawnTy: 10,
+    look: {
+      sex: "boy",
+      height: "short",
+      build: "average",
+      face: "round",
+      clothing: "sporty",
+      hairStyle: "cap",
+      skin: 0xc68642,
+      hair: 0x3e2723,
+      shirt: 0xf9c74f,
+      pants: 0x43aa8b,
+    },
+    chats: [
+      {
+        open: [
+          "Do these carrots look ambitious to you?",
+          "I need ambitious carrots.",
+        ],
+        choices: [
+          {
+            id: "ambitious",
+            label: "Very ambitious",
+            playerLine: "Those carrots have a five-year plan.",
+            npcLines: ["Sold. I'm naming one CEO."],
+            anim: "jump",
+          },
+          {
+            id: "lazy",
+            label: "They seem tired",
+            playerLine: "They look like they need a nap.",
+            npcLines: ["Relatable produce. I'll take the sleepy bunch."],
+            anim: "pop",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "adopter",
+    name: "Whisker",
+    vibe: "cute",
+    facing: "down",
+    pose: "sit",
+    sitStyle: "couch",
+    // Shelter waiting love-seat.
+    spawnTx: 56,
+    spawnTy: 35,
+    look: {
+      sex: "girl",
+      height: "tall",
+      build: "slim",
+      face: "soft",
+      clothing: "cozy",
+      hairStyle: "long",
+      skin: Palette.skin,
+      hair: 0xd62828,
+      shirt: 0xfcbf49,
+      pants: 0x003049,
+    },
+    chats: [
+      {
+        open: [
+          "I'm practicing my 'responsible pet parent' face.",
+          "How's it looking? Be honest. Softly.",
+        ],
+        choices: [
+          {
+            id: "approved",
+            label: "Approved",
+            playerLine: "10/10. The pets will unionise in your favour.",
+            npcLines: ["Best review of my life."],
+            anim: "jump",
+          },
+          {
+            id: "try_again",
+            label: "Less teeth",
+            playerLine: "Maybe 20% less grin.",
+            npcLines: ["Updating face firmware. Thanks."],
+            anim: "vibrate",
           },
         ],
       },

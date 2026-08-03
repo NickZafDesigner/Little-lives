@@ -142,6 +142,42 @@ export class QuestSystem {
     return this.state.quests.stepCounts[questId]?.[stepId] ?? 0;
   }
 
+  /**
+   * Active side quest whose ask/offer step is still pending for this NPC.
+   * Returns quest id + ask event, or null.
+   */
+  pendingOfferFor(npcId: string): {
+    questId: string;
+    askEvent: QuestEvent;
+    def: QuestDef;
+  } | null {
+    for (const questId of this.state.quests.active) {
+      const def = questById[questId];
+      if (!def?.side || def.offerNpcId !== npcId) continue;
+      if (this.currentStepId(questId) !== "ask") continue;
+      const ask = def.steps.find((s) => s.id === "ask");
+      if (!ask) continue;
+      return { questId, askEvent: ask.event, def };
+    }
+    return null;
+  }
+
+  hasPendingSideOffer(npcId: string): boolean {
+    return this.pendingOfferFor(npcId) !== null;
+  }
+
+  /** NPC ids who currently have a side-quest offer ready. */
+  pendingOfferNpcIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const questId of this.state.quests.active) {
+      const def = questById[questId];
+      if (!def?.side || !def.offerNpcId) continue;
+      if (this.currentStepId(questId) !== "ask") continue;
+      ids.add(def.offerNpcId);
+    }
+    return ids;
+  }
+
   private isQuestFullyDone(
     def: QuestDef,
     counts: Record<string, number>,

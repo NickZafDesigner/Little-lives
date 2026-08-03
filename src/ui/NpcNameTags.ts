@@ -17,6 +17,7 @@ export class NpcNameTags {
   private root: HTMLElement;
   private tags = new Map<string, TagState>();
   private fadeTimers = new Map<string, number>();
+  private questOfferIds = new Set<string>();
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement("div");
@@ -37,6 +38,11 @@ export class NpcNameTags {
       this.root.appendChild(el);
       this.tags.set(npc.id, { el, visible: false });
     }
+  }
+
+  /** NPCs who currently have a side-quest offer ready. */
+  setQuestOfferIds(ids: Set<string>) {
+    this.questOfferIds = ids;
   }
 
   /**
@@ -66,6 +72,10 @@ export class NpcNameTags {
         Number.isFinite(screen.y);
 
       tag.el.style.transform = `translate(-50%, -100%) translate(${screen.x}px, ${screen.y}px)`;
+
+      const offer = this.questOfferIds.has(id);
+      tag.el.classList.toggle("is-quest-offer", offer);
+      tag.el.classList.toggle("ll-quest-glow", offer);
 
       const shouldShow = hoveredId === id && onScreen;
       if (shouldShow) this.showTag(id, tag);
