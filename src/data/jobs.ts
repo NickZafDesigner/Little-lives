@@ -150,3 +150,88 @@ export function lotNameForJob(jobId: string): string {
   if (job.lotId === "workshop") return "workshop";
   return "work";
 }
+
+/** Late or no-show days in a row before the boss fires you. */
+export const WORK_MISS_LIMIT = 3;
+
+const WORK_WARNING_LINES: Record<string, [string, string]> = {
+  cafe_barista: [
+    "You're late again. One more strike and I'm cutting you loose.",
+    "Second warning. Be here on time tomorrow - or don't come back.",
+  ],
+  market_clerk: [
+    "Late. I noticed. One more mess-up and you're done.",
+    "Second warning. Shelves don't stock themselves - be here on time.",
+  ],
+  library_aide: [
+    "Tardiness noted. Quietly. One more and I'll have to let you go.",
+    "Second warning. The desk opens at nine. Be here - or be elsewhere.",
+  ],
+  clinic_aide: [
+    "Patients wait. I don't. One more late day and you're out.",
+    "Second warning. Reliability is care. Be on time tomorrow.",
+  ],
+  workshop_crafter: [
+    "Late to the bench. One more miss and I'll find someone else.",
+    "Second warning. Measure twice, clock in once - on time.",
+  ],
+};
+
+const WORK_NO_SHOW_WARNING_LINES: Record<string, [string, string]> = {
+  cafe_barista: [
+    "You didn't show. That's a warning. Three misses and you're fired.",
+    "Second no-show. One more and I'm giving your apron away.",
+  ],
+  market_clerk: [
+    "You skipped a shift. Warning one. Don't make me fire you.",
+    "Second no-show. Next time you're gone - permanently.",
+  ],
+  library_aide: [
+    "You were absent. Consider this a warning. Three and you're dismissed.",
+    "Second absence. One more blank day and I release you.",
+  ],
+  clinic_aide: [
+    "You didn't come in. That's a warning. Three strikes and you're done.",
+    "Second no-show. Miss again and I'll have to let you go.",
+  ],
+  workshop_crafter: [
+    "Empty bench today. Warning one. Three misses ends this.",
+    "Second no-show. One more and the job's not yours.",
+  ],
+};
+
+const WORK_FIRE_LINES: Record<string, string> = {
+  cafe_barista:
+    "Three strikes. You're fired. Hand back the apron - and good luck.",
+  market_clerk:
+    "That's three. You're fired. Don't let the jam jars hit you on the way out.",
+  library_aide:
+    "Three misses. I'm letting you go. Quietly, but firmly - you're fired.",
+  clinic_aide:
+    "Three strikes. I have to let you go. Take care of yourself out there.",
+  workshop_crafter:
+    "Three misses. You're fired. The bench stays - you don't.",
+};
+
+export function workWarningLine(
+  jobId: string,
+  streak: number,
+  reason: "late" | "no_show",
+): string {
+  const idx = streak <= 1 ? 0 : 1;
+  const table =
+    reason === "no_show" ? WORK_NO_SHOW_WARNING_LINES : WORK_WARNING_LINES;
+  return (
+    table[jobId]?.[idx] ??
+    (streak <= 1
+      ? "That's a warning. Three late or missed days and you're out."
+      : "Second warning. One more and you're fired.")
+  );
+}
+
+export function workFireLine(jobId: string): string {
+  return (
+    WORK_FIRE_LINES[jobId] ??
+    "Three strikes - late or no-shows. You're fired."
+  );
+}

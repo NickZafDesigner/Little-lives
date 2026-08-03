@@ -3,6 +3,7 @@ import { NPCS } from "../data/npcs";
 
 const FADE_MS = 220;
 const HEAD_Y = 38;
+const MARKER_Y = 48;
 const MARGIN = 28;
 
 interface TagState {
@@ -10,12 +11,18 @@ interface TagState {
   visible: boolean;
 }
 
+interface MarkerState {
+  el: HTMLElement;
+}
+
 /**
  * Floating name pills above characters - shown while the cursor hovers them.
+ * Quest givers also get a persistent "!" marker above their head.
  */
 export class NpcNameTags {
   private root: HTMLElement;
   private tags = new Map<string, TagState>();
+  private markers = new Map<string, MarkerState>();
   private fadeTimers = new Map<string, number>();
   private questOfferIds = new Set<string>();
 
@@ -37,6 +44,13 @@ export class NpcNameTags {
       el.hidden = true;
       this.root.appendChild(el);
       this.tags.set(npc.id, { el, visible: false });
+
+      const marker = document.createElement("div");
+      marker.className = "ll-quest-marker";
+      marker.innerHTML = `<span class="ll-quest-marker-bang">!</span>`;
+      marker.hidden = true;
+      this.root.appendChild(marker);
+      this.markers.set(npc.id, { el: marker });
     }
   }
 
@@ -57,8 +71,10 @@ export class NpcNameTags {
   ) {
     for (const [id, tag] of this.tags) {
       const pos = positions.get(id);
+      const marker = this.markers.get(id);
       if (!pos) {
         this.hideTag(id, tag, true);
+        if (marker) marker.el.hidden = true;
         continue;
       }
 
@@ -80,6 +96,16 @@ export class NpcNameTags {
       const shouldShow = hoveredId === id && onScreen;
       if (shouldShow) this.showTag(id, tag);
       else this.hideTag(id, tag, false);
+
+      if (marker) {
+        if (offer && onScreen) {
+          const markerScreen = project(pos.x, MARKER_Y, pos.z);
+          marker.el.style.transform = `translate(-50%, -100%) translate(${markerScreen.x}px, ${markerScreen.y}px)`;
+          marker.el.hidden = false;
+        } else {
+          marker.el.hidden = true;
+        }
+      }
     }
   }
 
@@ -88,6 +114,7 @@ export class NpcNameTags {
     this.fadeTimers.clear();
     this.root.remove();
     this.tags.clear();
+    this.markers.clear();
   }
 
   private showTag(id: string, tag: TagState) {

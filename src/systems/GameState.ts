@@ -17,7 +17,7 @@ import {
   type MaterialId,
   type ToolId,
 } from "../data/items";
-import { STARTING_MONEY } from "../data/jobs";
+import { STARTING_MONEY, WORK_MISS_LIMIT } from "../data/jobs";
 import { FULL_NEEDS } from "../data/needs";
 import { AMBIENT_NPCS } from "../data/ambientNpcs";
 import { NPCS, RELATIONSHIP_CLOSE, RELATIONSHIP_FRIEND, RELATIONSHIP_MAX } from "../data/npcs";
@@ -300,6 +300,16 @@ export class GameState {
   shiftLate = false;
   /** dayIndex of the last completed shift (−1 = never). One shift per day. */
   lastShiftDay = -1;
+  /** Consecutive late / no-show work days (resets after an on-time shift). */
+  workMissStreak = 0;
+  /** dayIndex when the last late/no-show was recorded (−1 = never). */
+  lastWorkMissDay = -1;
+  /** Boss confrontation queued after a late clock-in or no-show. */
+  pendingBossTalk: null | {
+    jobId: string;
+    kind: "warn" | "fire";
+    reason: "late" | "no_show";
+  } = null;
   hiredJobs: string[] = [];
   jobShiftCounts: Record<string, number> = {};
   jobPromoted: string[] = [];
@@ -353,7 +363,52 @@ export class GameState {
   }
 
   hire(jobId: string) {
-    if (!this.hiredJobs.includes(jobId)) this.hiredJobs.push(jobId);
+    if (this.hiredJobs.includes(jobId)) return;
+    this.hiredJobs.push(jobId);
+    // Fresh start with this boss - clear any leftover write-ups.
+    this.workMissStreak = 0;
+    this.lastWorkMissDay = -1;
+    this.pendingBossTalk = null;
+  }
+
+  /** Remove a job after the boss fires the player. */
+  fire(jobId: string) {
+    this.hiredJobs = this.hiredJobs.filter((id) => id !== jobId);
+    this.jobPromoted = this.jobPromoted.filter((id) => id !== jobId);
+    if (this.activeJobId === jobId) {
+      this.jobActive = false;
+      this.activeJobId = null;
+      this.jobTasksDone = 0;
+      this.jobQualityScores = [];
+      this.shiftLate = false;
+    }
+    this.workMissStreak = 0;
+    this.lastWorkMissDay = -1;
+    this.pendingBossTalk = null;
+  }
+
+  /**
+   * Record a late clock-in or no-show for today. Idempotent per day.
+   * Queues a boss warning (strikes 1–2) or firing (strike 3).
+   */
+  noteWorkMiss(jobId: string, reason: "late" | "no_show"): number {
+    if (this.lastWorkMissDay === this.dayIndex) {
+      return this.workMissStreak;
+    }
+    if (this.lastWorkMissDay === this.dayIndex - 1) {
+      this.workMissStreak += 1;
+    } else {
+      this.workMissStreak = 1;
+    }
+    this.lastWorkMissDay = this.dayIndex;
+    const kind = this.workMissStreak >= WORK_MISS_LIMIT ? "fire" : "warn";
+    this.pendingBossTalk = { jobId, kind, reason };
+    return this.workMissStreak;
+  }
+
+  /** Clear attendance strikes after a clean on-time shift. */
+  clearWorkMissStreak() {
+    this.workMissStreak = 0;
   }
 
   isPromoted(jobId: string): boolean {
@@ -706,6 +761,11 @@ export class GameState {
       flirtCounts: { ...this.flirtCounts },
       weeklyBeatDay: this.weeklyBeatDay,
       lastShiftDay: this.lastShiftDay,
+      workMissStreak: this.workMissStreak,
+      lastWorkMissDay: this.lastWorkMissDay,
+      pendingBossTalk: this.pendingBossTalk
+        ? { ...this.pendingBossTalk }
+        : null,
       lastPetCareDay: this.lastPetCareDay,
       petCareStreak: this.petCareStreak,
       inventory: {
@@ -796,6 +856,15 @@ export class GameState {
     this.flirtCounts = { ...(data.flirtCounts ?? {}) };
     this.weeklyBeatDay = data.weeklyBeatDay ?? -1;
     this.lastShiftDay = data.lastShiftDay ?? -1;
+    this.workMissStreak = data.workMissStreak ?? 0;
+    this.lastWorkMissDay = data.lastWorkMissDay ?? -1;
+    this.pendingBossTalk = data.pendingBossTalk
+      ? {
+          jobId: data.pendingBossTalk.jobId,
+          kind: data.pendingBossTalk.kind,
+          reason: data.pendingBossTalk.reason ?? "no_show",
+        }
+      : null;
     this.lastPetCareDay = data.lastPetCareDay ?? -1;
     this.petCareStreak = data.petCareStreak ?? 0;
     this.isWet = data.isWet ?? false;

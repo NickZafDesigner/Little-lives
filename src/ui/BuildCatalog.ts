@@ -7,8 +7,12 @@ import {
   isFurnitureUnlocked,
 } from "../systems/unlockProgress";
 import { FurniturePreview } from "./FurniturePreview";
+import { MenuKeyboardNav } from "./menuKeyboard";
 
 type CategoryFilter = "all" | FurnitureCategory;
+
+const BUILD_OPTION_SELECTOR =
+  ".ll-build-tool, .ll-build-cat, .ll-build-item, .ll-build-start";
 
 const CATEGORY_CHIPS: Array<{ id: CategoryFilter; label: string }> = [
   { id: "all", label: "All" },
@@ -46,6 +50,18 @@ export class BuildCatalog {
   private tipEl: HTMLElement | null = null;
   private tipHideTimer = 0;
   private preview = new FurniturePreview();
+  private keys = new MenuKeyboardNav({
+    isOpen: () => this.visible,
+    getButtons: () =>
+      Array.from(
+        this.el.querySelectorAll<HTMLButtonElement>(BUILD_OPTION_SELECTOR),
+      ),
+    onEscape: () => {
+      this.hide();
+      Audio.sfx("ui");
+      this.onChange();
+    },
+  });
 
   constructor(
     parent: HTMLElement,
@@ -108,10 +124,12 @@ export class BuildCatalog {
     this.visible = true;
     this.el.hidden = false;
     this.rebuild();
+    this.keys.bind();
     this.syncChip();
   }
 
   hide() {
+    this.keys.unbind();
     this.visible = false;
     this.el.hidden = true;
     this.hideTip(true);
@@ -123,7 +141,7 @@ export class BuildCatalog {
     else this.show();
   }
 
-  rebuild() {
+  rebuild(prefer?: (btn: HTMLButtonElement) => boolean) {
     this.hideTip(true);
     const s = this.state;
     const wallCost = s.hasUnlock("wall_sky") ? 6 : 10;
@@ -171,15 +189,17 @@ export class BuildCatalog {
       btn.type = "button";
       btn.className =
         "ll-build-tool" + (s.buildTool === t.id ? " is-active" : "");
+      btn.dataset.buildTool = t.id;
       btn.textContent = t.label;
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         s.buildTool = t.id;
         if (t.id !== "furniture") s.selectedBuildItem = null;
         Audio.sfx("ui");
-        this.rebuild();
+        this.rebuild((b) => b.dataset.buildTool === t.id);
         this.onChange();
       });
+      this.keys.attachHover(btn);
       toolsEl.appendChild(btn);
     }
 
@@ -195,20 +215,22 @@ export class BuildCatalog {
       gridEl.hidden = false;
       toolPanel.hidden = true;
       hintEl.textContent =
-        "Hover for a preview · locked pieces unlock via tasks · Esc closes";
+        "Tab / arrows to browse · Enter to pick · Esc closes";
 
       for (const c of CATEGORY_CHIPS) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className =
           "ll-build-cat" + (this.category === c.id ? " is-active" : "");
+        btn.dataset.buildCat = c.id;
         btn.textContent = c.label;
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
           this.category = c.id;
           Audio.sfx("ui");
-          this.rebuild();
+          this.rebuild((b) => b.dataset.buildCat === c.id);
         });
+        this.keys.attachHover(btn);
         catsEl.appendChild(btn);
       }
 
@@ -253,15 +275,23 @@ export class BuildCatalog {
           <button type="button" class="ll-build-start" data-build-start>Start</button>
         </div>
       `;
-      toolPanel
-        .querySelector("[data-build-start]")
-        ?.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.hide();
-          Audio.sfx("ui");
-          this.onChange();
-        });
+      const startBtn = toolPanel.querySelector<HTMLButtonElement>(
+        "[data-build-start]",
+      );
+      startBtn?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.hide();
+        Audio.sfx("ui");
+        this.onChange();
+      });
+      if (startBtn) this.keys.attachHover(startBtn);
     }
+
+    this.keys.reset(prefer, (btn) =>
+      s.buildTool !== "furniture"
+        ? btn.classList.contains("ll-build-start")
+        : btn.dataset.buildTool === s.buildTool,
+    );
   }
 
   private makeItemTile(f: FurnitureDef): HTMLElement {
@@ -274,6 +304,7 @@ export class BuildCatalog {
       (this.state.selectedBuildItem === f.id ? " is-active" : "") +
       (unlocked ? "" : " is-locked");
     btn.dataset.cat = f.category;
+    btn.dataset.buildItem = f.id;
     btn.innerHTML = `
       <span class="ll-build-item-swatch" style="--swatch:${hexColor(f.color)}"></span>
       <strong>${escapeHtml(f.name)}</strong>
@@ -292,6 +323,7 @@ export class BuildCatalog {
     btn.addEventListener("focus", showTip);
     btn.addEventListener("mouseleave", () => this.hideTip());
     btn.addEventListener("blur", () => this.hideTip());
+    this.keys.attachHover(btn);
 
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -389,6 +421,7 @@ export class BuildCatalog {
   }
 
   destroy() {
+    this.keys.unbind();
     this.hideTip(true);
     this.preview.dispose();
     this.chip.remove();

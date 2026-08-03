@@ -31,8 +31,12 @@ import { AMBIENT_NPCS } from "../data/ambientNpcs";
 import { NPCS, RELATIONSHIP_MAX } from "../data/npcs";
 import { tierFromScore, tierLabel } from "../systems/relationshipTiers";
 import type { InventoryThumbId } from "../mesh/inventoryItems";
+import { MenuKeyboardNav } from "./menuKeyboard";
 
 type StatusTab = "status" | "bag" | "friends" | "jobs" | "tasks" | "pets" | "guide";
+
+const STATUS_OPTION_SELECTOR =
+  ".ll-status-tab, .ll-inv-eat";
 
 const PET_NEED_IDS: PetNeedId[] = ["hunger", "energy", "fun", "bond"];
 const PET_NEED_LABELS: Record<PetNeedId, string> = {
@@ -72,6 +76,14 @@ export class PlayerStatusModal {
   private highlightQuestId: string | null = null;
   private highlightUntil = 0;
   private highlightScrollPending = false;
+  private keys = new MenuKeyboardNav({
+    isOpen: () => this.visible,
+    getButtons: () =>
+      Array.from(
+        this.el.querySelectorAll<HTMLButtonElement>(STATUS_OPTION_SELECTOR),
+      ),
+    onEscape: () => this.close(),
+  });
 
   constructor(parent: HTMLElement, state: GameState) {
     this.state = state;
@@ -115,11 +127,13 @@ export class PlayerStatusModal {
       this.highlightScrollPending = true;
     }
     this.rebuild();
+    this.keys.bind();
     Audio.sfx("ui");
   }
 
   close() {
     if (!this.visible) return;
+    this.keys.unbind();
     this.visible = false;
     this.el.hidden = true;
     this.clearHighlight();
@@ -152,7 +166,7 @@ export class PlayerStatusModal {
     this.rebuild();
   }
 
-  private rebuild() {
+  private rebuild(prefer?: (btn: HTMLButtonElement) => boolean) {
     const s = this.state;
     const mood = Math.round(moodFromNeeds(s.needs));
     const cozy = computeCozyScore(s.furniture);
@@ -190,16 +204,17 @@ export class PlayerStatusModal {
       });
     }
 
-    for (const tabBtn of this.el.querySelectorAll("[data-tab]")) {
+    for (const tabBtn of this.el.querySelectorAll<HTMLButtonElement>("[data-tab]")) {
       tabBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const id = (tabBtn as HTMLElement).dataset.tab as StatusTab;
+        const id = tabBtn.dataset.tab as StatusTab;
         if (!id || id === this.tab) return;
         this.tab = id;
         if (id !== "tasks") this.clearHighlight();
         Audio.sfx("ui");
-        this.rebuild();
+        this.rebuild((btn) => btn.dataset.tab === id);
       });
+      this.keys.attachHover(tabBtn);
     }
 
     const body = this.el.querySelector("[data-status-body]")!;
@@ -221,6 +236,7 @@ export class PlayerStatusModal {
       this.scrollHighlightIntoView(body);
     }
     this.syncPortrait();
+    this.keys.reset(prefer, (btn) => btn.dataset.tab === this.tab);
   }
 
   private mountFriendFaces(root: ParentNode) {
@@ -278,12 +294,13 @@ export class PlayerStatusModal {
   }
 
   private bindBagActions(root: ParentNode) {
-    for (const btn of root.querySelectorAll("[data-eat-mat]")) {
+    for (const btn of root.querySelectorAll<HTMLButtonElement>("[data-eat-mat]")) {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const id = (btn as HTMLElement).dataset.eatMat as MaterialId;
+        const id = btn.dataset.eatMat as MaterialId;
         this.eatFromBag(id);
       });
+      this.keys.attachHover(btn);
     }
   }
 
@@ -306,7 +323,7 @@ export class PlayerStatusModal {
       `Ate ${mat?.name ?? id} · +${hunger} Hunger.${toastExtra}`,
       2400,
     );
-    this.rebuild();
+    this.rebuild((btn) => btn.dataset.eatMat === id);
   }
 
   private renderStatus(mood: number, cozy: number): string {
@@ -578,6 +595,7 @@ export class PlayerStatusModal {
   }
 
   destroy() {
+    this.keys.unbind();
     this.el.remove();
   }
 }

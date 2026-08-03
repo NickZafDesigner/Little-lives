@@ -3,6 +3,12 @@
 export const MORNING_TIME = 8 / 24; // 8:00 AM wake time
 export const EVENING_START = 18 / 24; // 6 PM
 export const NIGHT_START = 21 / 24; // 9 PM
+/** Deep golden hour for Pier Sunset scrub (~6:43 PM). */
+export const SUNSET_GOLDEN = 0.78;
+/** Warmest dusk lighting (~7:41 PM). */
+export const SUNSET_DEEP = 0.82;
+/** Past this, pier glow is gone (~9:07 PM). */
+export const SUNSET_GONE = 0.88;
 
 export interface DailyStats {
   moneyEarned: number;
@@ -101,7 +107,7 @@ export const WEEKLY_BEATS: WeeklyBeat[] = [
     title: "Pier Sunset",
     place: "Sunny Pier",
     lotId: "pier",
-    blurb: "Tuesday glow over the water - join the pier hangout!",
+    blurb: "Watch the Tuesday glow over the water.",
     fun: 22,
     social: 16,
   },

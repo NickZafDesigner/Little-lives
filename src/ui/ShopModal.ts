@@ -9,8 +9,12 @@ import {
 import { Audio } from "../audio/AudioManager";
 import { paintInventoryThumb } from "./FurniturePreview";
 import type { InventoryThumbId } from "../mesh/inventoryItems";
+import { MenuKeyboardNav } from "./menuKeyboard";
 
 export type ShopMode = "buy_tools" | "sell_materials";
+
+const SHOP_OPTION_SELECTOR =
+  ".ll-shop-btn:not(:disabled), [data-sell-all]";
 
 function escapeHtml(s: string): string {
   return s
@@ -27,6 +31,14 @@ export class ShopModal {
   private title = "";
   private onChange: () => void;
   private onBuyTool: ((id: ToolId) => void) | null;
+  private keys = new MenuKeyboardNav({
+    isOpen: () => this.visible,
+    getButtons: () =>
+      Array.from(
+        this.el.querySelectorAll<HTMLButtonElement>(SHOP_OPTION_SELECTOR),
+      ),
+    onEscape: () => this.close(),
+  });
 
   constructor(
     parent: HTMLElement,
@@ -62,23 +74,27 @@ export class ShopModal {
     this.visible = true;
     this.el.hidden = false;
     this.rebuild();
+    this.keys.bind();
     Audio.sfx("ui");
   }
 
   close() {
     if (!this.visible) return;
+    this.keys.unbind();
     this.visible = false;
     this.el.hidden = true;
     Audio.sfx("ui");
   }
 
   destroy() {
+    this.keys.unbind();
     this.el.remove();
   }
 
-  private rebuild() {
+  private rebuild(prefer?: (btn: HTMLButtonElement) => boolean) {
     if (this.mode === "buy_tools") this.rebuildBuy();
     else this.rebuildSell();
+    this.keys.reset(prefer);
   }
 
   private rebuildBuy() {
@@ -118,12 +134,13 @@ export class ShopModal {
     `;
     this.bindChrome();
     this.mountInventoryThumbs();
-    for (const btn of this.el.querySelectorAll("[data-buy-tool]")) {
+    for (const btn of this.el.querySelectorAll<HTMLButtonElement>("[data-buy-tool]")) {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const id = (btn as HTMLElement).dataset.buyTool as ToolId;
+        const id = btn.dataset.buyTool as ToolId;
         this.buyTool(id);
       });
+      if (!btn.disabled) this.keys.attachHover(btn);
     }
   }
 
@@ -182,18 +199,20 @@ export class ShopModal {
     `;
     this.bindChrome();
     this.mountInventoryThumbs();
-    for (const btn of this.el.querySelectorAll("[data-sell-mat]")) {
+    for (const btn of this.el.querySelectorAll<HTMLButtonElement>("[data-sell-mat]")) {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const id = (btn as HTMLElement).dataset.sellMat as MaterialId;
+        const id = btn.dataset.sellMat as MaterialId;
         this.sellMaterial(id);
       });
+      this.keys.attachHover(btn);
     }
-    const sellAll = this.el.querySelector("[data-sell-all]");
+    const sellAll = this.el.querySelector<HTMLButtonElement>("[data-sell-all]");
     sellAll?.addEventListener("click", (e) => {
       e.stopPropagation();
       this.sellEverything();
     });
+    if (sellAll) this.keys.attachHover(sellAll);
   }
 
   private bindChrome() {
@@ -230,7 +249,7 @@ export class ShopModal {
     if (this.state.money < def.price) {
       this.state.showToast(`Need $${def.price} for a ${def.name}.`);
       Audio.sfx("ui");
-      this.rebuild();
+      this.rebuild((btn) => btn.dataset.buyTool === id);
       return;
     }
     this.state.money -= def.price;

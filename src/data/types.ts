@@ -237,6 +237,16 @@ export interface SaveData {
   weeklyBeatDay: number;
   /** dayIndex when a shift was last completed (−1 = never). */
   lastShiftDay?: number;
+  /** Consecutive late / no-show days (resets after an on-time shift). */
+  workMissStreak?: number;
+  /** dayIndex when the last late/no-show was recorded (−1 = never). */
+  lastWorkMissDay?: number;
+  /** Boss wants to warn or fire the player after a work miss. */
+  pendingBossTalk?: null | {
+    jobId: string;
+    kind: "warn" | "fire";
+    reason?: "late" | "no_show";
+  };
   lastPetCareDay: number;
   petCareStreak: number;
   /** Permanent tools + stackable materials. */
