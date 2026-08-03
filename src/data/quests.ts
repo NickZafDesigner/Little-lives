@@ -49,7 +49,10 @@ export type QuestEvent =
   | "delivered_crumb_snack"
   | "sprocket_ask_scrap"
   | "gathered_wood"
-  | "delivered_sprocket_scrap";
+  | "delivered_sprocket_scrap"
+  | "jun_ask_favor"
+  | "watered_cafe_plant"
+  | "jun_favor_done";
 
 export interface QuestStepDef {
   id: string;
@@ -347,6 +350,39 @@ export const QUESTS: QuestDef[] = [
     rewards: { money: 30 },
   },
   {
+    id: "jun_favor",
+    title: "Café Favor",
+    journalLine: "Jun asked me to water the café plant - easy favor.",
+    side: true,
+    offerNpcId: "jun",
+    offerPitch: [
+      "Hey! Before the rush - could you water the plant by the service counter? It looks thirsty.",
+    ],
+    requires: ["empty_nest"],
+    steps: [
+      {
+        id: "ask",
+        event: "jun_ask_favor",
+        objectiveLabel: "Talk to Jun about a café favor",
+      },
+      {
+        id: "water",
+        event: "watered_cafe_plant",
+        objectiveLabel: "Water the plant in the café",
+      },
+      {
+        id: "report",
+        event: "jun_favor_done",
+        objectiveLabel: "Tell Jun the plant's happy",
+      },
+    ],
+    rewards: {
+      money: 15,
+      friendshipNpcId: "jun",
+      friendshipDelta: 12,
+    },
+  },
+  {
     id: "mabel_cookies",
     title: "Mabel's Flowers",
     journalLine: "Mabel wants wildflowers from the park for her baking table.",
@@ -355,7 +391,6 @@ export const QUESTS: QuestDef[] = [
     offerPitch: [
       "Oh! If you've got a minute - could you pick wildflowers at the park for my baking table?",
     ],
-    unlockWhen: { hiredAtCafe: true },
     requires: ["get_a_job"],
     steps: [
       {
@@ -389,7 +424,6 @@ export const QUESTS: QuestDef[] = [
     offerPitch: [
       "Hey - litter near the benches is getting wild. Two bags and we're golden!",
     ],
-    unlockWhen: { hiredAtCafe: true },
     requires: ["get_a_job"],
     steps: [
       {
@@ -566,7 +600,7 @@ export const QUESTS: QuestDef[] = [
     offerPitch: [
       "Crisis: Gordon is missing. Left shoe. Last seen near Town Park. Can you help?",
     ],
-    requires: ["settled_in"],
+    requires: ["first_paycheck"],
     steps: [
       {
         id: "ask",
@@ -599,7 +633,7 @@ export const QUESTS: QuestDef[] = [
     offerPitch: [
       "My stomach filed a formal complaint. Vera sells snacks - eight bucks? Pretty please?",
     ],
-    requires: ["second_gig"],
+    requires: ["first_paycheck"],
     steps: [
       {
         id: "ask",

@@ -45,8 +45,8 @@ export const NPCS: NpcDef[] = [
     color: Palette.lavender,
     homeLot: "library",
     traits: ["Quiet", "Bookish"],
-    spawnTx: 79,
-    spawnTy: 38,
+    spawnTx: 77,
+    spawnTy: 36,
   },
   {
     id: "sage",

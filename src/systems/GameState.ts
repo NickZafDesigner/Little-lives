@@ -594,7 +594,8 @@ export class GameState {
    */
   ensureWorkplaceFurniture() {
     const byUid = new Map(this.furniture.map((f) => [f.uid, f]));
-    for (const lotId of [
+    const keepUids = new Set<string>();
+    const workplaceLots = [
       "neighbor",
       "cafe",
       "shelter",
@@ -602,8 +603,10 @@ export class GameState {
       "library",
       "clinic",
       "workshop",
-    ] as const) {
+    ] as const;
+    for (const lotId of workplaceLots) {
       for (const piece of interiorFurniture(lotId)) {
+        keepUids.add(piece.uid);
         const existing = byUid.get(piece.uid);
         if (existing) {
           existing.tx = piece.tx;
@@ -627,6 +630,11 @@ export class GameState {
         }
       }
     }
+    // Drop retired authored pieces so old door-blockers don't linger on save load.
+    const workplace = new Set<string>(workplaceLots);
+    this.furniture = this.furniture.filter(
+      (f) => !workplace.has(f.lotId) || keepUids.has(f.uid),
+    );
   }
 
   showToast(msg: string, ms = 2200) {

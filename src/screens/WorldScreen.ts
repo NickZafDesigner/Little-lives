@@ -2975,14 +2975,28 @@ export function createWorldScreen(
     for (const i of def.interactions) {
       const needsPet = petItems.has(furn.defId) && Boolean(i.petNeedDeltas);
       const blocked = needsPet && !state.adoptedPet;
-      const sleepLabel =
-        i.id === "sleep" ? "Sleep (wake at 8 AM)" : i.label;
-      const watchSub = i.id === "watch" ? "Pick a show" : describeDeltas(i.needDeltas);
+      const waterFavor =
+        i.id === "admire" &&
+        furn.defId === "plant" &&
+        furn.lotId === "cafe" &&
+        quests.isActive("jun_favor") &&
+        quests.currentStepId("jun_favor") === "water";
+      const sleepLabel = waterFavor
+        ? "Water plant"
+        : i.id === "sleep"
+          ? "Sleep (wake at 8 AM)"
+          : i.label;
+      const watchSub = waterFavor
+        ? "Jun's café favor"
+        : i.id === "watch"
+          ? "Pick a show"
+          : describeDeltas(i.needDeltas);
       options.push({
         id: i.id,
         label: sleepLabel,
         sub: blocked ? "Adopt a pet first" : watchSub,
         disabled: blocked,
+        ...(waterFavor ? { accent: "quest" as const } : {}),
       });
     }
 
@@ -3197,7 +3211,18 @@ export function createWorldScreen(
           if (interaction.moneyDelta > 0) Audio.sfx("coin");
         }
         Audio.sfx("success");
-        think(mod.toast ?? `${interaction.label} — that's better!`, 3200);
+        if (
+          interaction.id === "admire" &&
+          furn.defId === "plant" &&
+          furn.lotId === "cafe" &&
+          quests.isActive("jun_favor") &&
+          quests.currentStepId("jun_favor") === "water"
+        ) {
+          quests.emit("watered_cafe_plant");
+          think("Plant watered — better tell Jun.", 3600);
+        } else {
+          think(mod.toast ?? `${interaction.label} — that's better!`, 3200);
+        }
         if (
           interaction.petNeedDeltas &&
           (interaction.id === "pet_rest" ||
@@ -3839,6 +3864,25 @@ export function createWorldScreen(
       }
     }
 
+    if (def.id === "jun" && quests.isActive("jun_favor")) {
+      const step = quests.currentStepId("jun_favor");
+      if (step === "ask") {
+        options.push({
+          id: "jun_ask",
+          label: "Offer to help",
+          sub: "Café favor?",
+          accent: "quest",
+        });
+      } else if (step === "report") {
+        options.push({
+          id: "jun_report",
+          label: "Plant's watered",
+          sub: "Report back to Jun",
+          accent: "quest",
+        });
+      }
+    }
+
     if (def.id === "jun" && quests.isActive("reed_planks")) {
       const step = quests.currentStepId("reed_planks");
       if (step === "deliver") {
@@ -4212,6 +4256,34 @@ export function createWorldScreen(
               "Could you pick wildflowers at the park for my baking table?",
             );
             quests.emit("mabel_ask_flowers");
+          });
+          return;
+        }
+        if (id === "jun_ask") {
+          Audio.sfx("talk");
+          state.startBusy("Chatting with Jun", 1000);
+          delayed(1000, () => {
+            Audio.sfx("chime");
+            state.showDialogue(
+              "jun",
+              "Jun",
+              "Perfect — water the plant by the service counter, then come tell me how it's looking.",
+            );
+            quests.emit("jun_ask_favor");
+          });
+          return;
+        }
+        if (id === "jun_report") {
+          Audio.sfx("talk");
+          state.startBusy("Reporting back", 900);
+          delayed(900, () => {
+            Audio.sfx("success");
+            state.showDialogue(
+              "jun",
+              "Jun",
+              "Look at that leaf shine! You're a natural. Thanks.",
+            );
+            quests.emit("jun_favor_done");
           });
           return;
         }

@@ -198,7 +198,8 @@ const MARKET: LotInterior = {
 
 /**
  * Library (12×10): wall-to-wall stacks, desk north, reading nook south.
- * Job stations l_desk / l_table stay put. Doorway cols 5–6 at row 4 clear.
+ * Job stations l_desk / l_table stay put.
+ * Keep exterior door col 6 clear (tiles 6,5–6,8) and divider doors at row 4.
  */
 const LIBRARY: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
@@ -216,25 +217,25 @@ const LIBRARY: LotInterior = {
     { defId: "wall_art", rx: 1, ry: 2, uid: "l_art_n" },
     { defId: "storybook", rx: 4, ry: 2, uid: "l_stack2" },
     { defId: "plant", rx: 10, ry: 2, uid: "l_plant_n" },
-    // Reading room - shelves wrap the walls.
+    // Reading room - shelves wrap the walls; door aisle (col 6) stays open.
     { defId: "bookshelf", rx: 1, ry: 5, uid: "l_shelf_w1", rot: "right" },
     { defId: "bookshelf", rx: 1, ry: 6, uid: "l_shelf_w2", rot: "right" },
     { defId: "bookshelf", rx: 1, ry: 7, uid: "l_shelf_w3", rot: "right" },
     { defId: "table", rx: 2, ry: 6, uid: "l_table" },
     { defId: "storybook", rx: 4, ry: 6, uid: "l_stack" },
     { defId: "storybook", rx: 4, ry: 7, uid: "l_stack3" },
-    { defId: "writing_desk", rx: 6, ry: 6, uid: "l_write", rot: "down" },
-    { defId: "reading_lamp", rx: 6, ry: 5, uid: "l_lamp" },
-    { defId: "lounge_chair", rx: 8, ry: 6, uid: "l_chair", rot: "left" },
+    { defId: "writing_desk", rx: 7, ry: 6, uid: "l_write", rot: "down" },
+    { defId: "reading_lamp", rx: 7, ry: 5, uid: "l_lamp" },
+    { defId: "lounge_chair", rx: 9, ry: 6, uid: "l_chair", rot: "left" },
     { defId: "bookshelf", rx: 10, ry: 5, uid: "l_shelf_e1", rot: "left" },
     { defId: "bookshelf", rx: 10, ry: 6, uid: "l_shelf_e2", rot: "left" },
     { defId: "bookshelf", rx: 10, ry: 7, uid: "l_shelf_e3", rot: "left" },
     { defId: "grand_bookshelf", rx: 2, ry: 8, uid: "l_grand_s", rot: "up" },
     { defId: "bookshelf", rx: 4, ry: 8, uid: "l_shelf_s1", rot: "up" },
-    { defId: "puzzle_table", rx: 6, ry: 8, uid: "l_puzzle", rot: "up" },
+    // East reading nook — do not place blocking pieces on door col 6.
+    { defId: "puzzle_table", rx: 8, ry: 7, uid: "l_puzzle", rot: "up" },
     { defId: "bean_bag", rx: 8, ry: 8, uid: "l_bean" },
     { defId: "floor_cushion", rx: 9, ry: 8, uid: "l_cushion" },
-    { defId: "floor_cushion", rx: 9, ry: 7, uid: "l_cushion2" },
     { defId: "plant", rx: 3, ry: 5, uid: "l_plant" },
     { defId: "fern", rx: 8, ry: 5, uid: "l_fern" },
     { defId: "telescope", rx: 10, ry: 8, uid: "l_scope", rot: "up" },
@@ -292,8 +293,9 @@ const WORKSHOP: LotInterior = {
     { defId: "table", rx: 2, ry: 6, uid: "w_table" },
     { defId: "sewing_machine", rx: 2, ry: 6, uid: "w_sew", parentUid: "w_table" },
     { defId: "lantern", rx: 3, ry: 6, uid: "w_bench_light", parentUid: "w_table" },
-    { defId: "craft_table", rx: 5, ry: 6, uid: "w_craft", rot: "down" },
-    { defId: "radio", rx: 5, ry: 6, uid: "w_radio", parentUid: "w_craft" },
+    // Keep door col 6 clear — craft table sits west of the aisle.
+    { defId: "craft_table", rx: 4, ry: 6, uid: "w_craft", rot: "down" },
+    { defId: "radio", rx: 4, ry: 6, uid: "w_radio", parentUid: "w_craft" },
     { defId: "pottery_wheel", rx: 8, ry: 6, uid: "w_pottery" },
     { defId: "kitchen_cart", rx: 10, ry: 6, uid: "w_cart" },
     { defId: "kettle", rx: 10, ry: 6, uid: "w_tea", parentUid: "w_cart" },
