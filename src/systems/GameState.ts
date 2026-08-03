@@ -332,6 +332,8 @@ export class GameState {
   porchDrops: PorchDrop[] = [];
   /** Roommate id → dayIndex when last sent on a harvest errand. */
   roommateErrandDay: Record<string, number> = {};
+  /** NPC id → dayIndex when last gifted (one gift per person per day). */
+  npcGiftDay: Record<string, number> = {};
   /** One-shot story beats (axe purchase, first flower, …). */
   storyFlags: Record<string, boolean> = {};
   /** First-visit toasts for forest / mine. */
@@ -441,6 +443,15 @@ export class GameState {
     this.roommateErrandDay[id] = this.dayIndex;
   }
 
+  /** True if this NPC hasn't received a gift yet today. */
+  canGiftNpc(id: string): boolean {
+    return this.npcGiftDay[id] !== this.dayIndex;
+  }
+
+  markNpcGifted(id: string) {
+    this.npcGiftDay[id] = this.dayIndex;
+  }
+
   addPorchDrop(drop: Omit<PorchDrop, "uid">): PorchDrop {
     const full: PorchDrop = {
       ...drop,
@@ -545,6 +556,8 @@ export class GameState {
           existing.rot = piece.rot ?? "down";
           existing.defId = piece.defId;
           existing.lotId = piece.lotId;
+          if (piece.parentUid) existing.parentUid = piece.parentUid;
+          else delete existing.parentUid;
         } else {
           this.furniture.push({
             uid: piece.uid,
@@ -553,6 +566,7 @@ export class GameState {
             ty: piece.ty,
             lotId: piece.lotId,
             rot: piece.rot,
+            ...(piece.parentUid ? { parentUid: piece.parentUid } : {}),
           });
           byUid.set(piece.uid, this.furniture[this.furniture.length - 1]);
         }
@@ -702,6 +716,7 @@ export class GameState {
       flowerDepleted: { ...this.flowerDepleted },
       roommates: [...this.roommates],
       porchDrops: this.porchDrops.map((d) => ({ ...d })),
+      npcGiftDay: { ...this.npcGiftDay },
       storyFlags: { ...this.storyFlags },
       player: {
         x: this.playerX,
@@ -807,6 +822,7 @@ export class GameState {
     );
     this.porchDrops = (data.porchDrops ?? []).map((d) => ({ ...d }));
     this.roommateErrandDay = {};
+    this.npcGiftDay = { ...(data.npcGiftDay ?? {}) };
     this.storyFlags = { ...(data.storyFlags ?? {}) };
     this.playerName = data.player.name;
     const fallback = defaultPlayerProfile();

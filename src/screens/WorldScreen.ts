@@ -653,12 +653,18 @@ export function createWorldScreen(
 
   /** Remove from bag, show handoff card + world arc, then resolve thanks. */
   const giveBagGift = (npcId: string, itemId: MaterialId) => {
+    if (!state.canGiftNpc(npcId)) {
+      Audio.sfx("deny");
+      think("I already gave them a gift today…");
+      return;
+    }
     const gift = BAG_GIFTS.find((g) => g.itemId === itemId);
     if (!gift || !state.removeMaterial(itemId, 1)) {
       Audio.sfx("deny");
       think("I don't have that anymore…");
       return;
     }
+    state.markNpcGifted(npcId);
 
     holdNpcStill(npcId);
     const npc = npcs.find((n) => n.id === npcId);
@@ -715,6 +721,11 @@ export function createWorldScreen(
     y: number,
     onCancel: () => void,
   ) => {
+    if (!state.canGiftNpc(npcId)) {
+      Audio.sfx("deny");
+      think("I already gave them a gift today…");
+      return;
+    }
     const owned = ownedBagGifts();
     if (!owned.length) {
       Audio.sfx("deny");
@@ -785,10 +796,14 @@ export function createWorldScreen(
       },
     ];
     if (owned.length > 0) {
+      const canGift = state.canGiftNpc(def.id);
       options.push({
         id: "gift_bag",
         label: "Gift from bag",
-        sub: owned.map((g) => materialById[g.itemId]?.name ?? g.itemId).join(" · "),
+        sub: canGift
+          ? owned.map((g) => materialById[g.itemId]?.name ?? g.itemId).join(" · ")
+          : "Already gifted today",
+        disabled: !canGift,
       });
     }
     menu.show(
@@ -3430,10 +3445,28 @@ export function createWorldScreen(
       if (a.id === "gift_bag") {
         const owned = ownedBagGifts();
         if (owned.length === 0) continue;
+        const canGift = state.canGiftNpc(npcId);
         options.push({
           id: a.id,
           label: a.label,
-          sub: owned.map((g) => materialById[g.itemId]?.name ?? g.itemId).join(" · "),
+          sub: canGift
+            ? owned.map((g) => materialById[g.itemId]?.name ?? g.itemId).join(" · ")
+            : "Already gifted today",
+          disabled: !canGift,
+        });
+        continue;
+      }
+      if (a.id === "gift") {
+        const canGift = state.canGiftNpc(npcId);
+        options.push({
+          id: a.id,
+          label: a.label,
+          sub: !canGift
+            ? "Already gifted today"
+            : tooPoor
+              ? "Not enough money"
+              : `+${a.delta} friendship`,
+          disabled: !canGift || tooPoor || locked || tired,
         });
         continue;
       }
@@ -3951,11 +3984,19 @@ export function createWorldScreen(
           );
           return;
         }
+        if (action.id === "gift") {
+          if (!state.canGiftNpc(npcId)) {
+            Audio.sfx("deny");
+            think("I already gave them a gift today…");
+            return;
+          }
+        }
         const cost = "cost" in action ? action.cost : undefined;
         if (cost !== undefined) {
           if (state.money < cost) return;
           state.money -= cost;
         }
+        if (action.id === "gift") state.markNpcGifted(npcId);
         holdNpcStill(npcId);
         Audio.sfx(action.id === "gift" ? "cash" : "talk");
         if (action.id === "gift") {
@@ -5086,12 +5127,18 @@ export function createWorldScreen(
         ...AMBIENT_NPCS.map((def) => {
           const actor = createActor(def.look);
           actor.root.userData.npcId = def.id;
-          const stand = snapNpcStand(def.spawnTx, def.spawnTy);
-          const x = stand.x * TILE + TILE / 2;
-          const z = stand.y * TILE + TILE / 2;
+          const seated = def.pose === "sit";
+          const tile = seated
+            ? { x: def.spawnTx, y: def.spawnTy }
+            : snapNpcStand(def.spawnTx, def.spawnTy);
+          const x = tile.x * TILE + TILE / 2;
+          const z = tile.y * TILE + TILE / 2;
           actor.setPosition(x, z);
           actor.setFacing(def.facing);
           actor.setWalking(false);
+          if (seated) {
+            actor.setPose("sit", { sitStyle: def.sitStyle ?? "couch" });
+          }
           app.renderer.add(actor.root);
           return {
             id: def.id,

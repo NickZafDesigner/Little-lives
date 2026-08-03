@@ -249,6 +249,8 @@ export interface SaveData {
   roommates?: string[];
   /** Gathered goods left on the home porch for pickup. */
   porchDrops?: PorchDrop[];
+  /** NPC id → dayIndex when last gifted (one gift per person per day). */
+  npcGiftDay?: Record<string, number>;
   /** One-shot tutorial / discovery thoughts. */
   storyFlags?: Record<string, boolean>;
   player: {
