@@ -161,6 +161,7 @@ import { TvViewer, TV_FULL_WATCH_MS } from "../ui/TvViewer";
 import { TV_SHOWS, type TvShowId } from "../data/tvShows";
 import { ConfettiBurst } from "../ui/ConfettiBurst";
 import { PayCelebration } from "../ui/PayCelebration";
+import { MomentCelebration } from "../ui/MomentCelebration";
 import { GiftHandoffCard } from "../ui/GiftHandoffCard";
 import {
   StoryPrologue,
@@ -258,6 +259,8 @@ export function createWorldScreen(
   } | null = null;
   /** Restore walk position after seated / play activities. */
   let activityRestore: { x: number; z: number; dir: Dir } | null = null;
+  /** One-shot slide/swing ride after a playground mini resolves. */
+  let playRideRaf = 0;
   let wallMeshes = new Map<string, THREE.Mesh>();
   let floorMeshes = new Map<string, THREE.Mesh>();
   let uidCounter = 1000;
@@ -271,7 +274,7 @@ export function createWorldScreen(
   /** Target currently advertised by the proximity tip (for tip clicks). */
   let tipTarget: Target | null = null;
   let timeMontage!: TimeMontage;
-  /** In-world dayTime lerp (Pier Sunset) — no montage overlay. */
+  /** In-world dayTime lerp (Pier Sunset) - no montage overlay. */
   let timeScrub: {
     from: number;
     to: number;
@@ -284,6 +287,7 @@ export function createWorldScreen(
   let tvViewer!: TvViewer;
   let confetti!: ConfettiBurst;
   let payCelebration!: PayCelebration;
+  let momentCelebration!: MomentCelebration;
   let giftHandoff!: GiftHandoffCard;
   let storyPrologue!: StoryPrologue;
   /** NPC under the cursor in live mode (for name tooltips). */
@@ -318,6 +322,8 @@ export function createWorldScreen(
   let introPostBounceT = 0;
   let introBounced = false;
   let introSpoke = false;
+  /** Feet-hit-floor SFX after the bed hop. */
+  let introLanded = false;
   let unMute: (() => void) | null = null;
   let autosaveTimer = 0;
   let lastDialogueSeq = 0;
@@ -1941,7 +1947,15 @@ export function createWorldScreen(
     return "couch";
   };
 
+  const cancelPlayRide = () => {
+    if (playRideRaf) {
+      cancelAnimationFrame(playRideRaf);
+      playRideRaf = 0;
+    }
+  };
+
   const endActivityPose = () => {
+    cancelPlayRide();
     player.setPoseMotion(null);
     player.setPose("stand");
     player.setWalking(false);
@@ -2029,7 +2043,7 @@ export function createWorldScreen(
       player.setPose("stand");
       player.playToolSwing("fishing_rod", 24);
     } else {
-      // Tune / arcade — stay near the prop with a light bob.
+      // Tune / arcade - stay near the prop with a light bob.
       playerX = cx;
       playerZ = cz;
       player.setPosition(playerX, playerZ);
@@ -2079,6 +2093,66 @@ export function createWorldScreen(
     }
   };
 
+  /** One-shot slide down after the timing mini resolves (not during the looping meter). */
+  const playSlideRideOnce = (
+    furn: PlacedFurniture,
+    durationMs: number,
+    done: () => void,
+  ) => {
+    cancelPlayRide();
+    beginPlayPose("slide", furn);
+    const start = performance.now();
+    const step = (now: number) => {
+      const u = Math.min(1, (now - start) / durationMs);
+      const eased = u * u * (3 - 2 * u);
+      syncPlayPose(furn, {
+        kind: "slide",
+        angle: 0,
+        height: 1,
+        marker: eased,
+      });
+      if (u < 1) {
+        playRideRaf = requestAnimationFrame(step);
+      } else {
+        playRideRaf = 0;
+        done();
+      }
+    };
+    playRideRaf = requestAnimationFrame(step);
+  };
+
+  /** One swing arc after the pump mini resolves. */
+  const playSwingRideOnce = (
+    furn: PlacedFurniture,
+    height: number,
+    durationMs: number,
+    done: () => void,
+  ) => {
+    cancelPlayRide();
+    beginPlayPose("swing", furn);
+    const start = performance.now();
+    const step = (now: number) => {
+      const u = Math.min(1, (now - start) / durationMs);
+      // One full period that settles back to rest.
+      const decay = 1 - u * 0.25;
+      const angle = Math.sin(u * Math.PI * 2) * decay;
+      syncPlayPose(furn, {
+        kind: "swing",
+        angle,
+        height,
+        marker: 0,
+      });
+      if (u < 1) {
+        playRideRaf = requestAnimationFrame(step);
+      } else {
+        playRideRaf = 0;
+        player.setPoseMotion(null);
+        done();
+      }
+    };
+    playRideRaf = requestAnimationFrame(step);
+  };
+
   const pinTaskArrow = (job: JobDef) => {
     const task = job.tasks[state.jobTasksDone];
     if (!task) {
@@ -2099,6 +2173,71 @@ export function createWorldScreen(
   /** Multi-beat character thought (auto-advances). */
   const thinkSeq = (lines: string[], msPerBeat = 2800) => {
     thoughtBubble?.showSequence(lines, msPerBeat);
+  };
+
+  /** Big centered banner + confetti for tools, pets, promotions, and similar milestones. */
+  const celebrateKeyItem = (opts: {
+    eyebrow: string;
+    title: string;
+    note?: string;
+    badge?: string;
+    thumbId?: import("../mesh/inventoryItems").InventoryThumbId;
+    accent?: "gold" | "mint" | "rose";
+    confetti?: "soft" | "big" | "huge";
+    palette?: "party" | "gold";
+    sfx?: "success" | "chime" | "adopt" | "cash";
+    durationMs?: number;
+    onDone?: () => void;
+  }) => {
+    Audio.sfx(opts.sfx ?? "success");
+    confetti.burst(opts.confetti ?? "big", undefined, opts.palette ?? "party");
+    hud?.pulseAvatar();
+    momentCelebration.show({
+      eyebrow: opts.eyebrow,
+      title: opts.title,
+      note: opts.note,
+      badge: opts.badge,
+      thumbId: opts.thumbId,
+      accent: opts.accent ?? "gold",
+      durationMs: opts.durationMs ?? 3400,
+      onDone: opts.onDone,
+    });
+  };
+
+  const celebrateToolPurchase = (toolId: import("../data/items").ToolId) => {
+    const def = toolById[toolId];
+    if (!def) return;
+    hud.closeShop();
+    celebrateKeyItem({
+      eyebrow: "New tool!",
+      title: def.name,
+      note: def.description,
+      thumbId: `tool:${toolId}`,
+      badge: "★",
+      accent: "mint",
+      confetti: "big",
+      palette: "party",
+      sfx: "success",
+      durationMs: 3600,
+      onDone: () => {
+        if (toolId !== "axe") return;
+        if (!state.setStoryFlag("first_axe_buy")) return;
+        thoughtBubble?.showText(
+          "I got an axe! now I can chop some wood and maybe even collect some fruit!",
+          6200,
+        );
+        Audio.sfx("chime");
+        const forest = LOTS.find((l) => l.id === "forest");
+        if (forest) {
+          hintArrow?.showAt(
+            (forest.tx + forest.tw / 2) * TILE,
+            (forest.ty + 2) * TILE,
+            "Whisperwood",
+            8000,
+          );
+        }
+      },
+    });
   };
 
   /** Adjacent walkable tiles the boss can stand on to confront the player. */
@@ -2309,7 +2448,7 @@ export function createWorldScreen(
     const jobId = primaryJobId();
     const job = jobId ? jobById[jobId] : null;
 
-    // Morning commute 8–8:30
+    // Morning commute 8-8:30
     if (
       job &&
       state.lastShiftDay !== state.dayIndex &&
@@ -2515,7 +2654,7 @@ export function createWorldScreen(
     });
   };
 
-  /** Scrub dayTime in-world (sky/sun visible) — no TimeMontage overlay. */
+  /** Scrub dayTime in-world (sky/sun visible) - no TimeMontage overlay. */
   const startInWorldTimeScrub = (
     to: number,
     durationMs: number,
@@ -2569,7 +2708,7 @@ export function createWorldScreen(
       state.needs = applyNeedDeltas(state.needs, { social: beat.social });
       state.needs = { ...state.needs, fun: 100 };
       Audio.sfx("success");
-      think("Pier sunset — full glow. Perfect.", 3600);
+      think("Pier sunset - full glow. Perfect.", 3600);
       aspirations.noteWeeklyBeat();
     });
   };
@@ -2601,14 +2740,24 @@ export function createWorldScreen(
         closeFriendUnlockLine(npcId as ChatNpcId),
       );
     } else if (result.becameBestie) {
-      Audio.sfx("success");
-      hud?.pulseAvatar();
-      confetti.burst("big");
-      state.showDialogue(
-        npcId as NpcId,
-        defName,
-        bestieUnlockLine(npcId as ChatNpcId),
-      );
+      celebrateKeyItem({
+        eyebrow: "Best friends!",
+        title: defName,
+        note: "A forever-friendship kind of day.",
+        badge: "♥",
+        accent: "rose",
+        confetti: "huge",
+        palette: "party",
+        sfx: "success",
+        durationMs: 3600,
+        onDone: () => {
+          state.showDialogue(
+            npcId as NpcId,
+            defName,
+            bestieUnlockLine(npcId as ChatNpcId),
+          );
+        },
+      });
     }
     aspirations.refresh();
     // Relationship already updated - toast only when we just hit the unlock threshold.
@@ -2759,7 +2908,7 @@ export function createWorldScreen(
         quests.emit("park_cleanup");
         const have = quests.stepProgress("pip_pond", "clean");
         if (have >= 2) {
-          think("Park looks great — Pip will be pleased!", 3600);
+          think("Park looks great - Pip will be pleased!", 3600);
         } else {
           think(`Litter bagged (${have}/2). One more spot!`, 3200);
           pointToNearestLitter(PARK_LITTER_SPOTS, "Litter");
@@ -2786,7 +2935,7 @@ export function createWorldScreen(
         quests.emit("pier_cleanup");
         const have = quests.stepProgress("pip_pier", "clean");
         if (have >= 2) {
-          think("Pier's tidy — Pip will be thrilled!", 3600);
+          think("Pier's tidy - Pip will be thrilled!", 3600);
         } else {
           think(`Pier litter bagged (${have}/2). One more!`, 3200);
           pointToNearestLitter(PIER_LITTER_SPOTS, "Litter");
@@ -2802,8 +2951,8 @@ export function createWorldScreen(
 
   const reedDirectionLine = (speakerId: string): string => {
     const lines = [
-      "Reed? Workshop on the far east lane — past Vera's market. Follow the path east and look for sawdust.",
-      "Tool guy is Reed. East side of town, past the market — Reed's Workshop. He sells axes and such.",
+      "Reed? Workshop on the far east lane - past Vera's market. Follow the path east and look for sawdust.",
+      "Tool guy is Reed. East side of town, past the market - Reed's Workshop. He sells axes and such.",
       "Head east along the main lanes. Reed's Workshop is out past the market. Can't miss the wood stacks.",
     ];
     let h = 0;
@@ -2824,7 +2973,7 @@ export function createWorldScreen(
         const article = /^[aeiou]/i.test(tool.name) ? "an" : "a";
         thinkSeq([
           `I need ${article} ${tool.name.toLowerCase()} for that…`,
-          "Reed sells tools — east past the market.",
+          "Reed sells tools - east past the market.",
         ]);
       } else {
         think("I need the right tool for that…");
@@ -3079,7 +3228,7 @@ export function createWorldScreen(
           delayed(1200, () => {
             Audio.sfx("chime");
             quests.emit("shelved_books");
-            think("Returns shelved — Theo will be pleased.", 3200);
+            think("Returns shelved - Theo will be pleased.", 3200);
           });
         },
         { id: "theo" },
@@ -3098,7 +3247,7 @@ export function createWorldScreen(
         }
         if (active.tasks.some((t) => t.furnitureUid === furn.uid)) {
           Audio.sfx("deny");
-          think("Not that one — follow the arrow.");
+          think("Not that one - follow the arrow.");
           pinTaskArrow(active);
           return;
         }
@@ -3208,7 +3357,7 @@ export function createWorldScreen(
             social: beat.social,
           });
           Audio.sfx("success");
-          think(`${beat.title} — lovely!`, 3200);
+          think(`${beat.title} - lovely!`, 3200);
           aspirations.noteWeeklyBeat();
         });
         return;
@@ -3220,7 +3369,7 @@ export function createWorldScreen(
           state.addMaterial("flower", 2);
           Audio.sfx("success");
           confetti.burst("soft");
-          think("A little park bouquet — perfect for someone.", 3200);
+          think("A little park bouquet - perfect for someone.", 3200);
           quests.emit("picked_flowers");
           if (state.setStoryFlag("first_flower_pick")) {
             delayed(400, () => {
@@ -3323,7 +3472,7 @@ export function createWorldScreen(
           const bonus = sleepEnergyBonus(state.playerTraits, state.dayTime);
           if (bonus) mod.deltas.energy = (mod.deltas.energy ?? 0) + Math.floor(bonus / 2);
           if (nightBlocksLeisure()) {
-            think("A nap won't advance the day — use Sleep for morning.");
+            think("A nap won't advance the day - use Sleep for morning.");
           }
         }
         state.needs = applyNeedDeltas(state.needs, mod.deltas);
@@ -3371,9 +3520,9 @@ export function createWorldScreen(
           quests.currentStepId("jun_favor") === "water"
         ) {
           quests.emit("watered_cafe_plant");
-          think("Plant watered — better tell Jun.", 3600);
+          think("Plant watered - better tell Jun.", 3600);
         } else {
-          think(mod.toast ?? `${interaction.label} — that's better!`, 3200);
+          think(mod.toast ?? `${interaction.label} - that's better!`, 3200);
         }
         if (
           interaction.petNeedDeltas &&
@@ -3484,7 +3633,17 @@ export function createWorldScreen(
                   boss?.name ?? "Boss",
                   promo.bossLine,
                 );
-                state.showToast(`Promoted to ${promo.title}!`, 3000);
+                celebrateKeyItem({
+                  eyebrow: "Promoted!",
+                  title: promo.title,
+                  note: `New rank at ${lotNameForJob(job.id)}`,
+                  badge: "★",
+                  accent: "gold",
+                  confetti: "huge",
+                  palette: "gold",
+                  sfx: "chime",
+                  durationMs: 3800,
+                });
               }
             }
 
@@ -3538,7 +3697,7 @@ export function createWorldScreen(
       Audio.sfx("deny");
       thinkSeq([
         "I need a fishing rod for that…",
-        "Reed sells them — east past the market.",
+        "Reed sells them - east past the market.",
       ]);
       pointToReed();
       return;
@@ -3558,52 +3717,75 @@ export function createWorldScreen(
       kind,
       label,
       (grade: PlayMiniGrade) => {
-        endActivityPose();
-        const fun = grade === "perfect" ? 40 : grade === "ok" ? 24 : 10;
-        const energy = grade === "perfect" ? -6 : grade === "ok" ? -8 : -10;
-        state.needs = applyNeedDeltas(state.needs, { fun, energy });
-        if (kind === "fish" && grade !== "miss") {
-          quests.emit("visited_pier");
-          quests.emit("caught_fish");
-          const count = grade === "perfect" ? 2 : 1;
-          state.addMaterial("fish", count);
-        }
-        const toast =
-          grade === "perfect"
-            ? kind === "swing"
-              ? "Highest swing!"
-              : kind === "slide"
-                ? "Perfect whoosh!"
-                : kind === "fish"
-                  ? "Biggest catch! Fish in bag."
+        const finish = () => {
+          endActivityPose();
+          const fun = grade === "perfect" ? 40 : grade === "ok" ? 24 : 10;
+          const energy = grade === "perfect" ? -6 : grade === "ok" ? -8 : -10;
+          state.needs = applyNeedDeltas(state.needs, { fun, energy });
+          if (kind === "fish" && grade !== "miss") {
+            quests.emit("visited_pier");
+            quests.emit("caught_fish");
+            const count = grade === "perfect" ? 2 : 1;
+            state.addMaterial("fish", count);
+          }
+          const toast =
+            grade === "perfect"
+              ? kind === "swing"
+                ? "Highest swing!"
+                : kind === "slide"
+                  ? "Perfect whoosh!"
+                  : kind === "fish"
+                    ? "Biggest catch! Fish in bag."
+                    : kind === "tune"
+                      ? "Music gold!"
+                      : kind === "bounce"
+                        ? "Sky-high bounce!"
+                        : "High score!"
+              : grade === "ok"
+                ? kind === "fish"
+                  ? "Fish stashed in bag!"
                   : kind === "tune"
-                    ? "Music gold!"
-                    : kind === "bounce"
-                      ? "Sky-high bounce!"
-                      : "High score!"
-            : grade === "ok"
-              ? kind === "fish"
-                ? "Fish stashed in bag!"
-                : kind === "tune"
-                  ? "Catchy!"
-                  : kind === "arcade"
-                    ? "Continue?"
-                    : kind === "bounce"
-                      ? "Boing!"
-                      : "Whee!"
-              : kind === "fish"
-                ? "Got away…"
-                : kind === "tune"
-                  ? "Static…"
-                  : kind === "arcade"
-                    ? "Game over."
-                    : "Oof - dusty knees.";
-        think(toast, 2800);
-        aspirations.refresh();
+                    ? "Catchy!"
+                    : kind === "arcade"
+                      ? "Continue?"
+                      : kind === "bounce"
+                        ? "Boing!"
+                        : "Whee!"
+                : kind === "fish"
+                  ? "Got away…"
+                  : kind === "tune"
+                    ? "Static…"
+                    : kind === "arcade"
+                      ? "Game over."
+                      : "Oof - dusty knees.";
+          think(toast, 2800);
+          aspirations.refresh();
+        };
+
+        // Swing/slide world pose is a one-shot ride after the mini - not a
+        // live mirror of the looping UI meter.
+        if (furn && kind === "slide") {
+          const ms = grade === "perfect" ? 900 : grade === "ok" ? 1050 : 1200;
+          playSlideRideOnce(furn, ms, finish);
+          return;
+        }
+        if (furn && kind === "swing") {
+          const height =
+            grade === "perfect" ? 1 : grade === "ok" ? 0.7 : 0.35;
+          const ms = grade === "perfect" ? 1100 : grade === "ok" ? 1250 : 1000;
+          playSwingRideOnce(furn, height, ms, finish);
+          return;
+        }
+        finish();
       },
       celebrateGrade,
       furn
-        ? (tick) => syncPlayPose(furn, tick)
+        ? (tick) => {
+            // Keep trampoline / fish / music reacting live; swing & slide wait
+            // for the post-game ride so they don't yo-yo on the looping meter.
+            if (tick.kind === "swing" || tick.kind === "slide") return;
+            syncPlayPose(furn, tick);
+          }
         : undefined,
     );
   };
@@ -3677,7 +3859,7 @@ export function createWorldScreen(
         if (state.jobTasksDone >= total) {
           completeShift(job);
         } else {
-          think(`${task.label} done — ${state.jobTasksDone}/${total}`, 2800);
+          think(`${task.label} done - ${state.jobTasksDone}/${total}`, 2800);
           pinTaskArrow(job);
         }
       },
@@ -3716,8 +3898,8 @@ export function createWorldScreen(
       const anyShifts = Object.values(state.jobShiftCounts).some((n) => n > 0);
       think(
         anyShifts
-          ? "Done for today — come back tomorrow."
-          : "First shift starts tomorrow — sleep until 8 AM!",
+          ? "Done for today - come back tomorrow."
+          : "First shift starts tomorrow - sleep until 8 AM!",
       );
       return;
     }
@@ -3788,7 +3970,7 @@ export function createWorldScreen(
               social: beat.social,
             });
             Audio.sfx("success");
-            think(`${beat.title} — lovely!`, 3200);
+            think(`${beat.title} - lovely!`, 3200);
             aspirations.noteWeeklyBeat();
           });
           return;
@@ -3805,8 +3987,8 @@ export function createWorldScreen(
           );
           think(
             anyShifts
-              ? "Done for today — come back tomorrow."
-              : "First shift starts tomorrow — sleep until 8 AM!",
+              ? "Done for today - come back tomorrow."
+              : "First shift starts tomorrow - sleep until 8 AM!",
           );
           return;
         }
@@ -3830,13 +4012,13 @@ export function createWorldScreen(
             return;
           }
           Audio.playMusic("work");
-          think("Ugh — late. Better hustle…", 3600);
+          think("Ugh - late. Better hustle…", 3600);
         } else if (state.dayTime < WORK_START) {
           Audio.playMusic("work");
-          think("Nice and early — let's get to work!", 3200);
+          think("Nice and early - let's get to work!", 3200);
         } else {
           Audio.playMusic("work");
-          think("Alright — let's get to work!", 3200);
+          think("Alright - let's get to work!", 3200);
         }
         pinTaskArrow(job);
       },
@@ -4215,7 +4397,7 @@ export function createWorldScreen(
               def.name,
               "I'd love to! I'll settle in at your place - chat anytime, and send me out gathering when you need a haul.",
             );
-            think(`${def.name} is moving in — how exciting!`, 3600);
+            think(`${def.name} is moving in - how exciting!`, 3600);
             player.playReaction("jump");
           });
           return;
@@ -4270,7 +4452,7 @@ export function createWorldScreen(
               def.name,
               "All done! I left everything by your porch - go scoop it up whenever.",
             );
-            think("Haul on the porch — nice!", 3200);
+            think("Haul on the porch - nice!", 3200);
           });
           return;
         }
@@ -4419,7 +4601,7 @@ export function createWorldScreen(
             state.showDialogue(
               "jun",
               "Jun",
-              "Perfect — water the plant by the service counter, then come tell me how it's looking.",
+              "Perfect - water the plant by the service counter, then come tell me how it's looking.",
             );
             quests.emit("jun_ask_favor");
           });
@@ -4520,7 +4702,7 @@ export function createWorldScreen(
           if (state.money < 10) return;
           state.money -= 10;
           Audio.sfx("coin");
-          think("Clinic kit bought — take it to Sage!", 3600);
+          think("Clinic kit bought - take it to Sage!", 3600);
           releaseEngagedNpc();
           return;
         }
@@ -4529,7 +4711,7 @@ export function createWorldScreen(
           state.money -= 8;
           Audio.sfx("coin");
           quests.emit("bought_crumb_snack");
-          think("Snack bought — take it to Crumb!", 3600);
+          think("Snack bought - take it to Crumb!", 3600);
           releaseEngagedNpc();
           return;
         }
@@ -4946,16 +5128,31 @@ export function createWorldScreen(
         state.money -= pdef.fee;
         state.adoptPet(id);
         syncPet();
-        Audio.sfx("adopt");
+        menu.close();
         const fav = state.favouriteAnimals.includes(
           speciesFavouriteLabel(pdef.species),
         );
-        think(
-          fav
-            ? `${pdef.name} joined the family — a favourite!`
-            : `${pdef.name} joined the family!`,
-          4000,
-        );
+        celebrateKeyItem({
+          eyebrow: "New friend!",
+          title: pdef.name,
+          note: fav
+            ? `A favourite ${pdef.species} · ${pdef.traits.join(" · ")}`
+            : `${pdef.species} · ${pdef.traits.join(" · ")}`,
+          badge: "♥",
+          accent: "rose",
+          confetti: "huge",
+          palette: "party",
+          sfx: "adopt",
+          durationMs: 4200,
+          onDone: () => {
+            think(
+              fav
+                ? `${pdef.name} joined the family - a favourite!`
+                : `${pdef.name} joined the family!`,
+              4000,
+            );
+          },
+        });
         if (fav && state.adoptedPet) {
           state.adoptedPet.needs.bond = clampNeed(
             state.adoptedPet.needs.bond + 12,
@@ -5270,7 +5467,7 @@ export function createWorldScreen(
       const key = state.wallKey(tx, ty);
       if (state.floors.has(key)) {
         Audio.sfx("deny");
-        think("Already floored — pick another tile.");
+        think("Already floored - pick another tile.");
         return;
       }
       if (state.money < 5) {
@@ -5295,7 +5492,7 @@ export function createWorldScreen(
         think(
           placeDef?.placeOnSurface
             ? "Needs a free spot on a counter or table…"
-            : "Doesn't fit there — try R to rotate.",
+            : "Doesn't fit there - try R to rotate.",
         );
         return;
       }
@@ -5364,7 +5561,7 @@ export function createWorldScreen(
         think(
           def.placeOnSurface
             ? "Needs a free spot on a counter or table…"
-            : "Doesn't fit — try R to rotate.",
+            : "Doesn't fit - try R to rotate.",
         );
       }
       return;
@@ -5389,12 +5586,27 @@ export function createWorldScreen(
     Audio.sfx("place");
     if (hasTrait(state.playerTraits, "Creative")) {
       state.needs = applyNeedDeltas(state.needs, { fun: 4 });
-      think(`Placed ${def.name} — creative spark!`, 2800);
+      think(`Placed ${def.name} - creative spark!`, 2800);
     } else {
       state.showToast(`Placed ${def.name}`);
     }
     catalog.rebuild();
-    if (defId === "sofa") quests.emit("placed_sofa");
+    if (defId === "sofa") {
+      quests.emit("placed_sofa");
+      if (state.setStoryFlag("first_sofa_place")) {
+        celebrateKeyItem({
+          eyebrow: "Home upgrade!",
+          title: def.name,
+          note: "Your place is starting to feel like yours.",
+          badge: "★",
+          accent: "gold",
+          confetti: "big",
+          palette: "gold",
+          sfx: "chime",
+          durationMs: 3400,
+        });
+      }
+    }
     if (state.hasPetSetup()) quests.emit("pet_setup");
     aspirations.refresh();
     toastNewUnlocks(state, unlockBefore);
@@ -5598,7 +5810,33 @@ export function createWorldScreen(
     introPhase = "done";
     thoughtBubble?.hide();
     player.setPose("stand");
-    if (quests.isActive("empty_nest")) quests.emit("game_started");
+    Audio.sfx("confirm");
+
+    // Do NOT switch to the dense world theme under the hiring journal line —
+    // scheduling ~500 world notes while dialogue voice starts was killing the
+    // AudioContext. Keep the quiet story bed until that card closes.
+    let worldStarted = false;
+    const startWorldTheme = () => {
+      if (worldStarted) return;
+      worldStarted = true;
+      Audio.playMusic("world");
+    };
+
+    dialogue.setOnClosed(() => {
+      if (!menu.isOpen()) releaseEngagedNpc();
+      startWorldTheme();
+      dialogue.setOnClosed(() => {
+        if (!menu.isOpen()) releaseEngagedNpc();
+      });
+    });
+
+    if (quests.isActive("empty_nest")) {
+      quests.emit("game_started");
+    }
+    // If no journal line opened, still get the town theme going.
+    window.setTimeout(() => {
+      if (!dialogue.isOpen()) startWorldTheme();
+    }, 80);
   };
 
   const bounceOutOfBed = () => {
@@ -5620,13 +5858,14 @@ export function createWorldScreen(
     player.setPosition(playerX, playerZ);
     player.setFacing("down");
     player.playReaction("jump");
-    Audio.sfx("ui");
+    Audio.sfx("jump");
+    introLanded = false;
   };
 
   const WAKE_THOUGHTS = [
     {
       kind: "text" as const,
-      text: "First morning here… still doesn't feel quite like mine yet.",
+      text: "First morning light through my window… still doesn't feel quite like mine yet.",
     },
     {
       kind: "text" as const,
@@ -5634,7 +5873,7 @@ export function createWorldScreen(
     },
     {
       kind: "sofa" as const,
-      text: "A sunny sofa would look perfect…",
+      text: "A sunny sofa would look perfect right there…",
     },
   ];
 
@@ -5644,8 +5883,14 @@ export function createWorldScreen(
     introThinkStep = step;
     introPhase = "think";
     introAdvanceAt = performance.now() + 350;
-    if (beat.kind === "sofa") thoughtBubble.showSofa(beat.text);
-    else thoughtBubble.showText(beat.text, 0);
+    if (beat.kind === "sofa") {
+      thoughtBubble.showSofa(beat.text);
+      Audio.sfx("thought");
+      Audio.sfx("chime");
+    } else {
+      thoughtBubble.showText(beat.text, 0);
+      Audio.sfx("thought");
+    }
   };
 
   const advanceWakeThought = () => {
@@ -5654,7 +5899,6 @@ export function createWorldScreen(
 
     if (introThinkStep < WAKE_THOUGHTS.length) {
       showWakeThought(introThinkStep + 1);
-      Audio.sfx("ui");
       return;
     }
 
@@ -5669,9 +5913,14 @@ export function createWorldScreen(
 
   const beginWakeSpeech = () => {
     thoughtBubble.hide();
+    Audio.sfx("interact");
     dialogue.setOnClosed(() => {
       if (!menu.isOpen()) releaseEngagedNpc();
-      if (introActive && introPhase === "speak") finishWakeIntro();
+      if (introActive && introPhase === "speak") {
+        // finishWakeIntro installs its own onClosed for the hiring journal card.
+        finishWakeIntro();
+        return;
+      }
       dialogue.setOnClosed(() => {
         if (!menu.isOpen()) releaseEngagedNpc();
       });
@@ -5698,23 +5947,38 @@ export function createWorldScreen(
     introPostBounceT = 0;
     introBounced = false;
     introSpoke = false;
+    introLanded = false;
     player.setPose("lie");
     player.setWalking(false);
     playerPath = [];
     onArrive = null;
+    Audio.sfx("birds");
   };
 
   /** Arrival story wash, then the bed wake cutscene. */
   const startArrivalPrologue = () => {
     introActive = true;
+    // Match the story's "until morning" beat when the wash lifts.
+    state.dayTime = MORNING_TIME;
+    app.renderer.setDayTime(MORNING_TIME);
     player.setPose("lie");
     player.setWalking(false);
     playerPath = [];
     onArrive = null;
-    storyPrologue.play({
-      lines: arrivalPrologueLines(state.playerName),
-      onDone: () => startWakeIntro(),
-    });
+    Audio.playMusic("story");
+    // Brief hold on the shared night curtain after the create→world fade,
+    // then ease the storybook content in.
+    window.setTimeout(() => {
+      if (!introActive || !storyPrologue) return;
+      storyPrologue.play({
+        lines: arrivalPrologueLines(state.playerName, state.playerLook.sex),
+        onDone: () => {
+          // Keep the quieter story bed through the wake cutscene - switching to
+          // the denser world theme here was burying rustle/stretch/yawn/thought.
+          startWakeIntro();
+        },
+      });
+    }, 320);
   };
 
   /** Advance wake cutscene from real frame time (not wall-clock timeouts). */
@@ -5726,6 +5990,10 @@ export function createWorldScreen(
 
     if (introPhase === "bounce") {
       introPostBounceT += dt;
+      if (!introLanded && introPostBounceT >= 0.2) {
+        introLanded = true;
+        Audio.sfx("thud");
+      }
       if (introPostBounceT >= 1.35 && !introSpoke) {
         introSpoke = true;
         introPhase = "speak";
@@ -5736,20 +6004,23 @@ export function createWorldScreen(
 
     introT += dt;
 
-    if (introT >= 0.9 && introPhase === "lie") {
+    if (introT >= 1.05 && introPhase === "lie") {
       introPhase = "sit";
       player.setPose("sit");
+      Audio.sfx("rustle");
     }
-    if (introT >= 1.6 && (introPhase === "sit" || introPhase === "lie")) {
+    if (introT >= 1.85 && (introPhase === "sit" || introPhase === "lie")) {
       introPhase = "stretch";
       player.playStretch();
+      Audio.sfx("stretch");
     }
-    if (introT >= 2.6 && introPhase === "stretch") {
+    if (introT >= 2.9 && introPhase === "stretch") {
       introPhase = "yawn";
       player.playYawn();
+      Audio.sfx("yawn");
     }
     // First thought appears after the yawn; further beats are click-to-advance.
-    if (introT >= 3.4 && introThinkStep < 1) {
+    if (introT >= 3.9 && introThinkStep < 1) {
       showWakeThought(1);
     }
   };
@@ -5764,10 +6035,16 @@ export function createWorldScreen(
   return {
     id: "world",
     mount(root) {
-      Audio.playMusic(state.jobActive ? "work" : "world");
+      Audio.playMusic(
+        !isContinue ? "story" : state.jobActive ? "work" : "world",
+      );
       root.innerHTML = `<div class="ll-world-ui"></div>${muteButtonHtml()}`;
       const ui = root.querySelector(".ll-world-ui") as HTMLElement;
       unMute = wireMute(root.querySelector(".ll-mute") as HTMLElement);
+
+      // Opaque curtain first so the village never flashes before the story.
+      storyPrologue = new StoryPrologue(ui);
+      if (!isContinue) storyPrologue.cover();
 
       map = createTownMap();
       state.harvestNodes = map.harvestNodes;
@@ -5878,25 +6155,7 @@ export function createWorldScreen(
         () => quests.getTracker(),
         () => aspirations.getTracker(),
         (toolId) => {
-          if (toolId !== "axe") return;
-          if (!state.setStoryFlag("first_axe_buy")) return;
-          hud.closeShop();
-          delayed(450, () => {
-            thoughtBubble?.showText(
-              "I got an axe! now I can chop some wood and maybe even collect some fruit!",
-              6200,
-            );
-            Audio.sfx("chime");
-            const forest = LOTS.find((l) => l.id === "forest");
-            if (forest) {
-              hintArrow?.showAt(
-                (forest.tx + forest.tw / 2) * TILE,
-                (forest.ty + 2) * TILE,
-                "Whisperwood",
-                8000,
-              );
-            }
-          });
+          celebrateToolPurchase(toolId);
         },
         () => {
           const beat = beatForDay(state.dayIndex);
@@ -5921,8 +6180,8 @@ export function createWorldScreen(
       timeMontage = new TimeMontage(ui);
       confetti = new ConfettiBurst(ui);
       payCelebration = new PayCelebration(ui);
+      momentCelebration = new MomentCelebration(ui);
       giftHandoff = new GiftHandoffCard(ui);
-      storyPrologue = new StoryPrologue(ui);
       wetTrail = new WetTrail(
         (o) => app.renderer.add(o),
         (o) => app.renderer.remove(o),
@@ -6068,7 +6327,7 @@ export function createWorldScreen(
       if (!isContinue) {
         startArrivalPrologue();
       } else {
-        think("Home again — welcome back.", 3600);
+        think("Home again - welcome back.", 3600);
       }
     },
 
@@ -6092,9 +6351,11 @@ export function createWorldScreen(
       timeScrub = null;
       workMini?.destroy();
       playMini?.destroy();
+      cancelPlayRide();
       tvViewer?.destroy();
       confetti?.destroy();
       payCelebration?.destroy();
+      momentCelebration?.destroy();
       giftHandoff?.destroy();
       storyPrologue?.destroy();
       wetTrail?.dispose();
@@ -6598,8 +6859,7 @@ export function createWorldScreen(
           rect.height,
         );
         thoughtBubble?.update(
-          playerX,
-          playerZ,
+          player.getHeadWorldPos(),
           (x, y, z) => app.renderer.projectToScreen(x, y, z, rect),
           rect.width,
           rect.height,

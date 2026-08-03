@@ -34,7 +34,7 @@ function addBlob(
   parent.add(mesh);
 }
 
-/** Small trash pile — crumpled paper, bottle, wrapper. */
+/** Small trash pile - crumpled paper, bottle, wrapper. */
 export function createLitterMesh(): THREE.Group {
   const g = new THREE.Group();
   addBlob(g, matSmooth(Palette.pathLight), -2.2, 1.6, 0.6, 2.4, 1.2, 0.55, 1);
@@ -46,7 +46,7 @@ export function createLitterMesh(): THREE.Group {
   return g;
 }
 
-/** Nibs' left shoe — Gordon. */
+/** Nibs' left shoe - Gordon. */
 export function createShoeMesh(): THREE.Group {
   const g = new THREE.Group();
   addBlob(g, matSmooth(Palette.blushDark), 0, 2.2, 0, 3.6, 1.35, 0.7, 1.05);

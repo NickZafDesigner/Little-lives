@@ -113,7 +113,7 @@ export class LootBurst {
       mesh.castShadow = true;
       this.root.add(mesh);
 
-      // Burst outward — settle wherever physics lands (no second snap).
+      // Burst outward - settle wherever physics lands (no second snap).
       const angle = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
       const speed = 48 + Math.random() * 28;
 
@@ -163,7 +163,7 @@ export class LootBurst {
         p.mesh.rotation.y += p.spin * dt;
         p.mesh.rotation.z += p.spin * 0.4 * dt;
 
-        // Land in place — never teleport to a different XY.
+        // Land in place - never teleport to a different XY.
         if (p.mesh.position.y <= GROUND_Y && p.vy <= 0) {
           p.mesh.position.y = GROUND_Y;
           p.vx = 0;
@@ -241,7 +241,7 @@ export class LootBurst {
 function disposeObject(obj: THREE.Object3D): void {
   obj.traverse((child) => {
     const mesh = child as THREE.Mesh;
-    // Materials are shared via the mesh cache — only free geometries.
+    // Materials are shared via the mesh cache - only free geometries.
     if (mesh.isMesh) mesh.geometry?.dispose();
   });
 }

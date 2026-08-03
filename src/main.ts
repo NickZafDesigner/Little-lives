@@ -41,7 +41,7 @@ try {
   console.error("Boot preload failed", err);
   bootBar.remove();
   boot.classList.add("is-ready");
-  boot.innerHTML = `<span class="ll-boot-cta">Couldn’t load assets — refresh to try again</span>`;
+  boot.innerHTML = `<span class="ll-boot-cta">Couldn’t load assets - refresh to try again</span>`;
   throw err;
 }
 

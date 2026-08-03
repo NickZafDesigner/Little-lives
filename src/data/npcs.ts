@@ -73,7 +73,7 @@ export const RELATIONSHIP_GOOD = 20;
 export const RELATIONSHIP_FRIEND = 40;
 export const RELATIONSHIP_CLOSE = 70;
 export const RELATIONSHIP_CRUSH = 75;
-/** True max score — unlocks asking a villager to move in. */
+/** True max score - unlocks asking a villager to move in. */
 export const RELATIONSHIP_MAX = 100;
 
 /** Extra friendship when gifting a wildflower (base + preference). */

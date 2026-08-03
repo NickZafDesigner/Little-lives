@@ -145,7 +145,7 @@ export const QUESTS: QuestDef[] = [
       {
         id: "shift",
         event: "any_shift_complete",
-        objectiveLabel: "Work a full shift (9 AM – 5 PM)",
+        objectiveLabel: "Work a full shift (9 AM - 5 PM)",
       },
     ],
   },

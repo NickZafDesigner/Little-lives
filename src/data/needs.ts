@@ -29,7 +29,7 @@ export const NEED_COLORS: Record<NeedId, number> = {
 
 /** Decay per real second at 1x clock (needs 0-100).
  *  Tuned so urgent needs (hunger/bladder) ask once-ish per ~14min game day,
- *  not every few minutes — still a mechanic, not a constant chore. */
+ *  not every few minutes - still a mechanic, not a constant chore. */
 export const NEED_DECAY: Record<NeedId, number> = {
   hunger: 0.09,
   energy: 0.055,
@@ -119,7 +119,7 @@ export function socialBlockedReason(
 ): string | null {
   if (isWet) return "Still wet… shower first!";
   if (needs.energy < NEED_CRITICAL) return "Too exhausted to hang out…";
-  if (needs.bladder < 5) return "Bathroom emergency — social later!";
+  if (needs.bladder < 5) return "Bathroom emergency - social later!";
   if (needs.hygiene < 8) return "Maybe shower before company…";
   return null;
 }

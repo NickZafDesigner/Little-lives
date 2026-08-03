@@ -55,6 +55,8 @@ export function createCreateScreen(
   let raf = 0;
   let spin = 0;
   let dragYaw = 0;
+  let leaving = false;
+  let leaveTimer: number | null = null;
 
   const cycle = <T>(arr: readonly T[], cur: T, dir: 1 | -1): T => {
     const i = arr.indexOf(cur as T);
@@ -554,6 +556,7 @@ export function createCreateScreen(
         goto("title");
       });
       root.querySelector('[data-act="start"]')!.addEventListener("click", () => {
+        if (leaving) return;
         if (!name.trim()) {
           Audio.sfx("deny");
           return;
@@ -561,19 +564,30 @@ export function createCreateScreen(
         if (traits.length === 0) traits = ["Friendly"];
         if (animals.length === 0) animals = ["Cats"];
         Audio.sfx("confirm");
-        goto("world", {
-          fresh: true,
-          profile: {
-            name: name.trim(),
-            look: structuredClone(look),
-            traits: [...traits],
-            favouriteFood: food,
-            favouriteAnimals: [...animals],
-          },
-        });
+
+        leaving = true;
+        const screen = root.querySelector(".ll-create") as HTMLElement | null;
+        screen?.classList.add("is-leaving");
+
+        const profile = {
+          name: name.trim(),
+          look: structuredClone(look),
+          traits: [...traits],
+          favouriteFood: food,
+          favouriteAnimals: [...animals],
+        };
+        // Slow fade to the prologue night - then hand off into the story curtain.
+        leaveTimer = window.setTimeout(() => {
+          leaveTimer = null;
+          goto("world", { fresh: true, profile });
+        }, 1200);
       });
     },
     unmount() {
+      if (leaveTimer != null) {
+        window.clearTimeout(leaveTimer);
+        leaveTimer = null;
+      }
       cancelAnimationFrame(raf);
       resizeObserver?.disconnect();
       resizeObserver = null;

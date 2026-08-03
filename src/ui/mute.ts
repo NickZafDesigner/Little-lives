@@ -7,17 +7,20 @@ export function muteButtonHtml(): string {
 export function wireMute(btn: HTMLElement) {
   const sync = () => {
     btn.textContent = Audio.isMuted() ? "Unmute" : "Mute";
+    btn.setAttribute("aria-pressed", Audio.isMuted() ? "true" : "false");
   };
+  sync();
   btn.addEventListener("click", () => {
-    Audio.unlock();
-    if (Audio.isMuted()) {
-      Audio.toggleMute();
-      Audio.sfx("ui");
-    } else {
-      Audio.sfx("ui");
-      Audio.toggleMute();
-    }
-    sync();
+    void Audio.unlock().then(() => {
+      if (Audio.isMuted()) {
+        Audio.toggleMute();
+        Audio.sfx("confirm");
+      } else {
+        Audio.sfx("ui");
+        Audio.toggleMute();
+      }
+      sync();
+    });
   });
   return Audio.onMuteChange(sync);
 }

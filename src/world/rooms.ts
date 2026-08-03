@@ -82,12 +82,12 @@ const NEIGHBOR: LotInterior = {
 
 /**
  * Café (14×10): packed service west, busy seating east.
- * Keep divider doorway at rows 4–5 clear (tiles 7,4 / 7,5).
+ * Keep divider doorway at rows 4-5 clear (tiles 7,4 / 7,5).
  */
 const CAFE: LotInterior = {
   walls: [{ rx: 7, ry: 1, length: 8, axis: "y", doors: [3, 4] }],
   furniture: [
-    // —— Service ——
+    // -- Service --
     { defId: "welcome_mat", rx: 6, ry: 8, uid: "c_mat" },
     { defId: "kitchen_counter", rx: 3, ry: 1, uid: "c_prep", rot: "down" },
     { defId: "microwave", rx: 3, ry: 1, uid: "c_micro", parentUid: "c_prep" },
@@ -107,7 +107,7 @@ const CAFE: LotInterior = {
     { defId: "lantern", rx: 1, ry: 7, uid: "c_lantern", parentUid: "c_counter3" },
     { defId: "plant", rx: 5, ry: 8, uid: "c_plant_svc" },
     { defId: "party_lights", rx: 4, ry: 8, uid: "c_lights" },
-    // —— Seating ——
+    // -- Seating --
     { defId: "table", rx: 9, ry: 2, uid: "c_table", rot: "down" },
     { defId: "lounge_chair", rx: 9, ry: 1, uid: "c_chair_n", rot: "down" },
     { defId: "lounge_chair", rx: 11, ry: 2, uid: "c_chair_e", rot: "left" },
@@ -200,7 +200,7 @@ const MARKET: LotInterior = {
 /**
  * Library (12×10): wall-to-wall stacks, desk north, reading nook south.
  * Job stations l_desk / l_table stay put.
- * Keep exterior door col 6 clear (tiles 6,5–6,8) and divider doors at row 4.
+ * Keep exterior door col 6 clear (tiles 6,5-6,8) and divider doors at row 4.
  */
 const LIBRARY: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
@@ -233,7 +233,7 @@ const LIBRARY: LotInterior = {
     { defId: "bookshelf", rx: 10, ry: 7, uid: "l_shelf_e3", rot: "left" },
     { defId: "grand_bookshelf", rx: 2, ry: 8, uid: "l_grand_s", rot: "up" },
     { defId: "bookshelf", rx: 4, ry: 8, uid: "l_shelf_s1", rot: "up" },
-    // East reading nook — do not place blocking pieces on door col 6.
+    // East reading nook - do not place blocking pieces on door col 6.
     { defId: "puzzle_table", rx: 8, ry: 7, uid: "l_puzzle", rot: "up" },
     { defId: "bean_bag", rx: 8, ry: 8, uid: "l_bean" },
     { defId: "floor_cushion", rx: 9, ry: 8, uid: "l_cushion" },
@@ -295,7 +295,7 @@ const WORKSHOP: LotInterior = {
     { defId: "table", rx: 2, ry: 6, uid: "w_table" },
     { defId: "sewing_machine", rx: 2, ry: 6, uid: "w_sew", parentUid: "w_table" },
     { defId: "lantern", rx: 3, ry: 6, uid: "w_bench_light", parentUid: "w_table" },
-    // Keep door col 6 clear — craft table sits west of the aisle.
+    // Keep door col 6 clear - craft table sits west of the aisle.
     { defId: "craft_table", rx: 4, ry: 6, uid: "w_craft", rot: "down" },
     { defId: "radio", rx: 4, ry: 6, uid: "w_radio", parentUid: "w_craft" },
     { defId: "pottery_wheel", rx: 8, ry: 6, uid: "w_pottery" },

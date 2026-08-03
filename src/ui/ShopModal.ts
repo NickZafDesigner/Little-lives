@@ -158,7 +158,7 @@ export class ShopModal {
 
     const rows =
       entries.length === 0
-        ? `<li class="ll-inv-empty">Nothing to sell — gather wood, stone, ore, clay, fish, fruit, or flowers first.</li>`
+        ? `<li class="ll-inv-empty">Nothing to sell - gather wood, stone, ore, clay, fish, fruit, or flowers first.</li>`
         : entries
             .map(
               ({ m, count }) => `
@@ -254,8 +254,7 @@ export class ShopModal {
     }
     this.state.money -= def.price;
     this.state.addTool(id);
-    this.state.showToast(`Bought ${def.name}!`);
-    Audio.sfx("coin");
+    Audio.sfx("success");
     this.rebuild();
     this.onChange();
     this.onBuyTool?.(id);

@@ -186,7 +186,7 @@ class AssetLibraryImpl {
     return this.ready;
   }
 
-  /** @param onProgress 0–1 as each asset finishes */
+  /** @param onProgress 0-1 as each asset finishes */
   preload(onProgress?: (p: number) => void): Promise<void> {
     if (this.ready) {
       onProgress?.(1);

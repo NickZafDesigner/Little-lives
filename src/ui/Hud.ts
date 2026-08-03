@@ -46,16 +46,12 @@ export class Hud {
   private panel: HTMLElement;
   private floatHost: HTMLElement;
   private toastEl: HTMLElement;
-  private busyEl: HTMLElement;
-  private busyLabelEl: HTMLElement;
-  private busyBarEl: HTMLElement;
   private state: GameState;
   private getTracker: () => QuestTrackerInfo | null;
   private getAspiration: () => AspirationTrackerInfo | null;
   private lastStructureKey = "";
   private lastToast = "";
   private toastVisible = false;
-  private busyVisible = false;
   private lastObjectiveKey = "";
   private pulseUntil = 0;
   private statusModal: PlayerStatusModal;
@@ -154,18 +150,6 @@ export class Hud {
     this.toastEl.className = "ll-toast";
     this.toastEl.hidden = true;
     parent.appendChild(this.toastEl);
-
-    this.busyEl = document.createElement("div");
-    this.busyEl.className = "ll-busy";
-    this.busyEl.hidden = true;
-    this.busyLabelEl = document.createElement("span");
-    const busyBarWrap = document.createElement("div");
-    busyBarWrap.className = "ll-bar";
-    this.busyBarEl = document.createElement("i");
-    this.busyBarEl.className = "ok";
-    busyBarWrap.appendChild(this.busyBarEl);
-    this.busyEl.append(this.busyLabelEl, busyBarWrap);
-    parent.appendChild(this.busyEl);
   }
 
   containsHudCluster(clientX: number, clientY: number): boolean {
@@ -357,7 +341,6 @@ export class Hud {
     this.syncBoostFx();
     this.syncPortrait();
     this.updateToast();
-    this.updateBusy();
   }
 
   private detectNeedBoosts() {
@@ -755,30 +738,11 @@ export class Hud {
     }
   }
 
-  private updateBusy() {
-    const s = this.state;
-    if (!s.isBusy()) {
-      if (this.busyVisible) {
-        this.busyVisible = false;
-        this.busyEl.hidden = true;
-      }
-      return;
-    }
-
-    if (!this.busyVisible) {
-      this.busyVisible = true;
-      this.busyEl.hidden = false;
-    }
-    this.busyLabelEl.textContent = s.busyLabel;
-    this.busyBarEl.style.width = `${Math.round(s.busyProgress() * 100)}%`;
-  }
-
   destroy() {
     this.statusModal.destroy();
     this.shopModal.destroy();
     this.el.remove();
     this.toastEl.remove();
-    this.busyEl.remove();
   }
 }
 

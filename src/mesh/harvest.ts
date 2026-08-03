@@ -45,7 +45,7 @@ function addBlob(
 
 function makeTree(): THREE.Group {
   const g = new THREE.Group();
-  // Tall timber — shorter/narrower than the 2×2 canopy oaks.
+  // Tall timber - shorter/narrower than the 2×2 canopy oaks.
   addBox(g, matFlat(Palette.woodDark), 0, 24, 0, 8, 48, 8);
   addBox(g, matFlat(Palette.leaf), 0, 60, 0, 34, 28, 34);
   addBox(g, matFlat(Palette.leafLight), 0, 80, 0, 22, 18, 22);

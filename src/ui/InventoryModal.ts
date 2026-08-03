@@ -35,7 +35,7 @@ export function renderInventoryBody(state: GameState): string {
 
   const matRows =
     matEntries.length === 0
-      ? `<li class="ll-inv-empty">No materials yet — chop, mine, dig, or fish.</li>`
+      ? `<li class="ll-inv-empty">No materials yet - chop, mine, dig, or fish.</li>`
       : matEntries
           .map(({ m, count }) => {
             const hunger = materialHungerRelief(m.id);

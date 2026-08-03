@@ -264,7 +264,7 @@ export function isConsumableMaterial(id: MaterialId): boolean {
   return materialHungerRelief(id) > 0;
 }
 
-/** Days until a depleted node can return (base + 0–2 stagger). */
+/** Days until a depleted node can return (base + 0-2 stagger). */
 export function harvestRespawnDays(defId: string, uid: string): number {
   const base = harvestNodeById[defId]?.respawnDays ?? 2;
   let h = 0;
@@ -310,7 +310,7 @@ export interface HarvestPlacementContext {
   plantable: Set<number>;
   /** Extra blocked tiles (canopy trees, rocks, lamps, fences). */
   blocked: Iterable<[number, number]>;
-  /** Big decorative oaks — become choppable canopy harvest nodes. */
+  /** Big decorative oaks - become choppable canopy harvest nodes. */
   canopyTrees?: Array<[number, number]>;
 }
 
@@ -354,7 +354,7 @@ function buildHarvestNodes(
     for (const [tx, ty] of ctx.blocked) occupied.add(key(tx, ty));
   }
 
-  // Rocky Quarries — keep dedicated rock / ore / dig spots.
+  // Rocky Quarries - keep dedicated rock / ore / dig spots.
   const mineRocks: Array<[number, number]> = [
     [116, 18],
     [119, 19],
@@ -391,7 +391,7 @@ function buildHarvestNodes(
   }
 
   if (!ctx) {
-    // Pre-map fallback — sparse forest only (mix timber + fruit).
+    // Pre-map fallback - sparse forest only (mix timber + fruit).
     const fallback: Array<[number, number, string]> = [
       [4, 18, "harvest_tree"],
       [7, 19, "harvest_apple"],
@@ -490,7 +490,7 @@ function buildHarvestNodes(
     }
   }
 
-  // Big oaks from the town layout — choppable, 2×2 footprint.
+  // Big oaks from the town layout - choppable, 2×2 footprint.
   for (const [tx, ty] of ctx.canopyTrees ?? []) {
     const lot = lotAtTile(tx, ty);
     nodes.push({

@@ -21,7 +21,7 @@ export type ActorReaction = "vibrate" | "pop" | "jump";
 /** Bed / wake poses for the new-game intro (and reusable elsewhere). */
 export type ActorPose = "lie" | "sit" | "stand";
 
-/** Seat height profile — bed sit is taller than outdoor benches. */
+/** Seat height profile - bed sit is taller than outdoor benches. */
 export type SitStyle = "bed" | "bench" | "couch";
 
 /** Overlay motion while posed (swing sway, slide lean, bounce hop). */
@@ -37,6 +37,11 @@ export interface ActorHandle {
   root: THREE.Group;
   setPosition(x: number, z: number): void;
   getPosition(): { x: number; z: number };
+  /**
+   * World-space crown of the head (top of Head mesh bounds, includes hair).
+   * Tracks pose / hop / lie so UI anchors can follow.
+   */
+  getHeadWorldPos(): { x: number; y: number; z: number };
   setFacing(dir: Dir): void;
   setWalking(walking: boolean): void;
   /** One-shot silly body reaction (shake / squash-pop / hop). */
@@ -612,13 +617,19 @@ function applySexStyle(body: THREE.Object3D, sex: Sex, hairColor: number) {
  * Mattress top is ~9; after Rx(-90°) the back hangs ~6 below the
  * feet-pivot, so Y must clear that. Z slides toward the foot so the head
  * rests on the pillow instead of clipping through the headboard.
+ *
+ * Bed sit drops the feet-pivot near the floor and folds the legs so hips /
+ * thighs land on the mattress (~9 world) - a tall Y reads as floating.
  */
 const LIE_Y = 14.2;
 const LIE_Z = 18;
-const SIT_BY_STYLE: Record<SitStyle, { y: number; z: number }> = {
-  bed: { y: 11.5, z: 6 },
-  couch: { y: 9.2, z: 3.5 },
-  bench: { y: 6.8, z: 1.5 },
+const SIT_BY_STYLE: Record<
+  SitStyle,
+  { y: number; z: number; lean: number; leg: number }
+> = {
+  bed: { y: 0.45, z: 6, lean: -0.4, leg: -1.2 },
+  couch: { y: 9.2, z: 3.5, lean: -0.28, leg: -0.95 },
+  bench: { y: 6.8, z: 1.5, lean: -0.28, leg: -0.95 },
 };
 
 /**
@@ -851,6 +862,8 @@ export function createActor(look: PlayerLook): ActorHandle {
   let yaw = yawFor(dir);
   let yawTarget = yaw;
   let walkHold = 0;
+  const headTop = new THREE.Vector3();
+  const headBox = new THREE.Box3();
   let x = 0;
   let z = 0;
   let reaction: { kind: ActorReaction; t: number; dur: number } | null = null;
@@ -1114,15 +1127,15 @@ export function createActor(look: PlayerLook): ActorHandle {
       const leanExtra = poseMotion?.leanX ?? 0;
       const hop = poseMotion?.hopY ?? 0;
       // Soft sit-up; stretch leans back a little instead of warping limbs.
-      const lean = -0.28 - stretchU * 0.12 + leanExtra;
+      const lean = seat.lean - stretchU * 0.12 + leanExtra;
       body.rotation.x = easeToward(body.rotation.x, lean, dt, 7);
       body.position.y = easeToward(body.position.y, seat.y + hop, dt, 7);
       body.position.z = easeToward(body.position.z, seat.z, dt, 7);
       body.position.x = easeToward(body.position.x, sway * 2.5, dt, 8);
       body.rotation.z = easeToward(body.rotation.z, sway * 0.45, dt, 8);
       applyBodyScale(1, 1, 1);
-      limbs.legL.rotation.x = easeToward(limbs.legL.rotation.x, -0.95, dt, 8);
-      limbs.legR.rotation.x = easeToward(limbs.legR.rotation.x, -0.95, dt, 8);
+      limbs.legL.rotation.x = easeToward(limbs.legL.rotation.x, seat.leg, dt, 8);
+      limbs.legR.rotation.x = easeToward(limbs.legR.rotation.x, seat.leg, dt, 8);
 
       const l = armRest(limbs.armL);
       const r = armRest(limbs.armR);
@@ -1200,6 +1213,24 @@ export function createActor(look: PlayerLook): ActorHandle {
     getPosition() {
       return { x, z };
     },
+    getHeadWorldPos() {
+      const head = headNode();
+      if (head) {
+        // Ensure matrices reflect the latest pose / hop before reading bounds.
+        root.updateWorldMatrix(true, true);
+        headBox.setFromObject(head);
+        if (!headBox.isEmpty()) {
+          headTop.set(
+            (headBox.min.x + headBox.max.x) * 0.5,
+            headBox.max.y,
+            (headBox.min.z + headBox.max.z) * 0.5,
+          );
+          return { x: headTop.x, y: headTop.y, z: headTop.z };
+        }
+      }
+      // Standing fallback if Head mesh is missing.
+      return { x, y: 40 * root.scale.y, z };
+    },
     setFacing(d) {
       dir = d;
       yawTarget = yawFor(d);
@@ -1225,9 +1256,12 @@ export function createActor(look: PlayerLook): ActorHandle {
       } else if (next === "sit") {
         sitStyle = opts?.sitStyle ?? "bed";
         const seat = SIT_BY_STYLE[sitStyle];
-        // Soft settle from lie is fine; keep Z on the seat.
-        body.position.y = seat.y;
+        // Keep Z on the seat. Snap Y when rising from stand; ease down from lie
+        // so the wake sit-up settles onto the mattress instead of teleporting.
         body.position.z = seat.z;
+        if (body.position.y < seat.y + 1) {
+          body.position.y = seat.y;
+        }
       } else if (next === "stand") {
         stretchDur = 0;
         stretchT = 0;

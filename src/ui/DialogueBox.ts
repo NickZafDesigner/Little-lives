@@ -33,7 +33,7 @@ export class DialogueBox {
   private charAcc = 0;
   private readonly cps = 42;
   /** Play a voice blip every N non-space characters while typing. */
-  private voiceEvery = 2;
+  private voiceEvery = 3;
   private charsSinceVoice = 0;
   private speakerId: PortraitId = "player";
   private look: PlayerLook | undefined;

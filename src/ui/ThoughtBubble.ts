@@ -164,29 +164,26 @@ export class ThoughtBubble {
   }
 
   /**
+   * @param headWorld crown of the player's head in world space
    * @param project world → screen (canvas-local CSS px)
    * @param viewW / viewH used to keep the bubble on-screen under focus zoom
    */
   update(
-    worldX: number,
-    worldZ: number,
+    headWorld: { x: number; y: number; z: number },
     project: (x: number, y: number, z: number) => { x: number; y: number },
     viewW = 0,
     viewH = 0,
   ) {
     if (!this.visible && this.bubble.hidden) return;
-    // Actor root is 1.2×; standing hair crown ~46–52 world.
-    // Bed-sit raises the body (~+14 world), so zoomed anchors sit higher
-    // or the cloud clips into the face during the wake close-up.
-    const worldY = this.zoomed ? 66 : 48;
-    const screen = project(worldX, worldY, worldZ);
+    const screen = project(headWorld.x, headWorld.y, headWorld.z);
+    // Bottom of the connector sits a fixed screen gap above the crown.
+    const gapPx = 24;
     let x = screen.x;
-    // Extra screen lift while zoomed so large sofa/text clouds clear hair.
-    let y = screen.y - (this.zoomed ? 22 : 4);
+    let y = screen.y - gapPx;
     if (viewW > 0 && viewH > 0) {
       const padX = this.zoomed ? 100 : 70;
-      // Keep padTop low so focus sky headroom isn't clamped onto the face.
-      const padTop = this.zoomed ? 16 : 28;
+      // Soft edge pads only - don't yank the connector onto the face.
+      const padTop = 8;
       const padBot = this.zoomed ? 180 : 80;
       x = Math.min(viewW - padX, Math.max(padX, x));
       y = Math.min(viewH - padBot, Math.max(padTop, y));

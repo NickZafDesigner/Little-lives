@@ -2525,22 +2525,26 @@ input:focus-visible {
 
 .ll-cycle-control {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  grid-template-columns: 2rem minmax(0, 1fr) 2rem;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.25rem;
   min-width: 0;
 }
 
 .ll-cycle button {
   border: none;
   background: var(--ll-sunk);
-  border-radius: 8px;
-  font-size: 1.05rem;
+  border-radius: 50%;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
   line-height: 1;
   font-weight: 800;
   color: var(--ll-ink-soft);
   cursor: pointer;
-  height: 2rem;
   transition: background 0.12s ease;
 }
 
@@ -2642,6 +2646,25 @@ input:focus-visible {
   }
 }
 
+/* Slow dissolve into the prologue night before the world mounts. */
+.ll-create.is-leaving {
+  pointer-events: none;
+}
+.ll-create.is-leaving::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  background: #0a0e1c;
+  opacity: 0;
+  animation: ll-create-to-story 1.2s ease-in-out forwards;
+}
+@keyframes ll-create-to-story {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
 @keyframes ll-preview-pulse {
   0% { transform: scale(1); }
   40% { transform: scale(1.015); }
@@ -2668,6 +2691,14 @@ input:focus-visible {
 .ll-world-ui .ll-build-chip,
 .ll-world-ui .ll-prologue {
   pointer-events: auto;
+}
+
+/* Hide world chrome while the arrival curtain is up. */
+.ll-world-ui:has(.ll-prologue:not([hidden])) .ll-hud,
+.ll-world-ui:has(.ll-prologue:not([hidden])) .ll-build-chip,
+.ll-world-ui:has(.ll-prologue:not([hidden])) .ll-nametags,
+.ll-world-ui:has(.ll-prologue:not([hidden])) .ll-building-tags {
+  visibility: hidden;
 }
 
 .ll-build-chip {
@@ -4295,29 +4326,6 @@ input:focus-visible {
     opacity: 1;
     transform: translate(-50%, 0);
   }
-}
-
-.ll-busy {
-  position: absolute;
-  left: 50%;
-  top: 18px;
-  transform: translateX(-50%);
-  width: 230px;
-  background: var(--ll-panel);
-  border-radius: var(--ll-r-md);
-  padding: 0.5rem 0.75rem;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    var(--ll-sh-md);
-  pointer-events: none;
-}
-
-.ll-busy span {
-  display: block;
-  font-size: 0.72rem;
-  font-weight: 800;
-  margin-bottom: 0.35rem;
-  text-align: center;
 }
 
 /* ---------- Interaction menu (card panel) ---------- */
@@ -6071,23 +6079,60 @@ input:focus-visible {
   display: grid;
   place-items: center;
   pointer-events: auto;
-  opacity: 0;
+  /* Curtain stays fully opaque while story plays - village only appears on exit. */
+  opacity: 1;
   cursor: pointer;
 }
 .ll-prologue[hidden] {
   display: none !important;
   pointer-events: none !important;
 }
-.ll-prologue.is-in {
-  animation: ll-prologue-in 0.55s ease-out forwards;
+/* Cover state: solid void. is-in slowly reveals frame + story content. */
+.ll-prologue:not(.is-in):not(.is-out) .ll-prologue-frame,
+.ll-prologue:not(.is-in):not(.is-out) .ll-prologue-motes,
+.ll-prologue:not(.is-in):not(.is-out) .ll-prologue-vignette,
+.ll-prologue:not(.is-in):not(.is-out) .ll-prologue-stage {
+  opacity: 0;
+}
+.ll-prologue.is-in .ll-prologue-frame {
+  animation: ll-prologue-frame-in 1.6s ease-out both;
+}
+.ll-prologue.is-in .ll-prologue-motes {
+  animation: ll-prologue-soft-in 1.8s 0.25s ease-out both;
+}
+.ll-prologue.is-in .ll-prologue-vignette {
+  animation: ll-prologue-soft-in 1.5s 0.1s ease-out both;
+}
+.ll-prologue.is-in .ll-prologue-stage {
+  animation: ll-prologue-stage-in 1.55s 0.35s ease-out both;
 }
 .ll-prologue.is-out {
-  animation: ll-prologue-out 0.42s ease-in forwards;
+  animation: ll-prologue-out 0.85s ease-in forwards;
   pointer-events: none;
 }
-@keyframes ll-prologue-in {
+@keyframes ll-prologue-frame-in {
+  from {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes ll-prologue-soft-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+@keyframes ll-prologue-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @keyframes ll-prologue-out {
   from { opacity: 1; }
@@ -6096,44 +6141,350 @@ input:focus-visible {
 .ll-prologue-wash {
   position: absolute;
   inset: 0;
+  /* Fully opaque base so the 3D village never peeks through mid-story. */
   background:
-    radial-gradient(ellipse at 50% 28%, rgba(70, 95, 140, 0.22), transparent 55%),
-    radial-gradient(ellipse at 50% 100%, rgba(40, 28, 18, 0.55), transparent 50%),
-    rgba(12, 16, 28, 0.88);
+    radial-gradient(ellipse at 50% 28%, rgba(70, 95, 140, 0.35), transparent 55%),
+    radial-gradient(ellipse at 50% 100%, rgba(40, 28, 18, 0.7), transparent 50%),
+    #0c101c;
+  transition: background 0.85s ease;
+}
+.ll-prologue[data-beat="leave"] .ll-prologue-wash {
+  background:
+    radial-gradient(ellipse at 42% 22%, rgba(90, 110, 160, 0.4), transparent 52%),
+    radial-gradient(ellipse at 70% 80%, rgba(30, 36, 70, 0.65), transparent 55%),
+    #0a0e1c;
+}
+.ll-prologue[data-beat="arrive"] .ll-prologue-wash {
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(210, 120, 70, 0.38), transparent 55%),
+    radial-gradient(ellipse at 30% 90%, rgba(60, 35, 55, 0.55), transparent 50%),
+    #1c1220;
+}
+.ll-prologue[data-beat="morning"] .ll-prologue-wash {
+  background:
+    radial-gradient(ellipse at 50% 22%, rgba(90, 110, 170, 0.32), transparent 50%),
+    radial-gradient(ellipse at 50% 100%, rgba(20, 16, 30, 0.85), transparent 52%),
+    #0a0c18;
+}
+.ll-prologue[data-beat="dawn"] .ll-prologue-wash,
+.ll-prologue.is-dawn .ll-prologue-wash {
+  /* Soften only on exit so the cottage can bloom through. */
+  background:
+    radial-gradient(ellipse at 50% 32%, rgba(255, 200, 130, 0.55), transparent 58%),
+    radial-gradient(ellipse at 50% 100%, rgba(100, 140, 190, 0.45), transparent 55%),
+    rgba(70, 95, 140, 0.72);
+}
+.ll-prologue.is-turn .ll-prologue-stage {
+  animation: ll-prologue-turn 0.45s ease-out;
+}
+@keyframes ll-prologue-turn {
+  0% { transform: scale(1); filter: brightness(1); }
+  35% { transform: scale(0.985); filter: brightness(1.12); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+/* Storybook outer frame - edges + ornamental corners. */
+.ll-prologue-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.ll-prologue-frame-edge {
+  position: absolute;
+  display: block;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(244, 220, 170, 0.18) 12%,
+    rgba(255, 230, 180, 0.42) 50%,
+    rgba(244, 220, 170, 0.18) 88%,
+    transparent 100%
+  );
+  box-shadow: 0 0 12px rgba(255, 210, 140, 0.12);
+}
+.ll-prologue-frame-edge.is-t,
+.ll-prologue-frame-edge.is-b {
+  left: 8%;
+  right: 8%;
+  height: 1px;
+}
+.ll-prologue-frame-edge.is-t { top: 18px; }
+.ll-prologue-frame-edge.is-b {
+  bottom: 18px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(244, 220, 170, 0.14) 12%,
+    rgba(255, 230, 180, 0.34) 50%,
+    rgba(244, 220, 170, 0.14) 88%,
+    transparent 100%
+  );
+}
+.ll-prologue-frame-edge.is-l,
+.ll-prologue-frame-edge.is-r {
+  top: 10%;
+  bottom: 10%;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(244, 220, 170, 0.16) 14%,
+    rgba(255, 230, 180, 0.38) 50%,
+    rgba(244, 220, 170, 0.16) 86%,
+    transparent 100%
+  );
+}
+.ll-prologue-frame-edge.is-l { left: 18px; }
+.ll-prologue-frame-edge.is-r { right: 18px; }
+.ll-prologue-corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-color: rgba(255, 224, 170, 0.55);
+  border-style: solid;
+  border-width: 0;
+  box-shadow: 0 0 14px rgba(255, 200, 120, 0.12);
+}
+.ll-prologue-corner::before,
+.ll-prologue-corner::after {
+  content: "";
+  position: absolute;
+  background: rgba(255, 224, 170, 0.7);
+  box-shadow: 0 0 6px rgba(255, 210, 140, 0.35);
+}
+.ll-prologue-corner::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+.ll-prologue-corner.is-tl {
+  top: 14px;
+  left: 14px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+  border-top-left-radius: 4px;
+}
+.ll-prologue-corner.is-tl::before { top: -3px; left: -3px; }
+.ll-prologue-corner.is-tl::after {
+  top: 8px;
+  left: 8px;
+  width: 8px;
+  height: 1px;
+  transform: rotate(45deg);
+  transform-origin: left center;
+  background: rgba(255, 224, 170, 0.4);
+  box-shadow: none;
+}
+.ll-prologue-corner.is-tr {
+  top: 14px;
+  right: 14px;
+  border-top-width: 2px;
+  border-right-width: 2px;
+  border-top-right-radius: 4px;
+}
+.ll-prologue-corner.is-tr::before { top: -3px; right: -3px; left: auto; }
+.ll-prologue-corner.is-tr::after {
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 1px;
+  transform: rotate(-45deg);
+  transform-origin: right center;
+  background: rgba(255, 224, 170, 0.4);
+  box-shadow: none;
+}
+.ll-prologue-corner.is-br {
+  bottom: 14px;
+  right: 14px;
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+  border-bottom-right-radius: 4px;
+}
+.ll-prologue-corner.is-br::before { bottom: -3px; right: -3px; top: auto; left: auto; }
+.ll-prologue-corner.is-br::after {
+  bottom: 8px;
+  right: 8px;
+  width: 8px;
+  height: 1px;
+  transform: rotate(45deg);
+  transform-origin: right center;
+  background: rgba(255, 224, 170, 0.4);
+  box-shadow: none;
+}
+.ll-prologue-corner.is-bl {
+  bottom: 14px;
+  left: 14px;
+  border-bottom-width: 2px;
+  border-left-width: 2px;
+  border-bottom-left-radius: 4px;
+}
+.ll-prologue-corner.is-bl::before { bottom: -3px; left: -3px; top: auto; }
+.ll-prologue-corner.is-bl::after {
+  bottom: 8px;
+  left: 8px;
+  width: 8px;
+  height: 1px;
+  transform: rotate(-45deg);
+  transform-origin: left center;
+  background: rgba(255, 224, 170, 0.4);
+  box-shadow: none;
+}
+
+.ll-prologue-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse at 50% 45%,
+      transparent 32%,
+      rgba(4, 6, 14, 0.45) 78%,
+      rgba(4, 6, 14, 0.72) 100%
+    );
+  pointer-events: none;
+  z-index: 1;
+}
+.ll-prologue-motes {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+.ll-prologue-motes span {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 236, 200, 0.55);
+  box-shadow: 0 0 8px rgba(255, 220, 160, 0.35);
+  animation: ll-prologue-mote 9s ease-in-out infinite;
+  opacity: 0;
+}
+.ll-prologue-motes span:nth-child(1) { left: 12%; top: 72%; animation-delay: 0s; }
+.ll-prologue-motes span:nth-child(2) { left: 28%; top: 58%; animation-delay: 1.2s; width: 2px; height: 2px; }
+.ll-prologue-motes span:nth-child(3) { left: 46%; top: 78%; animation-delay: 2.4s; }
+.ll-prologue-motes span:nth-child(4) { left: 62%; top: 62%; animation-delay: 0.6s; width: 2px; height: 2px; }
+.ll-prologue-motes span:nth-child(5) { left: 78%; top: 70%; animation-delay: 3.1s; }
+.ll-prologue-motes span:nth-child(6) { left: 18%; top: 40%; animation-delay: 4.2s; width: 2px; height: 2px; }
+.ll-prologue-motes span:nth-child(7) { left: 88%; top: 48%; animation-delay: 1.8s; }
+.ll-prologue-motes span:nth-child(8) { left: 54%; top: 36%; animation-delay: 5s; width: 2px; height: 2px; }
+.ll-prologue-motes span:nth-child(9) { left: 36%; top: 28%; animation-delay: 2.8s; width: 2px; height: 2px; }
+.ll-prologue-motes span:nth-child(10) { left: 70%; top: 42%; animation-delay: 3.6s; }
+.ll-prologue[data-beat="morning"] .ll-prologue-motes span,
+.ll-prologue[data-beat="dawn"] .ll-prologue-motes span {
+  background: rgba(255, 230, 180, 0.7);
+  box-shadow: 0 0 10px rgba(255, 210, 140, 0.5);
+  animation-duration: 7s;
+}
+@keyframes ll-prologue-mote {
+  0%, 100% { opacity: 0; transform: translateY(12px) scale(0.6); }
+  20% { opacity: 0.7; }
+  55% { opacity: 0.45; transform: translateY(-28px) scale(1); }
+  85% { opacity: 0; transform: translateY(-48px) scale(0.8); }
 }
 .ll-prologue-stage {
   position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.15rem;
-  width: min(420px, 86vw);
+  gap: 0.85rem;
+  width: min(440px, 88vw);
   padding: 0 0.5rem;
   text-align: center;
 }
-.ll-prologue-text {
+.ll-prologue-eyebrow {
   margin: 0;
   font-family: var(--ll-font-display);
-  font-size: clamp(1.05rem, 3.4vw, 1.35rem);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 220, 160, 0.72);
+  text-shadow: 0 1px 8px rgba(8, 10, 20, 0.45);
+}
+.ll-prologue-eyebrow.is-swap {
+  animation: ll-prologue-eyebrow 0.55s ease-out both;
+}
+@keyframes ll-prologue-eyebrow {
+  from { opacity: 0; letter-spacing: 0.28em; }
+  to { opacity: 1; letter-spacing: 0.16em; }
+}
+.ll-prologue-ornament {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: min(200px, 55vw);
+  opacity: 0.55;
+}
+.ll-prologue-ornament span {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(244, 234, 214, 0.55),
+    transparent
+  );
+}
+.ll-prologue-ornament i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 214, 140, 0.75);
+  box-shadow: 0 0 10px rgba(255, 200, 120, 0.45);
+  flex: 0 0 auto;
+}
+.ll-prologue-text {
+  margin: 0;
+  min-height: 3.2em;
+  font-family: var(--ll-font-display);
+  font-size: clamp(1.08rem, 3.5vw, 1.4rem);
   font-weight: 700;
-  line-height: 1.45;
+  line-height: 1.5;
   letter-spacing: 0.01em;
-  color: #f4ead6;
-  text-shadow: 0 2px 12px rgba(8, 10, 20, 0.55);
+  color: #f7efd8;
+  text-shadow: 0 2px 14px rgba(8, 10, 20, 0.6);
   opacity: 0;
 }
 .ll-prologue-text.is-swap {
-  animation: ll-prologue-line 0.45s ease-out forwards;
+  animation: ll-prologue-line 0.5s ease-out forwards;
 }
 @keyframes ll-prologue-line {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+.ll-prologue-dots {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: center;
+  min-height: 10px;
+}
+.ll-prologue-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(244, 234, 214, 0.22);
+  transition:
+    background 0.3s ease,
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+.ll-prologue-dot.is-done {
+  background: rgba(244, 234, 214, 0.45);
+}
+.ll-prologue-dot.is-on {
+  background: rgba(255, 214, 140, 0.9);
+  transform: scale(1.25);
+  box-shadow: 0 0 8px rgba(255, 200, 120, 0.45);
 }
 .ll-prologue-continue {
   font-family: var(--ll-font-display);
@@ -6142,6 +6493,9 @@ input:focus-visible {
   letter-spacing: 0.04em;
   color: rgba(244, 234, 214, 0.55);
   animation: ll-prologue-pulse 1.6s ease-in-out infinite;
+}
+.ll-prologue-continue[hidden] {
+  display: none !important;
 }
 @keyframes ll-prologue-pulse {
   0%, 100% { opacity: 0.45; }
@@ -6261,6 +6615,157 @@ input:focus-visible {
   font-size: 0.82rem;
   font-weight: 700;
   line-height: 1.3;
+  color: var(--ll-ink-soft, #6d513f);
+}
+
+/* -- Milestone celebration (tools, pets, promotions) -- */
+.ll-moment {
+  position: absolute;
+  inset: 0;
+  z-index: 83;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+}
+.ll-moment[hidden] {
+  display: none !important;
+}
+.ll-moment.is-in {
+  animation: ll-pay-in 0.48s cubic-bezier(0.22, 1.2, 0.36, 1) forwards;
+}
+.ll-moment.is-out {
+  animation: ll-montage-out 0.28s ease-in forwards;
+}
+.ll-moment-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: min(300px, 82vw);
+  max-width: min(360px, 90vw);
+  padding: 1.35rem 1.7rem 1.15rem;
+  border-radius: 22px;
+  border: 4px solid var(--ll-wood-deep);
+  box-shadow:
+    inset 0 0 0 3px var(--ll-wood-light),
+    0 14px 36px rgba(62, 44, 34, 0.28);
+  text-align: center;
+}
+.ll-moment-card[data-accent="gold"] {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 209, 102, 0.55), transparent 62%),
+    linear-gradient(180deg, #fff8e8, #f6e4c4);
+  box-shadow:
+    inset 0 0 0 3px var(--ll-wood-light),
+    0 14px 36px rgba(62, 44, 34, 0.28),
+    0 0 0 1px rgba(255, 209, 102, 0.35);
+}
+.ll-moment-card[data-accent="mint"] {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(127, 207, 192, 0.5), transparent 62%),
+    linear-gradient(180deg, #f2fff9, #d8f0e4);
+  box-shadow:
+    inset 0 0 0 3px #c5e8d8,
+    0 14px 36px rgba(62, 44, 34, 0.28),
+    0 0 0 1px rgba(127, 207, 192, 0.4);
+}
+.ll-moment-card[data-accent="rose"] {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(244, 154, 182, 0.55), transparent 62%),
+    linear-gradient(180deg, #fff5f8, #f8dce6);
+  box-shadow:
+    inset 0 0 0 3px #f0c8d6,
+    0 14px 36px rgba(62, 44, 34, 0.28),
+    0 0 0 1px rgba(244, 154, 182, 0.4);
+}
+.ll-moment-badge {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--ll-font-display);
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--ll-wood-deep);
+  background: linear-gradient(160deg, #ffe08a, #ffc94a);
+  border: 3px solid var(--ll-wood-deep);
+  box-shadow: 0 4px 0 rgba(111, 75, 44, 0.35);
+  animation: ll-pay-badge-pop 0.55s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+}
+.ll-moment-card[data-accent="mint"] .ll-moment-badge {
+  background: linear-gradient(160deg, #b8f0e0, #7fcfc0);
+}
+.ll-moment-card[data-accent="rose"] .ll-moment-badge {
+  background: linear-gradient(160deg, #ffc0d4, #f49ab6);
+}
+.ll-moment-thumb {
+  width: 84px;
+  height: 84px;
+  margin-top: 0.35rem;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.55);
+  border: 3px solid var(--ll-wood-deep);
+  box-shadow: inset 0 -3px 0 rgba(92, 58, 30, 0.12);
+  animation: ll-moment-thumb-pop 0.55s cubic-bezier(0.22, 1.35, 0.36, 1) 0.08s both;
+}
+@keyframes ll-moment-thumb-pop {
+  0% {
+    transform: scale(0.2) rotate(-12deg);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.1) rotate(4deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+.ll-moment-thumb-canvas {
+  width: 72px;
+  height: 72px;
+  display: block;
+}
+.ll-moment-eyebrow {
+  margin: 0.45rem 0 0;
+  font-family: var(--ll-font-display);
+  font-size: 0.88rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ll-wood-deep);
+}
+.ll-moment-title {
+  font-family: var(--ll-font-display);
+  font-size: clamp(1.65rem, 5.5vw, 2.35rem);
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--ll-ink);
+  text-shadow: 0 2px 0 rgba(255, 246, 229, 0.9);
+  animation: ll-pay-amount-glow 1.2s ease-in-out infinite alternate;
+}
+.ll-moment-card[data-accent="mint"] .ll-moment-title {
+  color: #2a7a68;
+}
+.ll-moment-card[data-accent="rose"] .ll-moment-title {
+  color: #a8456a;
+}
+.ll-moment-note {
+  margin: 0.25rem 0 0;
+  max-width: 26ch;
+  font-family: var(--ll-font-display);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.35;
   color: var(--ll-ink-soft, #6d513f);
 }
 

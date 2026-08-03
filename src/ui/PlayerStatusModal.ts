@@ -568,7 +568,7 @@ export class PlayerStatusModal {
         <li>Pick wildflowers around town, then gift them to anyone for a friendship boost (one gift per person per day).</li>
         <li>Check the Friends tab to see every relationship score and roommate.</li>
         <li>Deeper chats unlock as friendship grows. At 100, ask someone to move in.</li>
-        <li>Roommates wander your house — chat anytime, or send them out to harvest. Collect their haul from the porch.</li>
+        <li>Roommates wander your house - chat anytime, or send them out to harvest. Collect their haul from the porch.</li>
       </ul>
       <h3 class="ll-status-section">Tips</h3>
       <ul class="ll-status-tips">

@@ -142,7 +142,7 @@ export class HintArrow {
       aimDy = dirY;
     }
     // Tip defaults to screen +Y (down). CSS rotate() is clockwise-positive, so
-    // negate atan2(dx, dy) — otherwise headings mirror (café reads too far right).
+    // negate atan2(dx, dy) - otherwise headings mirror (café reads too far right).
     const targetDeg = (-Math.atan2(aimDx, aimDy) * 180) / Math.PI;
     this.rotDeg = this.hasRot
       ? lerpAngleDeg(this.rotDeg, targetDeg, 0.22)

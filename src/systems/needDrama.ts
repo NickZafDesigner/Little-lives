@@ -77,7 +77,7 @@ export function applyCollapseRecovery(state: GameState): string {
     state.playerName,
     "Floor nap: 3 stars. Neck: 1 star.",
   );
-  return "Bonk. Tiny nap on the spot — feeling a bit better.";
+  return "Bonk. Tiny nap on the spot - feeling a bit better.";
 }
 
 /** Full sleep: restore energy, advance to morning, daily summary. */

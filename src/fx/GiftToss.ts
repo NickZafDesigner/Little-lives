@@ -163,7 +163,7 @@ export class GiftToss {
 function disposeObject(obj: THREE.Object3D): void {
   obj.traverse((child) => {
     const mesh = child as THREE.Mesh;
-    // Materials are shared via the mesh cache — only free geometries.
+    // Materials are shared via the mesh cache - only free geometries.
     if (mesh.isMesh) mesh.geometry?.dispose();
   });
 }

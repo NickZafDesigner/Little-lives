@@ -294,7 +294,7 @@ export class GameState {
   jobActive = false;
   /** Active job id while on a shift (cafe_barista, market_clerk, …). */
   activeJobId: string | null = null;
-  /** Per-task quality scores (0–1) for the active shift. */
+  /** Per-task quality scores (0-1) for the active shift. */
   jobQualityScores: number[] = [];
   /** True if this shift was clocked in after WORK_LATE. */
   shiftLate = false;
@@ -389,7 +389,7 @@ export class GameState {
 
   /**
    * Record a late clock-in or no-show for today. Idempotent per day.
-   * Queues a boss warning (strikes 1–2) or firing (strike 3).
+   * Queues a boss warning (strikes 1-2) or firing (strike 3).
    */
   noteWorkMiss(jobId: string, reason: "late" | "no_show"): number {
     if (this.lastWorkMissDay === this.dayIndex) {
