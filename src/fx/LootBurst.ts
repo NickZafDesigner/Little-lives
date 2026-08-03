@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { MaterialId } from "../data/items";
 import { createInventoryItemMesh } from "../mesh/inventoryItems";
 
-const REST_SEC = 1.0;
+const REST_SEC = 0.5;
 const ZIP_SEC = 0.38;
 const GRAVITY = 420;
 const MESH_SCALE = 0.55;
