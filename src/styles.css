@@ -5510,6 +5510,9 @@ input:focus-visible {
 }
 
 .ll-status-friend {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
   padding: 0.55rem 0.65rem;
   border-radius: 10px;
   background: rgba(255, 248, 235, 0.72);
@@ -5519,6 +5522,23 @@ input:focus-visible {
 .ll-status-friend.is-roommate {
   border-color: rgba(78, 155, 58, 0.45);
   background: rgba(196, 230, 170, 0.35);
+}
+
+.ll-status-friend-face {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: var(--ll-sunk);
+  box-shadow: inset 0 0 0 2px var(--ll-wood-light);
+  display: block;
+}
+
+.ll-status-friend-body {
+  flex: 1;
+  min-width: 0;
 }
 
 .ll-status-friend-top {

@@ -215,11 +215,22 @@ export class PlayerStatusModal {
       this.mountInventoryThumbs(body);
       this.bindBagActions(body);
     }
+    if (this.tab === "friends") this.mountFriendFaces(body);
     if (this.tab === "tasks") {
       this.mountUnlockThumbs(body);
       this.scrollHighlightIntoView(body);
     }
     this.syncPortrait();
+  }
+
+  private mountFriendFaces(root: ParentNode) {
+    for (const canvas of root.querySelectorAll<HTMLCanvasElement>(
+      "[data-friend-face]",
+    )) {
+      const id = canvas.dataset.friendFace;
+      if (!id) continue;
+      drawPortrait(canvas, id);
+    }
   }
 
   private scrollHighlightIntoView(root: ParentNode) {
@@ -493,16 +504,19 @@ export class PlayerStatusModal {
         const pct = Math.round((npc.score / RELATIONSHIP_MAX) * 100);
         return `
         <li class="ll-status-friend${roommate ? " is-roommate" : ""}">
-          <div class="ll-status-friend-top">
-            <strong>${escapeHtml(npc.name)}</strong>
-            <span>${escapeHtml(tierLabel(tier))}${roommate ? " · Roommate" : ""}</span>
-          </div>
-          <div class="ll-status-friend-bar" aria-hidden="true">
-            <i style="width:${pct}%"></i>
-          </div>
-          <div class="ll-status-friend-meta">
-            <span>${npc.score} / ${RELATIONSHIP_MAX}</span>
-            <span>${escapeHtml(npc.detail)}</span>
+          <canvas class="ll-status-friend-face" data-friend-face="${escapeHtml(npc.id)}" width="32" height="32" aria-hidden="true"></canvas>
+          <div class="ll-status-friend-body">
+            <div class="ll-status-friend-top">
+              <strong>${escapeHtml(npc.name)}</strong>
+              <span>${escapeHtml(tierLabel(tier))}${roommate ? " · Roommate" : ""}</span>
+            </div>
+            <div class="ll-status-friend-bar" aria-hidden="true">
+              <i style="width:${pct}%"></i>
+            </div>
+            <div class="ll-status-friend-meta">
+              <span>${npc.score} / ${RELATIONSHIP_MAX}</span>
+              <span>${escapeHtml(npc.detail)}</span>
+            </div>
           </div>
         </li>`;
       })
