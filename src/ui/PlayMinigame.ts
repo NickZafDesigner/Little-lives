@@ -13,6 +13,17 @@ export type PlayMiniKind =
   | "bounce";
 export type PlayMiniGrade = "perfect" | "ok" | "miss";
 
+/** Live play state for syncing the world character. */
+export interface PlayMiniTick {
+  kind: PlayMiniKind;
+  /** Pendulum angle −1…1 (swing / tune / bounce). */
+  angle: number;
+  /** Pump height 0…1. */
+  height: number;
+  /** Chute / bobber marker 0…1 (slide / fish / arcade). */
+  marker: number;
+}
+
 const RESULT_HOLD_MS = 950;
 const GRADE_LABEL: Record<PlayMiniGrade, string> = {
   perfect: "PERFECT!",
@@ -41,6 +52,8 @@ export class PlayMinigame {
   private onDone: ((grade: PlayMiniGrade) => void) | null = null;
   /** Fires as soon as the grade is known (during the result flash). */
   private onGrade: ((grade: PlayMiniGrade) => void) | null = null;
+  /** Per-frame sync for world character motion. */
+  private onTick: ((tick: PlayMiniTick) => void) | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private pointerDown: ((e: PointerEvent) => void) | null = null;
   private raf = 0;
@@ -102,11 +115,13 @@ export class PlayMinigame {
     label: string,
     onDone: (grade: PlayMiniGrade) => void,
     onGrade?: (grade: PlayMiniGrade) => void,
+    onTick?: (tick: PlayMiniTick) => void,
   ) {
     this.close();
     this.kind = kind;
     this.onDone = onDone;
     this.onGrade = onGrade ?? null;
+    this.onTick = onTick ?? null;
     this.open = true;
     this.resolved = false;
     this.lastMs = performance.now();
@@ -431,6 +446,7 @@ export class PlayMinigame {
         this.angVel = Math.abs(this.angVel);
       }
       this.layoutSwing();
+      this.emitTick();
       if (now - this.bornMs > 14000) {
         const avg =
           this.pumpScores.length > 0
@@ -451,6 +467,7 @@ export class PlayMinigame {
       }
       if (this.kind === "fish") this.layoutFish();
       else this.layoutSlide();
+      this.emitTick();
       if (now - this.bornMs > 8000) {
         this.resolve("miss");
         return;
@@ -459,6 +476,15 @@ export class PlayMinigame {
 
     this.raf = requestAnimationFrame(this.frame);
   };
+
+  private emitTick() {
+    this.onTick?.({
+      kind: this.kind,
+      angle: this.angle,
+      height: this.height,
+      marker: this.marker,
+    });
+  }
 
   private resolve(grade: PlayMiniGrade) {
     if (this.resolved) return;
@@ -526,6 +552,7 @@ export class PlayMinigame {
     this.open = false;
     this.onDone = null;
     this.onGrade = null;
+    this.onTick = null;
     this.root.classList.remove(
       "is-open",
       "is-in",

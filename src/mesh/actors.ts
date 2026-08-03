@@ -21,6 +21,18 @@ export type ActorReaction = "vibrate" | "pop" | "jump";
 /** Bed / wake poses for the new-game intro (and reusable elsewhere). */
 export type ActorPose = "lie" | "sit" | "stand";
 
+/** Seat height profile — bed sit is taller than outdoor benches. */
+export type SitStyle = "bed" | "bench" | "couch";
+
+/** Overlay motion while posed (swing sway, slide lean, bounce hop). */
+export interface PoseMotion {
+  swayZ?: number;
+  leanX?: number;
+  hopY?: number;
+}
+
+export type HeldTool = "axe" | "pickaxe" | "shovel" | "fishing_rod";
+
 export interface ActorHandle {
   root: THREE.Group;
   setPosition(x: number, z: number): void;
@@ -30,15 +42,17 @@ export interface ActorHandle {
   /** One-shot silly body reaction (shake / squash-pop / hop). */
   playReaction(kind: ActorReaction): void;
   /** Snap body into a bed/stand pose (overrides walk/idle until stand). */
-  setPose(pose: ActorPose): void;
+  setPose(pose: ActorPose, opts?: { sitStyle?: SitStyle }): void;
+  /** Live overlay on the current pose (swing / slide / bounce). */
+  setPoseMotion(motion: PoseMotion | null): void;
   /** Arms-up stretch, ~0.75s. */
   playStretch(): void;
   /** Brief head tip / open-mouth yawn, ~0.65s. */
   playYawn(): void;
   /** Friendly raised-hand wave, ~1.0s. */
   playWave(): void;
-  /** Swing a held tool (axe/pickaxe/shovel) for `durationSec`. */
-  playToolSwing(tool: "axe" | "pickaxe" | "shovel", durationSec: number): void;
+  /** Swing a held tool (axe/pickaxe/shovel/rod) for `durationSec`. */
+  playToolSwing(tool: HeldTool, durationSec: number): void;
   /** Big grin + ^ ^ happy eyes, ~0.85s. */
   playSmile(): void;
   /** Embarrassed blush bloom + head duck, ~2.4s. */
@@ -601,8 +615,11 @@ function applySexStyle(body: THREE.Object3D, sex: Sex, hairColor: number) {
  */
 const LIE_Y = 14.2;
 const LIE_Z = 18;
-const SIT_Y = 11.5;
-const SIT_Z = 6;
+const SIT_BY_STYLE: Record<SitStyle, { y: number; z: number }> = {
+  bed: { y: 11.5, z: 6 },
+  couch: { y: 9.2, z: 3.5 },
+  bench: { y: 6.8, z: 1.5 },
+};
 
 /**
  * Hair kits include a wide flat fringe pad across the forehead that reads as a
@@ -838,6 +855,8 @@ export function createActor(look: PlayerLook): ActorHandle {
   let z = 0;
   let reaction: { kind: ActorReaction; t: number; dur: number } | null = null;
   let pose: ActorPose = "stand";
+  let sitStyle: SitStyle = "bed";
+  let poseMotion: PoseMotion | null = null;
   let stretchT = 0;
   let stretchDur = 0;
   let yawnT = 0;
@@ -850,6 +869,7 @@ export function createActor(look: PlayerLook): ActorHandle {
   let blushDur = 0;
   let chopT = 0;
   let chopDur = 0;
+  let chopCast = false;
   let heldTool: THREE.Object3D | null = null;
 
   type FaceRest = {
@@ -879,14 +899,20 @@ export function createActor(look: PlayerLook): ActorHandle {
     }
   };
 
-  const attachHeldTool = (tool: "axe" | "pickaxe" | "shovel") => {
+  const attachHeldTool = (tool: HeldTool) => {
     clearHeldTool();
     const mesh = createInventoryItemMesh(`tool:${tool}`);
     mesh.name = "HeldTool";
     // Inventory meshes are large; shrink and seat in the right hand.
-    mesh.scale.setScalar(0.42);
-    mesh.position.set(1.2, -6.5, 1.8);
-    mesh.rotation.set(0.15, 0.4, 0.85);
+    if (tool === "fishing_rod") {
+      mesh.scale.setScalar(0.38);
+      mesh.position.set(1.0, -5.5, 2.2);
+      mesh.rotation.set(-0.4, 0.15, 0.35);
+    } else {
+      mesh.scale.setScalar(0.42);
+      mesh.position.set(1.2, -6.5, 1.8);
+      mesh.rotation.set(0.15, 0.4, 0.85);
+    }
     limbs.armR.add(mesh);
     heldTool = mesh;
   };
@@ -1035,6 +1061,7 @@ export function createActor(look: PlayerLook): ActorHandle {
     if (!chopping && chopDur > 0) {
       chopDur = 0;
       chopT = 0;
+      chopCast = false;
       clearHeldTool();
     }
 
@@ -1046,7 +1073,8 @@ export function createActor(look: PlayerLook): ActorHandle {
         ? Math.sin(Math.min(1, blushT / blushDur) * Math.PI)
         : 0,
       chopping,
-      chopSwing: chopping ? Math.sin(chopT * Math.PI * 2.6) : 0,
+      chopSwing: chopping ? Math.sin(chopT * Math.PI * (chopCast ? 1.6 : 2.6)) : 0,
+      casting: chopping && chopCast,
     };
   };
 
@@ -1081,22 +1109,27 @@ export function createActor(look: PlayerLook): ActorHandle {
       limbs.armL.rotation.z = easeToward(limbs.armL.rotation.z, l.z + 0.35, dt, 6);
       limbs.armR.rotation.z = easeToward(limbs.armR.rotation.z, r.z - 0.35, dt, 6);
     } else if (pose === "sit") {
+      const seat = SIT_BY_STYLE[sitStyle];
+      const sway = poseMotion?.swayZ ?? 0;
+      const leanExtra = poseMotion?.leanX ?? 0;
+      const hop = poseMotion?.hopY ?? 0;
       // Soft sit-up; stretch leans back a little instead of warping limbs.
-      const lean = -0.28 - stretchU * 0.12;
+      const lean = -0.28 - stretchU * 0.12 + leanExtra;
       body.rotation.x = easeToward(body.rotation.x, lean, dt, 7);
-      body.position.y = easeToward(body.position.y, SIT_Y, dt, 7);
-      body.position.z = easeToward(body.position.z, SIT_Z, dt, 7);
-      body.position.x = easeToward(body.position.x, 0, dt, 8);
-      body.rotation.z = easeToward(body.rotation.z, 0, dt, 8);
+      body.position.y = easeToward(body.position.y, seat.y + hop, dt, 7);
+      body.position.z = easeToward(body.position.z, seat.z, dt, 7);
+      body.position.x = easeToward(body.position.x, sway * 2.5, dt, 8);
+      body.rotation.z = easeToward(body.rotation.z, sway * 0.45, dt, 8);
       applyBodyScale(1, 1, 1);
       limbs.legL.rotation.x = easeToward(limbs.legL.rotation.x, -0.95, dt, 8);
       limbs.legR.rotation.x = easeToward(limbs.legR.rotation.x, -0.95, dt, 8);
 
       const l = armRest(limbs.armL);
       const r = armRest(limbs.armR);
-      // Gentle reach-up stretch - keep arms close to the body silhouette.
-      const reach = stretchU * 0.55;
-      const lift = stretchU * 0.7;
+      // Swing: arms up on the chains. Stretch: gentle reach-up.
+      const swingHold = Math.min(1, Math.abs(sway) * 1.4);
+      const reach = stretchU * 0.55 + swingHold * 0.35;
+      const lift = stretchU * 0.7 + swingHold * 0.85;
       limbs.armL.rotation.x = easeToward(
         limbs.armL.rotation.x,
         l.x - 0.25 - lift,
@@ -1127,7 +1160,7 @@ export function createActor(look: PlayerLook): ActorHandle {
         // Tip back slightly for the yawn - never scale the head (reads as a warp).
         head.rotation.x = easeToward(
           head.rotation.x,
-          -0.08 - yawnU * 0.28,
+          -0.08 - yawnU * 0.28 + sway * 0.08,
           dt,
           9,
         );
@@ -1179,8 +1212,9 @@ export function createActor(look: PlayerLook): ActorHandle {
       const dur = kind === "jump" ? 0.58 : kind === "pop" ? 0.42 : 0.5;
       reaction = { kind, t: 0, dur };
     },
-    setPose(next) {
+    setPose(next, opts) {
       pose = next;
+      poseMotion = null;
       if (next === "lie") {
         // Snap onto the mattress - easing from stand would clip through the bed.
         body.rotation.x = -Math.PI / 2;
@@ -1189,8 +1223,11 @@ export function createActor(look: PlayerLook): ActorHandle {
         limbs.legL.rotation.x = 1.05;
         limbs.legR.rotation.x = 1.0;
       } else if (next === "sit") {
-        // Soft settle from lie is fine; keep Z on the mattress.
-        body.position.z = SIT_Z;
+        sitStyle = opts?.sitStyle ?? "bed";
+        const seat = SIT_BY_STYLE[sitStyle];
+        // Soft settle from lie is fine; keep Z on the seat.
+        body.position.y = seat.y;
+        body.position.z = seat.z;
       } else if (next === "stand") {
         stretchDur = 0;
         stretchT = 0;
@@ -1204,6 +1241,7 @@ export function createActor(look: PlayerLook): ActorHandle {
         blushT = 0;
         chopDur = 0;
         chopT = 0;
+        chopCast = false;
         clearHeldTool();
         applyFaceRest();
         body.position.z = 0;
@@ -1215,6 +1253,9 @@ export function createActor(look: PlayerLook): ActorHandle {
           head.scale.y = 1;
         }
       }
+    },
+    setPoseMotion(motion) {
+      poseMotion = motion;
     },
     playStretch() {
       stretchT = 0;
@@ -1236,6 +1277,7 @@ export function createActor(look: PlayerLook): ActorHandle {
       waveT = 0;
       chopT = 0;
       chopDur = Math.max(0.4, durationSec);
+      chopCast = tool === "fishing_rod";
       attachHeldTool(tool);
     },
     playSmile() {
@@ -1261,11 +1303,18 @@ export function createActor(look: PlayerLook): ActorHandle {
       }
 
       const flourish = tickFlourish(dt);
+      const sway = poseMotion?.swayZ ?? 0;
+      const lean = poseMotion?.leanX ?? 0;
+      const hop = poseMotion?.hopY ?? 0;
 
       // Ease out of sit/lie residual tilt / bed offset when returning to stand.
-      body.rotation.x = easeToward(body.rotation.x, 0, dt, 10);
-      body.position.y = easeToward(body.position.y, 0, dt, 10);
+      body.rotation.x = easeToward(body.rotation.x, lean, dt, 10);
+      body.position.y = easeToward(body.position.y, hop, dt, 10);
       body.position.z = easeToward(body.position.z, 0, dt, 10);
+      body.position.x = easeToward(body.position.x, sway * 2, dt, 10);
+      if (!flourish.chopping) {
+        body.rotation.z = easeToward(body.rotation.z, sway * 0.35, dt, 10);
+      }
       const head = headNode();
       if (head) {
         const duck = flourish.blushU * 0.28 + flourish.waveU * -0.08;
@@ -1326,9 +1375,9 @@ export function createActor(look: PlayerLook): ActorHandle {
       if (stride) {
         bob += dt * 8;
         const swing = Math.sin(bob);
-        body.position.x = easeToward(body.position.x, 0, dt, 14);
-        body.position.y = easeToward(body.position.y, 0, dt, 14);
-        body.rotation.z = easeToward(body.rotation.z, 0, dt, 14);
+        body.position.x = easeToward(body.position.x, sway * 2, dt, 14);
+        body.position.y = easeToward(body.position.y, hop, dt, 14);
+        body.rotation.z = easeToward(body.rotation.z, sway * 0.35, dt, 14);
         applyBodyScale(1, 1, 1);
         limbs.legL.rotation.x = swing * 0.45;
         limbs.legR.rotation.x = -swing * 0.45;
@@ -1343,10 +1392,10 @@ export function createActor(look: PlayerLook): ActorHandle {
       } else {
         bob += dt * 1.6;
         const idle = Math.sin(bob);
-        body.position.x = easeToward(body.position.x, 0, dt, 8);
+        body.position.x = easeToward(body.position.x, sway * 2, dt, 8);
         if (!flourish.chopping) {
-          body.position.y = easeToward(body.position.y, 0, dt, 8);
-          body.rotation.z = easeToward(body.rotation.z, 0, dt, 8);
+          body.position.y = easeToward(body.position.y, hop, dt, 8);
+          body.rotation.z = easeToward(body.rotation.z, sway * 0.35, dt, 8);
         }
         applyBodyScale(1, 1 + idle * 0.006, 1);
 
@@ -1364,39 +1413,66 @@ export function createActor(look: PlayerLook): ActorHandle {
         limbs.armL.rotation.z = easeToward(limbs.armL.rotation.z, l.z, dt, 6);
 
         if (flourish.chopping) {
-          // Raise → slam chop cycle; slight lean into the strike.
+          // Raise → slam chop cycle; fishing rod uses a forward cast flick.
           const swing = flourish.chopSwing;
           const raised = (swing + 1) * 0.5; // 0 = down, 1 = up
-          limbs.armR.rotation.x = easeToward(
-            limbs.armR.rotation.x,
-            r.x - 1.55 * raised + 0.35 * (1 - raised),
-            dt,
-            18,
-          );
-          limbs.armR.rotation.y = easeToward(
-            limbs.armR.rotation.y,
-            -0.2 * raised,
-            dt,
-            14,
-          );
-          limbs.armR.rotation.z = easeToward(
-            limbs.armR.rotation.z,
-            r.z - 0.25 + 0.2 * raised,
-            dt,
-            14,
-          );
-          body.rotation.z = easeToward(
-            body.rotation.z,
-            (1 - raised) * 0.08,
-            dt,
-            12,
-          );
-          body.position.y = easeToward(
-            body.position.y,
-            raised * 0.04,
-            dt,
-            12,
-          );
+          if (flourish.casting) {
+            limbs.armR.rotation.x = easeToward(
+              limbs.armR.rotation.x,
+              r.x - 0.35 - 1.1 * raised,
+              dt,
+              14,
+            );
+            limbs.armR.rotation.y = easeToward(
+              limbs.armR.rotation.y,
+              -0.15 * raised,
+              dt,
+              12,
+            );
+            limbs.armR.rotation.z = easeToward(
+              limbs.armR.rotation.z,
+              r.z - 0.1 + 0.55 * raised,
+              dt,
+              12,
+            );
+            body.rotation.x = easeToward(
+              body.rotation.x,
+              lean - 0.12 * raised,
+              dt,
+              10,
+            );
+          } else {
+            limbs.armR.rotation.x = easeToward(
+              limbs.armR.rotation.x,
+              r.x - 1.55 * raised + 0.35 * (1 - raised),
+              dt,
+              18,
+            );
+            limbs.armR.rotation.y = easeToward(
+              limbs.armR.rotation.y,
+              -0.2 * raised,
+              dt,
+              14,
+            );
+            limbs.armR.rotation.z = easeToward(
+              limbs.armR.rotation.z,
+              r.z - 0.25 + 0.2 * raised,
+              dt,
+              14,
+            );
+            body.rotation.z = easeToward(
+              body.rotation.z,
+              sway * 0.35 + (1 - raised) * 0.08,
+              dt,
+              12,
+            );
+            body.position.y = easeToward(
+              body.position.y,
+              hop + raised * 0.04,
+              dt,
+              12,
+            );
+          }
         } else if (flourish.waving) {
           // Side-raise away from torso (positive Z on Arm_R = out).
           const raise = flourish.waveU;
@@ -1443,6 +1519,8 @@ export function createActor(look: PlayerLook): ActorHandle {
       body.rotation.y = yaw;
       reaction = null;
       pose = "stand";
+      poseMotion = null;
+      sitStyle = "bed";
       stretchDur = 0;
       yawnDur = 0;
       waveDur = 0;
@@ -1453,6 +1531,7 @@ export function createActor(look: PlayerLook): ActorHandle {
       blushT = 0;
       chopDur = 0;
       chopT = 0;
+      chopCast = false;
       root.add(body);
     },
     dispose() {

@@ -72,6 +72,7 @@ export class Hud {
     /** Vertical slot so simultaneous boosts don't overlap. */
     stack: number;
   }> = [];
+  private onShowBeat: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -79,10 +80,12 @@ export class Hud {
     getTracker: () => QuestTrackerInfo | null = () => null,
     getAspiration: () => AspirationTrackerInfo | null = () => null,
     onBuyTool?: (id: import("../data/items").ToolId) => void,
+    onShowBeat?: () => void,
   ) {
     this.state = state;
     this.getTracker = getTracker;
     this.getAspiration = getAspiration;
+    this.onShowBeat = onShowBeat ?? null;
     this.el = document.createElement("div");
     this.el.className = "ll-hud";
     this.panel = document.createElement("div");
@@ -126,6 +129,11 @@ export class Hud {
         }
         this.lastStructureKey = "";
         this.update();
+        return;
+      }
+      if (t.closest("[data-show-beat]")) {
+        e.stopPropagation();
+        this.onShowBeat?.();
         return;
       }
       const obj = t.closest("[data-objective]") as HTMLElement | null;
@@ -501,7 +509,12 @@ export class Hud {
       : "";
 
     const beatHtml = showBeat
-      ? `<div class="ll-beat"><small>Today</small><strong>${escapeHtml(opts.beatTitle)}</strong><span>${escapeHtml(opts.beatPlace)}</span></div>`
+      ? `<div class="ll-beat">
+          <small>Today</small>
+          <strong>${escapeHtml(opts.beatTitle)}</strong>
+          <span>${escapeHtml(opts.beatPlace)}</span>
+          <button type="button" class="ll-beat-where" data-show-beat>Show me where!</button>
+        </div>`
       : "";
 
     const shiftHtml = opts.shiftActive

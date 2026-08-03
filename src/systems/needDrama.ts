@@ -20,6 +20,7 @@ export function tickNeedDrama(
   now: number,
   onCollapse: (durationMs: number) => void,
   onBladderAccident?: () => void,
+  onThought?: (msg: string) => void,
 ): void {
   if (state.mode !== "live" || state.isBusy(now)) return;
 
@@ -45,7 +46,9 @@ export function tickNeedDrama(
       fun: -15,
     });
     if (state.needs.hygiene > 20) state.needs.hygiene = 20;
-    state.showToast("You need a shower.", 2800);
+    const showerLine = "Ugh… I need a shower.";
+    if (onThought) onThought(showerLine);
+    else state.showToast(showerLine, 2800);
     state.showDialogue("player", state.playerName, "I… I wet myself.");
     onBladderAccident?.();
   }
@@ -62,19 +65,19 @@ export function tickNeedDrama(
   }
 }
 
-export function applyCollapseRecovery(state: GameState) {
+export function applyCollapseRecovery(state: GameState): string {
   state.needs = applyNeedDeltas(state.needs, {
     energy: 28,
     fun: -6,
     social: -4,
   });
   state.dayTime = (state.dayTime + 0.04) % 1; // ~1 hour
-  state.showToast("Bonk. Tiny nap on the spot - feeling a bit better.", 2800);
   state.showDialogue(
     "player",
     state.playerName,
     "Floor nap: 3 stars. Neck: 1 star.",
   );
+  return "Bonk. Tiny nap on the spot — feeling a bit better.";
 }
 
 /** Full sleep: restore energy, advance to morning, daily summary. */

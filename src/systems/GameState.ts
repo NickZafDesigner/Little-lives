@@ -236,7 +236,7 @@ function pierOutdoorFurniture(): PlacedFurniture[] {
     {
       uid: "pier_bench",
       defId: "park_bench",
-      tx: pier.tx + 8,
+      tx: pier.tx + 4,
       ty: pier.ty + 2,
       lotId: "pier",
       rot: "up",

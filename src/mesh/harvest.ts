@@ -66,6 +66,35 @@ function addApple(
   addBlob(parent, matSmooth(Palette.leaf), x + r * 0.35, y + r * 1.05, z, r * 0.38, 0.55);
 }
 
+function addOrange(
+  parent: THREE.Object3D,
+  x: number,
+  y: number,
+  z: number,
+  r: number,
+  dark = false,
+) {
+  addBlob(parent, matSmooth(dark ? Palette.orangeDark : Palette.orange), x, y, z, r, 1);
+  addBox(parent, matFlat(Palette.woodDark), x, y + r * 0.95, z, r * 0.28, r * 0.7, r * 0.28);
+  addBlob(parent, matSmooth(Palette.leaf), x + r * 0.35, y + r * 1.05, z, r * 0.38, 0.55);
+}
+
+/** Small hanging grape cluster. */
+function addGrapeCluster(
+  parent: THREE.Object3D,
+  x: number,
+  y: number,
+  z: number,
+  scale = 1,
+) {
+  const r = 1.55 * scale;
+  addBlob(parent, matSmooth(Palette.grape), x, y, z, r, 1.05);
+  addBlob(parent, matSmooth(Palette.grapeDark), x + r * 0.7, y - r * 0.55, z + r * 0.2, r * 0.85, 1.05);
+  addBlob(parent, matSmooth(Palette.grape), x - r * 0.55, y - r * 0.7, z - r * 0.15, r * 0.8, 1.05);
+  addBlob(parent, matSmooth(Palette.grapeDark), x + r * 0.15, y - r * 1.25, z, r * 0.7, 1.05);
+  addBox(parent, matFlat(Palette.woodDark), x, y + r * 1.05, z, r * 0.22, r * 0.9, r * 0.22);
+}
+
 /** Timber-sized tree with fruit perched on the canopy. */
 function makeAppleTree(): THREE.Group {
   const g = new THREE.Group();
@@ -79,6 +108,34 @@ function makeAppleTree(): THREE.Group {
   addApple(g, -8, 52, 16, 3.2);
   addApple(g, 14, 68, -4, 2.7);
   addApple(g, -4, 86, 8, 2.8);
+  return g;
+}
+
+function makeOrangeTree(): THREE.Group {
+  const g = new THREE.Group();
+  addBox(g, matFlat(Palette.woodDark), 0, 24, 0, 8, 48, 8);
+  addBox(g, matFlat(Palette.leaf), 0, 60, 0, 34, 28, 34);
+  addBox(g, matFlat(Palette.leafLight), 0, 80, 0, 22, 18, 22);
+  addOrange(g, 16, 58, 8, 3.3);
+  addOrange(g, -17, 62, -6, 3.0);
+  addOrange(g, 6, 74, -16, 2.8, true);
+  addOrange(g, -8, 52, 16, 3.1);
+  addOrange(g, 14, 68, -4, 2.6);
+  addOrange(g, -4, 86, 8, 2.7);
+  return g;
+}
+
+/** Shorter vine-like trunk with hanging grape clusters. */
+function makeGrapeTree(): THREE.Group {
+  const g = new THREE.Group();
+  addBox(g, matFlat(Palette.woodDark), 0, 18, 0, 6, 36, 6);
+  addBox(g, matFlat(Palette.leafLight), 0, 46, 0, 36, 16, 28);
+  addBox(g, matFlat(Palette.leaf), 0, 58, 0, 26, 14, 22);
+  addGrapeCluster(g, 14, 42, 8, 1.15);
+  addGrapeCluster(g, -15, 44, -6, 1.05);
+  addGrapeCluster(g, 4, 40, -14, 1.1);
+  addGrapeCluster(g, -6, 48, 12, 0.95);
+  addGrapeCluster(g, 12, 52, -2, 0.9);
   return g;
 }
 
@@ -156,6 +213,10 @@ function meshForDef(defId: string, seed: number): THREE.Group {
       return makeCanopyTree(seed);
     case "harvest_apple":
       return makeAppleTree();
+    case "harvest_orange":
+      return makeOrangeTree();
+    case "harvest_grape":
+      return makeGrapeTree();
     case "harvest_tree":
       return makeTree();
     case "harvest_rock":

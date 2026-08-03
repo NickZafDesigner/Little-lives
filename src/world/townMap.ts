@@ -461,6 +461,11 @@ export function createTownMap(): TownMapData {
   fillRect(ground, 20, 60, 2, 3, Tile.path);
   fillRect(ground, 55, 60, 2, 3, Tile.path);
   fillRect(ground, 82, 64, 2, 4, Tile.path);
+  // Keep the pier boardwalk approach walkable through the shallows.
+  for (let y = 64; y <= 67; y++) {
+    collision[y][82] = false;
+    collision[y][83] = false;
+  }
 
   for (const { tx, ty } of allStructuralWallTiles()) {
     if (ty >= 0 && ty < MAP_H && tx >= 0 && tx < MAP_W) {
@@ -678,7 +683,7 @@ export function createTownMap(): TownMapData {
     [40, 61],
     [52, 61],
     [68, 61],
-    [82, 61],
+    [78, 61],
     [98, 30],
     [104, 30],
     [96, 16],
@@ -717,7 +722,7 @@ export function createTownMap(): TownMapData {
     [14, 63],
     [36, 63],
     [58, 63],
-    [80, 63],
+    [76, 64],
     [100, 64],
     // Scattered town rocks
     [22, 28],
@@ -795,10 +800,14 @@ export function createTownMap(): TownMapData {
     [21, 8],
     [36, 8],
     [28, 10],
+    [19, 12],
+    [33, 6],
     // West lane / café block (avoid Whisperwood harvest tiles)
     [16, 40],
     [10, 44],
     [18, 48],
+    [14, 36],
+    [8, 50],
     // Neighbor & market yards
     [48, 12],
     [64, 12],
@@ -809,14 +818,19 @@ export function createTownMap(): TownMapData {
     [100, 14],
     [104, 22],
     [108, 10],
+    [52, 16],
+    [80, 12],
+    [96, 20],
     // Forest fringe (outside harvest node tiles)
     [3, 17],
     [15, 30],
     [1, 34],
+    [17, 22],
     // Mine fringe
     [115, 17],
     [126, 30],
     [112, 26],
+    [110, 34],
     // Mid-east / shelter-library
     [48, 34],
     [64, 34],
@@ -825,6 +839,8 @@ export function createTownMap(): TownMapData {
     [88, 40],
     [92, 30],
     [80, 34],
+    [60, 30],
+    [76, 38],
     // Clinic approach + beach fringe
     [24, 50],
     [38, 52],
@@ -834,6 +850,8 @@ export function createTownMap(): TownMapData {
     [64, 56],
     [78, 56],
     [88, 52],
+    [44, 48],
+    [70, 50],
     // North belt
     [28, 4],
     [48, 4],
@@ -843,14 +861,24 @@ export function createTownMap(): TownMapData {
     [118, 4],
     [40, 2],
     [76, 6],
+    [56, 2],
+    [92, 2],
+    [108, 6],
     // Playpark flanks
     [24, 32],
     [42, 32],
     [18, 36],
+    [30, 36],
     // South-east lanes
     [96, 46],
     [110, 44],
     [120, 50],
+    [104, 52],
+    [116, 40],
+    // East wild grass pockets
+    [124, 10],
+    [122, 36],
+    [106, 28],
   ];
   const treeFootprintClear = (x: number, y: number) => {
     for (let dy = 0; dy < 2; dy++) {

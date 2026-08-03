@@ -84,6 +84,16 @@ function hz(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
+/** Uniform random in [lo, hi]. */
+function r(lo: number, hi: number): number {
+  return lo + Math.random() * (hi - lo);
+}
+
+/** Multiply by (1 ± amount) for soft per-play variation. */
+function jitter(value: number, amount: number): number {
+  return value * (1 + (Math.random() * 2 - 1) * amount);
+}
+
 function loadMute(): boolean {
   try {
     return localStorage.getItem(MUTE_KEY) === "1";
@@ -1747,204 +1757,241 @@ class AudioManagerImpl {
     this.unlock();
     const ctx = this.ensure();
     if (ctx.state !== "running") return;
-    const now = ctx.currentTime;
+    // Per-play pitch/time/gain color so repeats never feel identical.
+    const p = jitter(1, 0.045);
+    const g = jitter(1, 0.1);
+    const now = ctx.currentTime + r(0, 0.012);
     const bus = this.sfxBus!;
 
     switch (id) {
       case "ui":
-        // Soft pop - short sine hop with a tiny sparkle
-        this.pop(now, bus, 740, 0.055, 0.085);
-        this.blip(now + 0.03, bus, 1180, 0.05, 0.035, "sine", 4200);
+        // Soft pop - body + sparkle + quiet air
+        this.pop(now, bus, 740 * p, 0.055, 0.085 * g);
+        this.blip(now + 0.028, bus, 1180 * p, 0.055, 0.038 * g, "sine", 4200);
+        this.noiseBurst(now, bus, 0.022, 0.012 * g, 3200);
         break;
       case "hover":
         // Barely-there tick for button / chip hover
-        this.blip(now, bus, 920 + Math.random() * 40, 0.028, 0.018, "sine", 4800);
+        this.blip(now, bus, r(900, 980) * p, 0.03, 0.02 * g, "sine", 5000);
+        this.blip(now + 0.012, bus, r(1400, 1650) * p, 0.022, 0.01 * g, "sine", 6200);
         break;
       case "confirm":
-        // Happy little up-arpeggio
-        this.blip(now, bus, 523, 0.07, 0.07, "triangle", 2800);
-        this.blip(now + 0.055, bus, 659, 0.08, 0.08, "triangle", 3200);
-        this.blip(now + 0.12, bus, 784, 0.12, 0.075, "sine", 4000);
-        this.blip(now + 0.14, bus, 1175, 0.1, 0.035, "sine", 5000);
+        // Happy little up-arpeggio with a soft fifth bloom
+        this.blip(now, bus, 523 * p, 0.075, 0.07 * g, "triangle", 2800);
+        this.blip(now + 0.05, bus, 659 * p, 0.085, 0.08 * g, "triangle", 3200);
+        this.blip(now + 0.11, bus, 784 * p, 0.13, 0.078 * g, "sine", 4000);
+        this.blip(now + 0.13, bus, 1175 * p, 0.11, 0.038 * g, "sine", 5200);
+        this.blip(now + 0.16, bus, 1568 * p, 0.1, 0.022 * g, "sine", 6400);
         break;
       case "deny":
         // Soft dud - round, not harsh
-        this.swoop(now, bus, 280, 190, 0.14, 0.06, "triangle", 900);
-        this.noiseBurst(now + 0.02, bus, 0.05, 0.02, 900);
+        this.swoop(now, bus, 280 * p, 175 * p, 0.15, 0.062 * g, "triangle", 900);
+        this.noiseBurst(now + 0.018, bus, 0.055, 0.024 * g, r(700, 1100));
+        this.blip(now + 0.06, bus, 160 * p, 0.09, 0.03 * g, "sine", 600);
         break;
       case "menu":
-        // Menu blossom - three soft petals
-        this.blip(now, bus, 587, 0.05, 0.055, "sine", 3200);
-        this.blip(now + 0.035, bus, 740, 0.055, 0.06, "triangle", 3600);
-        this.blip(now + 0.075, bus, 988, 0.08, 0.05, "sine", 4500);
+        // Menu blossom - four soft petals
+        this.blip(now, bus, 587 * p, 0.055, 0.055 * g, "sine", 3200);
+        this.blip(now + 0.032, bus, 740 * p, 0.06, 0.06 * g, "triangle", 3600);
+        this.blip(now + 0.07, bus, 988 * p, 0.09, 0.052 * g, "sine", 4500);
+        this.blip(now + 0.1, bus, 1319 * p, 0.08, 0.028 * g, "sine", 5600);
         break;
       case "walk":
-        this.pop(now, bus, 480, 0.04, 0.05);
+        this.pop(now, bus, r(440, 520) * p, 0.042, 0.052 * g);
+        this.noiseBurst(now, bus, 0.02, 0.014 * g, r(1200, 1800));
         break;
       case "step": {
         if (now - this.lastStepAt < 0.18) return;
         this.lastStepAt = now;
-        this.noiseBurst(now, bus, 0.028, 0.028, 1600);
-        this.blip(now, bus, 200 + Math.random() * 50, 0.035, 0.025, "sine", 700);
+        this.noiseBurst(now, bus, r(0.024, 0.034), 0.03 * g, r(1200, 2000));
+        this.blip(now, bus, r(180, 260) * p, 0.038, 0.028 * g, "sine", 750);
+        this.pop(now + 0.004, bus, r(140, 200) * p, 0.03, 0.02 * g);
         break;
       }
       case "place":
-        // Satisfying plop + sparkle
-        this.pop(now, bus, 320, 0.07, 0.09);
-        this.blip(now + 0.04, bus, 660, 0.06, 0.07, "triangle", 2800);
-        this.blip(now + 0.09, bus, 880, 0.08, 0.065, "sine", 4000);
-        this.blip(now + 0.13, bus, 1320, 0.1, 0.04, "sine", 5200);
+        // Satisfying plop + rising sparkle cascade
+        this.pop(now, bus, 320 * p, 0.075, 0.095 * g);
+        this.noiseBurst(now + 0.01, bus, 0.035, 0.02 * g, 1800);
+        this.blip(now + 0.038, bus, 660 * p, 0.065, 0.072 * g, "triangle", 2800);
+        this.blip(now + 0.085, bus, 880 * p, 0.085, 0.068 * g, "sine", 4000);
+        this.blip(now + 0.125, bus, 1320 * p, 0.11, 0.042 * g, "sine", 5200);
+        this.blip(now + 0.155, bus, 1760 * p, 0.09, 0.022 * g, "sine", 6400);
         break;
       case "pickup":
-        // Light lift whoop
-        this.swoop(now, bus, 420, 720, 0.1, 0.065, "triangle", 2800);
-        this.blip(now + 0.07, bus, 980, 0.07, 0.045, "sine", 4200);
+        // Light lift whoop with a glitter tail
+        this.swoop(now, bus, 400 * p, 760 * p, 0.11, 0.068 * g, "triangle", 2800);
+        this.swoop(now + 0.02, bus, 520 * p, 980 * p, 0.09, 0.03 * g, "sine", 4200);
+        this.blip(now + 0.075, bus, 1040 * p, 0.075, 0.048 * g, "sine", 4800);
         break;
       case "rotate":
-        // Cute twirl - quick rising swirl
-        this.swoop(now, bus, 520, 920, 0.09, 0.06, "sine", 3600);
-        this.blip(now + 0.055, bus, 1100, 0.055, 0.04, "triangle", 4800);
-        this.blip(now + 0.09, bus, 780, 0.06, 0.03, "sine", 4000);
+        // Cute twirl - rising swirl then a soft settle
+        this.swoop(now, bus, 500 * p, 980 * p, 0.1, 0.062 * g, "sine", 3600);
+        this.swoop(now + 0.015, bus, 620 * p, 1180 * p, 0.08, 0.028 * g, "triangle", 4800);
+        this.blip(now + 0.06, bus, 1100 * p, 0.06, 0.042 * g, "triangle", 5000);
+        this.blip(now + 0.1, bus, 760 * p, 0.07, 0.032 * g, "sine", 4000);
         break;
       case "sell":
         // Cash register-ish but soft
-        this.blip(now, bus, 700, 0.05, 0.06, "triangle", 3000);
-        this.swoop(now + 0.05, bus, 620, 380, 0.1, 0.055, "sine", 2200);
-        this.blip(now + 0.12, bus, 1040, 0.06, 0.04, "sine", 4000);
+        this.blip(now, bus, 700 * p, 0.055, 0.062 * g, "triangle", 3000);
+        this.swoop(now + 0.045, bus, 640 * p, 360 * p, 0.11, 0.055 * g, "sine", 2200);
+        this.blip(now + 0.11, bus, 1040 * p, 0.07, 0.045 * g, "sine", 4200);
+        this.blip(now + 0.16, bus, 1568 * p, 0.08, 0.025 * g, "sine", 5600);
         break;
       case "interact":
-        this.blip(now, bus, 620, 0.06, 0.065, "triangle", 2600);
-        this.blip(now + 0.06, bus, 830, 0.09, 0.07, "sine", 3600);
-        this.blip(now + 0.1, bus, 1245, 0.08, 0.03, "sine", 4800);
+        this.blip(now, bus, 620 * p, 0.065, 0.065 * g, "triangle", 2600);
+        this.blip(now + 0.055, bus, 830 * p, 0.095, 0.072 * g, "sine", 3600);
+        this.blip(now + 0.095, bus, 1245 * p, 0.085, 0.035 * g, "sine", 5000);
+        this.blip(now + 0.12, bus, 1660 * p, 0.07, 0.018 * g, "sine", 6200);
         break;
       case "success":
-        // Bright major sparkle
-        this.blip(now, bus, 523, 0.08, 0.065, "triangle", 2800);
-        this.blip(now + 0.075, bus, 659, 0.09, 0.075, "triangle", 3200);
-        this.blip(now + 0.16, bus, 784, 0.14, 0.08, "sine", 4000);
-        this.blip(now + 0.2, bus, 1175, 0.16, 0.04, "sine", 5600);
+        // Bright major sparkle with a soft airy tail
+        this.blip(now, bus, 523 * p, 0.085, 0.068 * g, "triangle", 2800);
+        this.blip(now + 0.07, bus, 659 * p, 0.095, 0.078 * g, "triangle", 3200);
+        this.blip(now + 0.15, bus, 784 * p, 0.15, 0.082 * g, "sine", 4000);
+        this.blip(now + 0.19, bus, 1175 * p, 0.17, 0.045 * g, "sine", 5600);
+        this.blip(now + 0.24, bus, 1568 * p, 0.14, 0.025 * g, "sine", 6800);
+        this.noiseBurst(now + 0.18, bus, 0.08, 0.012 * g, 5000);
         break;
       case "pet":
-        // Soft nuzzle chirps
-        this.blip(now, bus, 880, 0.05, 0.055, "sine", 3800);
-        this.blip(now + 0.05, bus, 1180, 0.06, 0.05, "sine", 4600);
-        this.swoop(now + 0.1, bus, 1040, 860, 0.1, 0.045, "triangle", 3600);
+        // Soft nuzzle chirps - slightly different each time
+        this.blip(now, bus, r(820, 940) * p, 0.055, 0.055 * g, "sine", 3800);
+        this.blip(now + r(0.04, 0.06), bus, r(1100, 1280) * p, 0.065, 0.052 * g, "sine", 4600);
+        this.swoop(now + 0.1, bus, 1080 * p, 820 * p, 0.11, 0.048 * g, "triangle", 3600);
+        this.blip(now + 0.16, bus, r(900, 1100) * p, 0.07, 0.028 * g, "sine", 4200);
         break;
       case "talk":
-        // Bubbly babble
-        this.blip(now, bus, 600 + Math.random() * 40, 0.04, 0.048, "triangle", 2200);
-        this.blip(now + 0.045, bus, 740 + Math.random() * 50, 0.045, 0.042, "triangle", 2600);
-        this.blip(now + 0.09, bus, 680 + Math.random() * 40, 0.055, 0.038, "sine", 2400);
+        // Bubbly babble - pitch + rhythm wander
+        this.blip(now, bus, r(580, 660) * p, 0.042, 0.05 * g, "triangle", 2200);
+        this.blip(now + r(0.035, 0.055), bus, r(700, 820) * p, 0.048, 0.044 * g, "triangle", 2600);
+        this.blip(now + r(0.08, 0.11), bus, r(640, 760) * p, 0.058, 0.04 * g, "sine", 2400);
+        if (Math.random() > 0.35) {
+          this.blip(now + r(0.12, 0.15), bus, r(780, 980) * p, 0.04, 0.028 * g, "sine", 3200);
+        }
         break;
       case "coin":
-        // Tiny glitter ping
-        this.blip(now, bus, 1046, 0.05, 0.055, "sine", 5000);
-        this.blip(now + 0.04, bus, 1397, 0.09, 0.065, "sine", 6000);
-        this.blip(now + 0.08, bus, 2093, 0.12, 0.03, "sine", 7000);
+        // Tiny glitter ping with a faint overtone shimmer
+        this.blip(now, bus, 1046 * p, 0.055, 0.055 * g, "sine", 5000);
+        this.blip(now + 0.035, bus, 1397 * p, 0.1, 0.068 * g, "sine", 6000);
+        this.blip(now + 0.075, bus, 2093 * p, 0.13, 0.035 * g, "sine", 7200);
+        this.blip(now + 0.1, bus, 2794 * p, 0.1, 0.016 * g, "sine", 8000);
         break;
       case "cash":
         // Payday: drawer thud + bright register ching cascade
-        this.pop(now, bus, 160, 0.09, 0.11);
-        this.noiseBurst(now + 0.02, bus, 0.07, 0.045, 2400);
-        this.blip(now + 0.08, bus, 784, 0.09, 0.09, "triangle", 3200);
-        this.blip(now + 0.14, bus, 1175, 0.14, 0.11, "sine", 5200);
-        this.blip(now + 0.2, bus, 1568, 0.16, 0.09, "sine", 6400);
-        this.blip(now + 0.28, bus, 2093, 0.14, 0.055, "sine", 7200);
-        this.blip(now + 0.36, bus, 2489, 0.1, 0.03, "sine", 7800);
+        this.pop(now, bus, 155 * p, 0.095, 0.115 * g);
+        this.noiseBurst(now + 0.018, bus, 0.075, 0.048 * g, r(2000, 2800));
+        this.blip(now + 0.075, bus, 784 * p, 0.095, 0.09 * g, "triangle", 3200);
+        this.blip(now + 0.13, bus, 1175 * p, 0.15, 0.11 * g, "sine", 5200);
+        this.blip(now + 0.19, bus, 1568 * p, 0.17, 0.092 * g, "sine", 6400);
+        this.blip(now + 0.27, bus, 2093 * p, 0.15, 0.058 * g, "sine", 7200);
+        this.blip(now + 0.35, bus, 2489 * p, 0.11, 0.032 * g, "sine", 7800);
+        this.blip(now + 0.42, bus, 3136 * p, 0.09, 0.016 * g, "sine", 8200);
         break;
       case "save":
-        this.blip(now, bus, 440, 0.07, 0.055, "triangle", 2200);
-        this.blip(now + 0.07, bus, 554, 0.08, 0.065, "triangle", 2800);
-        this.blip(now + 0.16, bus, 698, 0.14, 0.07, "sine", 3600);
-        this.blip(now + 0.2, bus, 1047, 0.12, 0.03, "sine", 4800);
+        this.blip(now, bus, 440 * p, 0.075, 0.055 * g, "triangle", 2200);
+        this.blip(now + 0.065, bus, 554 * p, 0.085, 0.068 * g, "triangle", 2800);
+        this.blip(now + 0.15, bus, 698 * p, 0.15, 0.072 * g, "sine", 3600);
+        this.blip(now + 0.19, bus, 1047 * p, 0.13, 0.035 * g, "sine", 5000);
+        this.blip(now + 0.24, bus, 1319 * p, 0.1, 0.018 * g, "sine", 6000);
         break;
       case "build":
         // Playful hammer-tap into a bright hop
-        this.pop(now, bus, 360, 0.06, 0.07);
-        this.blip(now + 0.05, bus, 523, 0.07, 0.065, "triangle", 2600);
-        this.blip(now + 0.11, bus, 698, 0.1, 0.06, "sine", 3600);
-        this.blip(now + 0.15, bus, 1047, 0.1, 0.035, "sine", 4800);
+        this.pop(now, bus, 340 * p, 0.065, 0.075 * g);
+        this.noiseBurst(now + 0.008, bus, 0.03, 0.022 * g, r(1400, 2200));
+        this.blip(now + 0.048, bus, 523 * p, 0.075, 0.068 * g, "triangle", 2600);
+        this.blip(now + 0.105, bus, 698 * p, 0.11, 0.062 * g, "sine", 3600);
+        this.blip(now + 0.145, bus, 1047 * p, 0.11, 0.038 * g, "sine", 5000);
         break;
       case "adopt":
         // Heart-swell fanfare
-        this.blip(now, bus, 523, 0.1, 0.07, "triangle", 2800);
-        this.blip(now + 0.09, bus, 659, 0.1, 0.075, "triangle", 3200);
-        this.blip(now + 0.18, bus, 784, 0.12, 0.08, "sine", 4000);
-        this.blip(now + 0.3, bus, 1047, 0.2, 0.07, "sine", 5200);
-        this.blip(now + 0.34, bus, 1568, 0.18, 0.035, "sine", 6400);
+        this.blip(now, bus, 523 * p, 0.11, 0.072 * g, "triangle", 2800);
+        this.blip(now + 0.085, bus, 659 * p, 0.11, 0.078 * g, "triangle", 3200);
+        this.blip(now + 0.17, bus, 784 * p, 0.13, 0.082 * g, "sine", 4000);
+        this.blip(now + 0.28, bus, 1047 * p, 0.22, 0.075 * g, "sine", 5200);
+        this.blip(now + 0.32, bus, 1568 * p, 0.2, 0.04 * g, "sine", 6400);
+        this.blip(now + 0.38, bus, 2093 * p, 0.16, 0.02 * g, "sine", 7200);
         break;
       case "chime":
-        this.blip(now, bus, 784, 0.22, 0.06, "sine", 4200);
-        this.blip(now + 0.03, bus, 988, 0.26, 0.045, "sine", 5200);
-        this.blip(now + 0.06, bus, 1319, 0.2, 0.025, "sine", 6000);
+        this.blip(now, bus, 784 * p, 0.24, 0.062 * g, "sine", 4200);
+        this.blip(now + 0.028, bus, 988 * p, 0.28, 0.048 * g, "sine", 5200);
+        this.blip(now + 0.055, bus, 1319 * p, 0.22, 0.028 * g, "sine", 6200);
+        this.blip(now + 0.09, bus, 1976 * p, 0.18, 0.014 * g, "sine", 7200);
         break;
       case "alarm":
         // Two sharp morning beeps, then a brighter wake ping
-        this.blip(now, bus, 880, 0.12, 0.11, "square", 2400);
-        this.blip(now + 0.14, bus, 880, 0.12, 0.11, "square", 2400);
-        this.blip(now + 0.32, bus, 1175, 0.16, 0.08, "square", 3200);
-        this.blip(now + 0.48, bus, 988, 0.18, 0.06, "triangle", 3600);
+        this.blip(now, bus, 880 * p, 0.125, 0.11 * g, "square", 2400);
+        this.blip(now + 0.135, bus, 880 * p, 0.125, 0.11 * g, "square", 2400);
+        this.blip(now + 0.31, bus, 1175 * p, 0.17, 0.085 * g, "square", 3200);
+        this.blip(now + 0.46, bus, 988 * p, 0.2, 0.065 * g, "triangle", 3600);
+        this.blip(now + 0.55, bus, 1319 * p, 0.12, 0.03 * g, "sine", 4800);
         break;
       case "zoom_in":
         // Airy rising whoosh as the camera leans in
-        this.noiseBurst(now, bus, 0.14, 0.032, 2600);
-        this.swoop(now, bus, 260, 620, 0.2, 0.055, "sine", 2400);
-        this.swoop(now + 0.025, bus, 400, 860, 0.17, 0.038, "triangle", 3600);
-        this.blip(now + 0.15, bus, 1040, 0.09, 0.028, "sine", 4800);
+        this.noiseBurst(now, bus, 0.15, 0.034 * g, r(2200, 3200));
+        this.swoop(now, bus, 240 * p, 660 * p, 0.22, 0.055 * g, "sine", 2400);
+        this.swoop(now + 0.02, bus, 380 * p, 920 * p, 0.18, 0.04 * g, "triangle", 3600);
+        this.blip(now + 0.14, bus, 1040 * p, 0.1, 0.03 * g, "sine", 5000);
+        this.blip(now + 0.18, bus, 1560 * p, 0.08, 0.016 * g, "sine", 6400);
         break;
       case "zoom_out":
         // Soft falling whoosh as the camera eases back
-        this.noiseBurst(now, bus, 0.12, 0.028, 2000);
-        this.swoop(now, bus, 700, 300, 0.22, 0.05, "sine", 2200);
-        this.swoop(now + 0.02, bus, 520, 240, 0.18, 0.032, "triangle", 2800);
+        this.noiseBurst(now, bus, 0.13, 0.03 * g, r(1600, 2400));
+        this.swoop(now, bus, 720 * p, 280 * p, 0.24, 0.052 * g, "sine", 2200);
+        this.swoop(now + 0.018, bus, 540 * p, 220 * p, 0.2, 0.034 * g, "triangle", 2800);
+        this.blip(now + 0.16, bus, 320 * p, 0.1, 0.02 * g, "sine", 1200);
         break;
       case "mini_start":
         // Minigame curtain-up whoosh + bright hop
-        this.noiseBurst(now, bus, 0.1, 0.035, 2200);
-        this.swoop(now, bus, 280, 640, 0.16, 0.06, "sine", 2800);
-        this.blip(now + 0.08, bus, 659, 0.07, 0.07, "triangle", 3200);
-        this.blip(now + 0.14, bus, 880, 0.1, 0.055, "sine", 4800);
+        this.noiseBurst(now, bus, 0.11, 0.038 * g, r(1800, 2600));
+        this.swoop(now, bus, 260 * p, 680 * p, 0.17, 0.062 * g, "sine", 2800);
+        this.blip(now + 0.075, bus, 659 * p, 0.075, 0.072 * g, "triangle", 3200);
+        this.blip(now + 0.13, bus, 880 * p, 0.11, 0.058 * g, "sine", 4800);
+        this.blip(now + 0.18, bus, 1175 * p, 0.09, 0.03 * g, "sine", 5600);
         break;
       case "mini_hit":
         // Crisp timing thunk + sparkle
-        this.pop(now, bus, 380, 0.05, 0.085);
-        this.blip(now + 0.02, bus, 784, 0.07, 0.08, "triangle", 3600);
-        this.blip(now + 0.06, bus, 1175, 0.1, 0.045, "sine", 5600);
+        this.pop(now, bus, r(340, 420) * p, 0.055, 0.088 * g);
+        this.blip(now + 0.018, bus, 784 * p, 0.075, 0.082 * g, "triangle", 3600);
+        this.blip(now + 0.055, bus, 1175 * p, 0.11, 0.048 * g, "sine", 5600);
+        this.blip(now + 0.085, bus, 1568 * p, 0.08, 0.022 * g, "sine", 6800);
         break;
       case "mini_perfect":
         // Bigger mid-game perfect - rising triad sparkle
-        this.pop(now, bus, 420, 0.06, 0.09);
-        this.blip(now + 0.02, bus, 659, 0.08, 0.085, "triangle", 3200);
-        this.blip(now + 0.07, bus, 831, 0.1, 0.09, "triangle", 4000);
-        this.blip(now + 0.13, bus, 1047, 0.14, 0.08, "sine", 5200);
-        this.blip(now + 0.18, bus, 1568, 0.12, 0.04, "sine", 6400);
+        this.pop(now, bus, 420 * p, 0.065, 0.095 * g);
+        this.blip(now + 0.018, bus, 659 * p, 0.085, 0.088 * g, "triangle", 3200);
+        this.blip(now + 0.065, bus, 831 * p, 0.11, 0.092 * g, "triangle", 4000);
+        this.blip(now + 0.12, bus, 1047 * p, 0.15, 0.085 * g, "sine", 5200);
+        this.blip(now + 0.17, bus, 1568 * p, 0.13, 0.045 * g, "sine", 6400);
+        this.blip(now + 0.22, bus, 2093 * p, 0.1, 0.022 * g, "sine", 7600);
         break;
       case "mini_miss":
         // Soft thud dud - playful, not harsh
-        this.swoop(now, bus, 320, 180, 0.12, 0.055, "triangle", 900);
-        this.noiseBurst(now + 0.015, bus, 0.06, 0.028, 1100);
-        this.blip(now + 0.05, bus, 220, 0.08, 0.04, "sine", 700);
+        this.swoop(now, bus, 330 * p, 170 * p, 0.13, 0.058 * g, "triangle", 900);
+        this.noiseBurst(now + 0.012, bus, 0.065, 0.03 * g, r(900, 1300));
+        this.blip(now + 0.048, bus, 210 * p, 0.09, 0.042 * g, "sine", 700);
+        this.pop(now + 0.02, bus, 140 * p, 0.05, 0.035 * g);
         break;
       case "mini_tick":
         // Soft memory pip flash
-        this.blip(now, bus, 620 + Math.random() * 80, 0.05, 0.055, "sine", 3600);
-        this.blip(now + 0.02, bus, 980 + Math.random() * 60, 0.06, 0.03, "triangle", 4800);
+        this.blip(now, bus, r(580, 720) * p, 0.052, 0.055 * g, "sine", 3600);
+        this.blip(now + r(0.015, 0.03), bus, r(920, 1100) * p, 0.065, 0.032 * g, "triangle", 5000);
         break;
       case "mini_win":
         // Full perfect fanfare - bigger than success
-        this.pop(now, bus, 200, 0.08, 0.1);
-        this.blip(now + 0.04, bus, 523, 0.1, 0.085, "triangle", 2800);
-        this.blip(now + 0.12, bus, 659, 0.11, 0.09, "triangle", 3200);
-        this.blip(now + 0.22, bus, 784, 0.14, 0.1, "sine", 4000);
-        this.blip(now + 0.28, bus, 1047, 0.18, 0.08, "sine", 5600);
-        this.blip(now + 0.36, bus, 1319, 0.16, 0.05, "sine", 6400);
-        this.blip(now + 0.44, bus, 1568, 0.14, 0.035, "sine", 7200);
+        this.pop(now, bus, 200 * p, 0.085, 0.105 * g);
+        this.blip(now + 0.035, bus, 523 * p, 0.11, 0.088 * g, "triangle", 2800);
+        this.blip(now + 0.11, bus, 659 * p, 0.12, 0.092 * g, "triangle", 3200);
+        this.blip(now + 0.2, bus, 784 * p, 0.15, 0.1 * g, "sine", 4000);
+        this.blip(now + 0.26, bus, 1047 * p, 0.2, 0.085 * g, "sine", 5600);
+        this.blip(now + 0.34, bus, 1319 * p, 0.17, 0.055 * g, "sine", 6400);
+        this.blip(now + 0.42, bus, 1568 * p, 0.15, 0.038 * g, "sine", 7200);
+        this.blip(now + 0.5, bus, 2093 * p, 0.12, 0.02 * g, "sine", 8000);
         break;
       case "mini_ok":
         // Warm "good enough" chime
-        this.blip(now, bus, 523, 0.09, 0.07, "triangle", 2800);
-        this.blip(now + 0.08, bus, 659, 0.12, 0.075, "sine", 3600);
-        this.blip(now + 0.14, bus, 784, 0.1, 0.04, "sine", 4400);
+        this.blip(now, bus, 523 * p, 0.095, 0.072 * g, "triangle", 2800);
+        this.blip(now + 0.075, bus, 659 * p, 0.13, 0.078 * g, "sine", 3600);
+        this.blip(now + 0.13, bus, 784 * p, 0.11, 0.042 * g, "sine", 4400);
+        this.blip(now + 0.17, bus, 988 * p, 0.09, 0.02 * g, "sine", 5200);
         break;
     }
   }
@@ -2222,7 +2269,15 @@ class AudioManagerImpl {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     osc.type = wave;
-    osc.frequency.setValueAtTime(freq, when);
+    const f0 = Math.max(20, jitter(freq, 0.012));
+    osc.frequency.setValueAtTime(f0, when);
+    // Tiny organic drift so held tones don't feel static.
+    if (dur > 0.06) {
+      osc.frequency.exponentialRampToValueAtTime(
+        Math.max(20, f0 * (0.985 + Math.random() * 0.03)),
+        when + dur,
+      );
+    }
 
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, when);
@@ -2242,8 +2297,8 @@ class AudioManagerImpl {
     if (cutoff) {
       const filter = ctx.createBiquadFilter();
       filter.type = "lowpass";
-      filter.frequency.setValueAtTime(cutoff, when);
-      filter.Q.setValueAtTime(0.7, when);
+      filter.frequency.setValueAtTime(jitter(cutoff, 0.08), when);
+      filter.Q.setValueAtTime(0.7 + Math.random() * 0.35, when);
       osc.connect(filter);
       node = filter;
     }
@@ -2262,7 +2317,21 @@ class AudioManagerImpl {
     wave: WaveKind,
     cutoff = 2800,
   ): void {
-    this.tone(when, dest, freq, dur, gain, wave, cutoff, true);
+    const f = jitter(freq, 0.025);
+    const d = jitter(dur, 0.05);
+    const g = jitter(gain, 0.06);
+    this.tone(when, dest, f, d, g, wave, cutoff, true);
+    // Quiet octave / fifth shimmer for body without getting harsh.
+    this.tone(
+      when + r(0, 0.006),
+      dest,
+      f * (Math.random() > 0.45 ? 2 : 1.5),
+      d * r(0.7, 0.9),
+      g * r(0.14, 0.26),
+      "sine",
+      cutoff * 1.15,
+      true,
+    );
   }
 
   /** Punchy dialogue syllable - fast attack, slight pitch wobble. */
@@ -2285,8 +2354,8 @@ class AudioManagerImpl {
 
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(cutoff, when);
-    filter.Q.setValueAtTime(0.9, when);
+    filter.frequency.setValueAtTime(jitter(cutoff, 0.1), when);
+    filter.Q.setValueAtTime(0.9 + Math.random() * 0.4, when);
 
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, when);
@@ -2299,6 +2368,20 @@ class AudioManagerImpl {
     env.connect(dest);
     osc.start(when);
     osc.stop(when + dur + 0.02);
+
+    // Soft parallel body so syllables feel less thin.
+    const osc2 = ctx.createOscillator();
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(f0 * 2, when);
+    osc2.frequency.exponentialRampToValueAtTime(f1 * 2, when + dur);
+    const env2 = ctx.createGain();
+    env2.gain.setValueAtTime(0, when);
+    env2.gain.linearRampToValueAtTime(gain * 0.18, when + 0.006);
+    env2.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    osc2.connect(env2);
+    env2.connect(dest);
+    osc2.start(when);
+    osc2.stop(when + dur + 0.02);
   }
 
   /** Soft percussive pop - quick sine with a slight downward pitch. */
@@ -2310,28 +2393,51 @@ class AudioManagerImpl {
     gain: number,
   ): void {
     const ctx = this.ctx!;
+    const f = jitter(freq, 0.04);
+    const d = jitter(dur, 0.06);
+    const g = jitter(gain, 0.07);
     const osc = ctx.createOscillator();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(freq, when);
+    osc.frequency.setValueAtTime(f, when);
     osc.frequency.exponentialRampToValueAtTime(
-      Math.max(40, freq * 0.55),
-      when + dur,
+      Math.max(40, f * r(0.48, 0.62)),
+      when + d,
     );
 
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(2200, when);
+    filter.frequency.setValueAtTime(r(1800, 2600), when);
+    filter.Q.setValueAtTime(0.8 + Math.random() * 0.5, when);
 
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, when);
-    env.gain.linearRampToValueAtTime(gain, when + 0.008);
-    env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    env.gain.linearRampToValueAtTime(g, when + 0.008);
+    env.gain.exponentialRampToValueAtTime(0.0001, when + d);
 
     osc.connect(filter);
     filter.connect(env);
     env.connect(dest);
     osc.start(when);
-    osc.stop(when + dur + 0.02);
+    osc.stop(when + d + 0.02);
+
+    // Quiet triangle body + tiny click for attack character.
+    const body = ctx.createOscillator();
+    body.type = "triangle";
+    body.frequency.setValueAtTime(f * 0.5, when);
+    body.frequency.exponentialRampToValueAtTime(
+      Math.max(30, f * 0.28),
+      when + d,
+    );
+    const bodyEnv = ctx.createGain();
+    bodyEnv.gain.setValueAtTime(0, when);
+    bodyEnv.gain.linearRampToValueAtTime(g * 0.35, when + 0.006);
+    bodyEnv.gain.exponentialRampToValueAtTime(0.0001, when + d * 0.9);
+    body.connect(bodyEnv);
+    bodyEnv.connect(dest);
+    body.start(when);
+    body.stop(when + d + 0.02);
+
+    this.noiseBurst(when, dest, Math.min(0.028, d * 0.45), g * 0.18, r(2400, 4200));
   }
 
   /** Cute pitch swoop - rising or falling whoop. */
@@ -2346,29 +2452,48 @@ class AudioManagerImpl {
     cutoff = 3200,
   ): void {
     const ctx = this.ctx!;
+    const from = Math.max(20, jitter(fromFreq, 0.03));
+    const to = Math.max(20, jitter(toFreq, 0.03));
+    const d = jitter(dur, 0.05);
+    const g = jitter(gain, 0.06);
     const osc = ctx.createOscillator();
     osc.type = wave;
-    osc.frequency.setValueAtTime(Math.max(20, fromFreq), when);
-    osc.frequency.exponentialRampToValueAtTime(
-      Math.max(20, toFreq),
-      when + dur,
-    );
+    osc.frequency.setValueAtTime(from, when);
+    osc.frequency.exponentialRampToValueAtTime(to, when + d);
 
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(cutoff, when);
+    const cut0 = jitter(cutoff, 0.1);
+    filter.frequency.setValueAtTime(cut0, when);
+    // Brighten slightly through the gesture.
+    filter.frequency.linearRampToValueAtTime(cut0 * r(1.05, 1.35), when + d);
+    filter.Q.setValueAtTime(0.7 + Math.random() * 0.4, when);
 
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, when);
-    env.gain.linearRampToValueAtTime(gain, when + 0.015);
-    env.gain.setValueAtTime(gain * 0.7, when + dur * 0.55);
-    env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    env.gain.linearRampToValueAtTime(g, when + 0.015);
+    env.gain.setValueAtTime(g * 0.7, when + d * 0.55);
+    env.gain.exponentialRampToValueAtTime(0.0001, when + d);
 
     osc.connect(filter);
     filter.connect(env);
     env.connect(dest);
     osc.start(when);
-    osc.stop(when + dur + 0.02);
+    osc.stop(when + d + 0.02);
+
+    // Soft detuned twin for a richer whoosh.
+    const twin = ctx.createOscillator();
+    twin.type = "sine";
+    twin.frequency.setValueAtTime(from * 1.01, when);
+    twin.frequency.exponentialRampToValueAtTime(to * 1.01, when + d);
+    const twinEnv = ctx.createGain();
+    twinEnv.gain.setValueAtTime(0, when);
+    twinEnv.gain.linearRampToValueAtTime(g * 0.28, when + 0.02);
+    twinEnv.gain.exponentialRampToValueAtTime(0.0001, when + d);
+    twin.connect(twinEnv);
+    twinEnv.connect(dest);
+    twin.start(when);
+    twin.stop(when + d + 0.02);
   }
 
   private noiseBurst(
@@ -2379,29 +2504,40 @@ class AudioManagerImpl {
     cutoff: number,
   ): void {
     const ctx = this.ctx!;
-    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const d = Math.max(0.008, jitter(dur, 0.08));
+    const g = jitter(gain, 0.1);
+    const len = Math.max(1, Math.floor(ctx.sampleRate * d));
     const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buffer.getChannelData(0);
+    // Soft-shaped noise with a little mid-band bias for character.
     for (let i = 0; i < len; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const t = i / len;
+      const env = Math.pow(1 - t, 0.85 + Math.random() * 0.3);
+      data[i] = (Math.random() * 2 - 1) * env;
     }
     const src = ctx.createBufferSource();
     src.buffer = buffer;
 
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.setValueAtTime(r(80, 280), when);
+
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(cutoff, when);
+    filter.frequency.setValueAtTime(jitter(cutoff, 0.12), when);
+    filter.Q.setValueAtTime(0.6 + Math.random() * 0.8, when);
 
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, when);
-    env.gain.linearRampToValueAtTime(gain, when + 0.005);
-    env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    env.gain.linearRampToValueAtTime(g, when + 0.004);
+    env.gain.exponentialRampToValueAtTime(0.0001, when + d);
 
-    src.connect(filter);
+    src.connect(hp);
+    hp.connect(filter);
     filter.connect(env);
     env.connect(dest);
     src.start(when);
-    src.stop(when + dur + 0.02);
+    src.stop(when + d + 0.02);
   }
 }
 

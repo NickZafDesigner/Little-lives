@@ -506,7 +506,7 @@ export class PlayerStatusModal {
       </ul>
       <h3 class="ll-status-section">Friends &amp; flowers</h3>
       <ul class="ll-status-tips">
-        <li>Pick wildflowers around town, then gift them to villagers for a big friendship boost.</li>
+        <li>Pick wildflowers around town, then gift them to anyone for a friendship boost (or just good vibes).</li>
         <li>Check the Friends tab to see every relationship score and roommate.</li>
         <li>Deeper chats unlock as friendship grows. At 100, ask someone to move in.</li>
         <li>Roommates wander your house — chat anytime, or send them out to harvest. Collect their haul from the porch.</li>
@@ -514,7 +514,7 @@ export class PlayerStatusModal {
       <h3 class="ll-status-section">Tips</h3>
       <ul class="ll-status-tips">
         <li>Keep an eye on needs - hungry, sleepy neighbours aren't at their best.</li>
-        <li>Eat fish and apples from the Bag when you're peckish (or raid the fridge).</li>
+        <li>Eat fish and fruit from the Bag when you're peckish (or raid the fridge).</li>
         <li>Take a job in town, then spend your earnings on furniture and pets.</li>
         <li>Complete tasks to unlock new catalog pieces you can buy for your home.</li>
         <li>When the day winds down, head home and sleep to start fresh.</li>

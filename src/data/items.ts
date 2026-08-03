@@ -12,6 +12,8 @@ export type MaterialId =
   | "clay"
   | "fish"
   | "apple"
+  | "orange"
+  | "grape"
   | "flower";
 
 export type HarvestKind = "tree" | "rock" | "ore" | "dig";
@@ -141,10 +143,24 @@ export const MATERIALS: MaterialDef[] = [
     hungerRelief: 14,
   },
   {
+    id: "orange",
+    name: "Orange",
+    sellPrice: 3,
+    description: "Sunny citrus from orange trees around town. Eat from the bag.",
+    hungerRelief: 14,
+  },
+  {
+    id: "grape",
+    name: "Grapes",
+    sellPrice: 4,
+    description: "Sweet clusters from grape vines around town. Eat from the bag.",
+    hungerRelief: 12,
+  },
+  {
     id: "flower",
     name: "Wildflower",
     sellPrice: 2,
-    description: "A cheerful bloom. Perfect as a gift for villagers.",
+    description: "A cheerful bloom. Perfect as a gift for anyone.",
   },
 ];
 
@@ -166,6 +182,30 @@ export const HARVEST_NODE_DEFS: HarvestNodeDef[] = [
     verb: "Chop",
     yields: [
       { itemId: "apple", min: 2, max: 4 },
+      { itemId: "wood", min: 1, max: 2 },
+    ],
+    respawnDays: 2,
+  },
+  {
+    id: "harvest_orange",
+    kind: "tree",
+    toolId: "axe",
+    label: "Orange Tree",
+    verb: "Chop",
+    yields: [
+      { itemId: "orange", min: 2, max: 4 },
+      { itemId: "wood", min: 1, max: 2 },
+    ],
+    respawnDays: 2,
+  },
+  {
+    id: "harvest_grape",
+    kind: "tree",
+    toolId: "axe",
+    label: "Grape Vine",
+    verb: "Chop",
+    yields: [
+      { itemId: "grape", min: 2, max: 5 },
       { itemId: "wood", min: 1, max: 2 },
     ],
     respawnDays: 2,
@@ -351,22 +391,22 @@ function buildHarvestNodes(
   }
 
   if (!ctx) {
-    // Pre-map fallback — sparse forest only (mix timber + apple).
+    // Pre-map fallback — sparse forest only (mix timber + fruit).
     const fallback: Array<[number, number, string]> = [
       [4, 18, "harvest_tree"],
       [7, 19, "harvest_apple"],
       [10, 17, "harvest_tree"],
-      [13, 18, "harvest_apple"],
+      [13, 18, "harvest_orange"],
       [5, 22, "harvest_tree"],
-      [9, 23, "harvest_apple"],
+      [9, 23, "harvest_grape"],
       [12, 21, "harvest_tree"],
       [15, 22, "harvest_tree"],
       [4, 26, "harvest_apple"],
       [8, 27, "harvest_tree"],
-      [11, 25, "harvest_apple"],
+      [11, 25, "harvest_orange"],
       [14, 28, "harvest_tree"],
       [6, 29, "harvest_tree"],
-      [3, 24, "harvest_apple"],
+      [3, 24, "harvest_grape"],
     ];
     for (const [tx, ty, defId] of fallback) {
       add(defId, tx, ty, "forest");
@@ -401,7 +441,7 @@ function buildHarvestNodes(
     return false;
   };
 
-  // Timber + apple trees fill Whisperwood and sprinkle across town grass.
+  // Timber + fruit trees: thinner Whisperwood, fuller coverage across town grass.
   for (let ty = 2; ty < mapH - 2; ty++) {
     for (let tx = 2; tx < mapW - 2; tx++) {
       // Beach / water band
@@ -416,24 +456,36 @@ function buildHarvestNodes(
       if (lot && SKIP_LOTS.has(lot.id)) continue;
 
       const inForest = lotId === "forest";
-      // Forest: denser grove. Town: regular accents along open grass.
-      const spacing = inForest ? 2 : 5;
+      // Forest: airier grove. Town: more regular accents along open grass.
+      const spacing = inForest ? 3 : 4;
       if (nearOccupied(tx, ty, spacing - 1)) continue;
 
       const hash = (tx * 73856093) ^ (ty * 19349663) ^ (tx * ty + 17);
       if (inForest) {
         if ((tx + ty) % 2 !== 0) continue;
-        if (hash % 5 === 0) continue;
+        if (hash % 3 === 0) continue;
       } else {
-        if (tx % 7 !== 3 || ty % 7 !== 2) continue;
-        if (hash % 2 !== 0) continue;
+        if (tx % 5 !== 2 || ty % 5 !== 1) continue;
+        if (hash % 3 === 0) continue;
       }
 
-      // Apples in the grove (~2/5) and dotted around town (~1/4).
-      const appleChance = inForest
-        ? Math.abs(hash) % 5 < 2
-        : Math.abs(hash) % 4 === 0;
-      const defId = appleChance ? "harvest_apple" : "harvest_tree";
+      // Mix timber with apple / orange / grape trees.
+      const roll = Math.abs(hash) % 100;
+      let defId = "harvest_tree";
+      if (inForest) {
+        if (roll < 45) defId = "harvest_tree";
+        else if (roll < 65) defId = "harvest_apple";
+        else if (roll < 83) defId = "harvest_orange";
+        else defId = "harvest_grape";
+      } else if (roll < 55) {
+        defId = "harvest_tree";
+      } else if (roll < 72) {
+        defId = "harvest_apple";
+      } else if (roll < 86) {
+        defId = "harvest_orange";
+      } else {
+        defId = "harvest_grape";
+      }
       add(defId, tx, ty, lotId);
     }
   }

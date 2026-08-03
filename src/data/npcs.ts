@@ -85,7 +85,7 @@ export const FLOWER_GIFT_PREFERENCE: Partial<Record<NpcId, number>> = {
   sage: 3,
 };
 
-/** Bag items players can gift to villagers. */
+/** Bag items players can gift to anyone (villagers or street hangabouts). */
 export const BAG_GIFTS: Array<{
   itemId: MaterialId;
   label: string;
@@ -103,6 +103,18 @@ export const BAG_GIFTS: Array<{
     label: "Give Apple",
     delta: 14,
     preference: { mabel: 5, jun: 4, pip: 3 },
+  },
+  {
+    itemId: "orange",
+    label: "Give Orange",
+    delta: 14,
+    preference: { vera: 4, jun: 3, reed: 2 },
+  },
+  {
+    itemId: "grape",
+    label: "Give Grapes",
+    delta: 15,
+    preference: { pip: 5, mabel: 3, vera: 3 },
   },
   {
     itemId: "fish",

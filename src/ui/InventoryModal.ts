@@ -63,7 +63,7 @@ export function renderInventoryBody(state: GameState): string {
   );
 
   return `
-    <p class="ll-status-bag-lead">Tools stay forever · Eat fish &amp; apples · Gift wildflowers · Sell materials at Vera's</p>
+    <p class="ll-status-bag-lead">Tools stay forever · Eat fish &amp; fruit · Gift wildflowers · Sell materials at Vera's</p>
     <section class="ll-inv-section">
       <h3>Tools</h3>
       <ul class="ll-inv-list">${toolRows}</ul>

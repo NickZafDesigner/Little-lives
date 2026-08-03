@@ -131,6 +131,25 @@ function makeApple(): THREE.Group {
   return g;
 }
 
+function makeOrange(): THREE.Group {
+  const g = new THREE.Group();
+  addBlob(g, matSmooth(Palette.orange), 0, 4, 0, 4.2, 1, 1, 1);
+  addBox(g, matFlat(Palette.woodDark), 0, 8.2, 0, 1.1, 2.4, 1.1);
+  addBlob(g, matSmooth(Palette.leaf), 1.4, 8.4, 0, 1.6, 1.2, 0.55, 1);
+  return g;
+}
+
+function makeGrape(): THREE.Group {
+  const g = new THREE.Group();
+  addBlob(g, matSmooth(Palette.grape), 0, 5.2, 0, 2.4);
+  addBlob(g, matSmooth(Palette.grapeDark), 1.6, 3.6, 0.4, 2.1);
+  addBlob(g, matSmooth(Palette.grape), -1.4, 3.4, -0.3, 2.0);
+  addBlob(g, matSmooth(Palette.grapeDark), 0.3, 2.0, 0, 1.7);
+  addBox(g, matFlat(Palette.woodDark), 0, 7.6, 0, 0.9, 2.2, 0.9);
+  addBlob(g, matSmooth(Palette.leaf), 1.2, 7.8, 0, 1.4, 1.1, 0.5, 1);
+  return g;
+}
+
 function makeFlower(): THREE.Group {
   const g = new THREE.Group();
   addBox(g, matFlat(Palette.leaf), 0, 4, 0, 1.2, 8, 1.2);
@@ -156,6 +175,8 @@ const materialMakers: Record<MaterialId, () => THREE.Group> = {
   clay: makeClay,
   fish: makeFish,
   apple: makeApple,
+  orange: makeOrange,
+  grape: makeGrape,
   flower: makeFlower,
 };
 

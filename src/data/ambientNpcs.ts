@@ -1585,3 +1585,32 @@ export function isAmbientNpcId(id: string): boolean {
 export function randomAmbientBeat(def: AmbientNpcDef): AmbientBeat {
   return def.chats[Math.floor(Math.random() * def.chats.length)]!;
 }
+
+const AMBIENT_GIFT_THANKS: Record<AmbientVibe, string[]> = {
+  funny: [
+    "For me? My day just leveled up.",
+    "Illegal levels of nice. I'm reporting this to the fun police.",
+    "Accepted. Officially filing this under 'best plot twist'.",
+  ],
+  charming: [
+    "How thoughtful - you have excellent taste.",
+    "A gift and a smile? Dangerous combination.",
+    "You've made this corner of town brighter. Truly.",
+  ],
+  cute: [
+    "Oooh! For meee? Soft squeal incoming.",
+    "I'm putting this in my treasure pocket. Forever.",
+    "You're the sweetest. Heart doing little hops.",
+  ],
+  rude: [
+    "...Fine. I'll take it. Don't make it weird.",
+    "Huh. Not terrible. Keep that energy.",
+    "Okay. Points for effort. Don't get cocky.",
+  ],
+};
+
+/** Random thank-you line when an ambient NPC receives a bag gift. */
+export function ambientGiftThanks(vibe: AmbientVibe): string {
+  const lines = AMBIENT_GIFT_THANKS[vibe];
+  return lines[Math.floor(Math.random() * lines.length)]!;
+}

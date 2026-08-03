@@ -14,6 +14,8 @@ export class ThoughtBubble {
   private preview = new FurniturePreview();
   private visible = false;
   private hideTimer: number | null = null;
+  private sequenceTimer: number | null = null;
+  private sequenceToken = 0;
   private zoomed = false;
 
   constructor(parent: HTMLElement) {
@@ -51,6 +53,7 @@ export class ThoughtBubble {
    * Uses the same furniture mesh as the build-menu tooltip.
    */
   showSofa(caption = "A sunny sofa would look perfect…") {
+    this.clearSequence();
     this.clearHideTimer();
     this.preview.dispose();
     this.cloud.className = "ll-thought-cloud is-sofa";
@@ -75,6 +78,7 @@ export class ThoughtBubble {
    * Pass `ms <= 0` to keep it up until replaced (wake-intro beats).
    */
   showText(text: string, ms = 4200) {
+    this.clearSequence();
     this.clearHideTimer();
     this.preview.dispose();
     this.cloud.className = "ll-thought-cloud is-text";
@@ -85,12 +89,47 @@ export class ThoughtBubble {
     }
   }
 
+  /**
+   * Multi-beat thought sequence (auto-advances). Replaces any current bubble.
+   */
+  showSequence(lines: string[], msPerBeat = 2800) {
+    this.clearSequence();
+    this.clearHideTimer();
+    const beats = lines.map((l) => l.trim()).filter(Boolean);
+    if (beats.length === 0) return;
+    if (beats.length === 1) {
+      this.showText(beats[0]!, msPerBeat);
+      return;
+    }
+
+    const token = this.sequenceToken;
+    let i = 0;
+    const advance = () => {
+      if (token !== this.sequenceToken) return;
+      const text = beats[i]!;
+      this.preview.dispose();
+      this.cloud.className = "ll-thought-cloud is-text";
+      this.cloud.textContent = text;
+      this.reveal();
+      i += 1;
+      if (i < beats.length) {
+        this.sequenceTimer = window.setTimeout(advance, msPerBeat);
+      } else {
+        this.hideTimer = window.setTimeout(() => {
+          if (token === this.sequenceToken) this.hide();
+        }, msPerBeat);
+      }
+    };
+    advance();
+  }
+
   /** @deprecated use showSofa - kept for call-site compatibility */
   show() {
     this.showSofa();
   }
 
   hide() {
+    this.clearSequence();
     this.clearHideTimer();
     this.preview.dispose();
     if (!this.visible) return;
@@ -133,6 +172,7 @@ export class ThoughtBubble {
   }
 
   destroy() {
+    this.clearSequence();
     this.clearHideTimer();
     this.preview.dispose();
     this.visible = false;
@@ -153,6 +193,14 @@ export class ThoughtBubble {
     if (this.hideTimer !== null) {
       window.clearTimeout(this.hideTimer);
       this.hideTimer = null;
+    }
+  }
+
+  private clearSequence() {
+    this.sequenceToken += 1;
+    if (this.sequenceTimer !== null) {
+      window.clearTimeout(this.sequenceTimer);
+      this.sequenceTimer = null;
     }
   }
 }

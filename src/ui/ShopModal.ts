@@ -141,7 +141,7 @@ export class ShopModal {
 
     const rows =
       entries.length === 0
-        ? `<li class="ll-inv-empty">Nothing to sell — gather wood, stone, ore, clay, fish, apples, or flowers first.</li>`
+        ? `<li class="ll-inv-empty">Nothing to sell — gather wood, stone, ore, clay, fish, fruit, or flowers first.</li>`
         : entries
             .map(
               ({ m, count }) => `
