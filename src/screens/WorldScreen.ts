@@ -235,6 +235,8 @@ export function createWorldScreen(
   let thoughtBubble!: ThoughtBubble;
   let hintArrow!: HintArrow;
   let interactTip!: InteractTip;
+  /** Target currently advertised by the proximity tip (for tip clicks). */
+  let tipTarget: Target | null = null;
   let timeMontage!: TimeMontage;
   let workMini!: WorkMinigame;
   let playMini!: PlayMinigame;
@@ -1115,14 +1117,17 @@ export function createWorldScreen(
       hud?.isAnyModalOpen() ||
       state.isBusy()
     ) {
+      tipTarget = null;
       interactTip?.hide();
       return;
     }
     const t = nearestTarget(INTERACT_RANGE);
     if (!t) {
+      tipTarget = null;
       interactTip?.hide();
       return;
     }
+    tipTarget = t;
     interactTip?.showAt(
       t.x,
       t.z,
@@ -1130,6 +1135,29 @@ export function createWorldScreen(
       actionLabelFor(t),
       tipHeightFor(t),
     );
+  };
+
+  const activateTipTarget = () => {
+    if (
+      introActive ||
+      timeMontage?.isPlaying() ||
+      workMini?.isOpen() ||
+      playMini?.isOpen() ||
+      tvViewer?.isOpen() ||
+      dialogue?.isOpen() ||
+      menu?.isOpen() ||
+      hud?.isAnyModalOpen() ||
+      state.mode !== "live" ||
+      state.isBusy()
+    ) {
+      return;
+    }
+    const t = tipTarget ?? nearestTarget(INTERACT_RANGE);
+    if (!t) {
+      state.showToast("Nothing to use nearby.");
+      return;
+    }
+    approach(t);
   };
 
   const tryInteractNearby = () => {
@@ -1147,7 +1175,7 @@ export function createWorldScreen(
     ) {
       return false;
     }
-    const t = nearestTarget(INTERACT_RANGE);
+    const t = tipTarget ?? nearestTarget(INTERACT_RANGE);
     if (t) {
       approach(t);
       return true;
@@ -4191,6 +4219,7 @@ export function createWorldScreen(
     if (menu.containsPoint(cx, cy)) return true;
     if (catalog.containsPoint(cx, cy)) return true;
     if (hud.containsHudCluster(cx, cy)) return true;
+    if (interactTip?.containsPoint(cx, cy)) return true;
     if (tvViewer?.isOpen()) return true;
     if (workMini?.isOpen()) return true;
     if (playMini?.isOpen()) return true;
@@ -4674,6 +4703,7 @@ export function createWorldScreen(
       thoughtBubble = new ThoughtBubble(ui);
       hintArrow = new HintArrow(ui);
       interactTip = new InteractTip(ui);
+      interactTip.setOnAction(() => activateTipTarget());
       timeMontage = new TimeMontage(ui);
       confetti = new ConfettiBurst(ui);
       payCelebration = new PayCelebration(ui);

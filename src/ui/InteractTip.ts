@@ -1,5 +1,6 @@
 /**
  * Floating proximity tip: target name + primary action affordance.
+ * Clicking the tip (or its action chip) starts walk-to-interact.
  */
 export class InteractTip {
   private root: HTMLElement;
@@ -10,6 +11,8 @@ export class InteractTip {
   private worldX = 0;
   private worldZ = 0;
   private worldY = 36;
+  private onAction: (() => void) | null = null;
+  private readonly onTipPointerDown: (e: PointerEvent) => void;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement("div");
@@ -19,6 +22,8 @@ export class InteractTip {
     this.tip = document.createElement("div");
     this.tip.className = "ll-interact-tip";
     this.tip.hidden = true;
+    this.tip.setAttribute("role", "button");
+    this.tip.tabIndex = -1;
     this.tip.innerHTML = `
       <span class="ll-interact-tip-name"></span>
       <span class="ll-interact-tip-action"></span>
@@ -31,6 +36,20 @@ export class InteractTip {
     ) as HTMLElement;
     this.root.appendChild(this.tip);
     parent.appendChild(this.root);
+
+    this.onTipPointerDown = (e: PointerEvent) => {
+      // Keep the world canvas from also receiving this click as a move/command.
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.visible) return;
+      this.onAction?.();
+    };
+    this.tip.addEventListener("pointerdown", this.onTipPointerDown);
+  }
+
+  /** Called when the player clicks the tip / action chip. */
+  setOnAction(cb: (() => void) | null) {
+    this.onAction = cb;
   }
 
   showAt(
@@ -47,6 +66,7 @@ export class InteractTip {
     if (this.actionEl.textContent !== action) {
       this.actionEl.textContent = action;
     }
+    this.tip.setAttribute("aria-label", `${action} ${label}`);
     if (!this.visible) {
       this.visible = true;
       this.tip.hidden = false;
@@ -65,6 +85,17 @@ export class InteractTip {
     }, 180);
   }
 
+  containsPoint(clientX: number, clientY: number): boolean {
+    if (!this.visible || this.tip.hidden) return false;
+    const r = this.tip.getBoundingClientRect();
+    return (
+      clientX >= r.left &&
+      clientX <= r.right &&
+      clientY >= r.top &&
+      clientY <= r.bottom
+    );
+  }
+
   update(
     project: (x: number, y: number, z: number) => { x: number; y: number },
     canvasW: number,
@@ -80,6 +111,8 @@ export class InteractTip {
   }
 
   destroy() {
+    this.tip.removeEventListener("pointerdown", this.onTipPointerDown);
+    this.onAction = null;
     this.root.remove();
   }
 }

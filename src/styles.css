@@ -3679,9 +3679,22 @@ input:focus-visible {
   color: var(--ll-ink);
   font-family: var(--ll-font-display);
   white-space: nowrap;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
   transform: translate(-50%, -100%);
   will-change: transform, opacity;
+}
+
+.ll-interact-tip:hover {
+  filter: brightness(1.03);
+}
+
+.ll-interact-tip:hover .ll-interact-tip-action {
+  filter: brightness(1.06);
+}
+
+.ll-interact-tip:active {
+  transform: translate(-50%, -100%) scale(0.97);
 }
 
 .ll-interact-tip.is-in {
