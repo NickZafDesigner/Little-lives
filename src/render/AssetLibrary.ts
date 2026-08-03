@@ -9,7 +9,9 @@ import type {
 
 // Bump when re-exporting GLBs so browsers don't keep a stale hair/body kit.
 const ASSET_VER = "20260803a";
-const assetUrl = (path: string) => `/assets/${path}?v=${ASSET_VER}`;
+/** Respect Vite `base` (e.g. `/Little-lives/` on GitHub Pages). */
+const assetUrl = (path: string) =>
+  `${import.meta.env.BASE_URL}assets/${path}?v=${ASSET_VER}`;
 
 const CHARACTER_PATHS = {
   body: assetUrl("characters/body.glb"),

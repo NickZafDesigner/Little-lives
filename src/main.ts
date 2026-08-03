@@ -35,7 +35,15 @@ const setBootProgress = (p: number) => {
   bootBar.setAttribute("aria-valuenow", String(pct));
 };
 
-await AssetLibrary.preload(setBootProgress);
+try {
+  await AssetLibrary.preload(setBootProgress);
+} catch (err) {
+  console.error("Boot preload failed", err);
+  bootBar.remove();
+  boot.classList.add("is-ready");
+  boot.innerHTML = `<span class="ll-boot-cta">Couldn’t load assets — refresh to try again</span>`;
+  throw err;
+}
 
 // Swap the loader for a simple start prompt on the same screen.
 bootBar.remove();
