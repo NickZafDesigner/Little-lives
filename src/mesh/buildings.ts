@@ -152,7 +152,7 @@ function box(
 }
 
 /** SE camera looks NW - player is behind a wall when on its north/west side. */
-const WALL_FADE_OPACITY = 0.34;
+const WALL_FADE_OPACITY = 0.18;
 /** Enter / exit cutaway (roof + near walls) ease duration - matches indoor zoom. */
 const CUTAWAY_FADE_SEC = 0.9;
 /** How far the roof lifts while fading open (avoids transparent z-fight glitches). */
@@ -179,8 +179,18 @@ function approach(current: number, target: number, step: number): number {
   return current;
 }
 
-function setMeshFadeOpacity(mesh: THREE.Mesh, opacity: number) {
-  const key = (opacity * 1000 + 0.5) | 0;
+/**
+ * @param keepDepthWhileSolid - roofs only: write depth while mostly opaque so
+ *   pitched slabs don't z-fight while lifting. Walls/furniture must NEVER keep
+ *   depthWrite while transparent or they fully occlude characters behind them.
+ */
+function setMeshFadeOpacity(
+  mesh: THREE.Mesh,
+  opacity: number,
+  keepDepthWhileSolid = false,
+) {
+  const depthBit = keepDepthWhileSolid ? 1 : 0;
+  const key = ((opacity * 1000 + 0.5) | 0) | (depthBit << 20);
   if (mesh.userData._fadeKey === key) return;
   mesh.userData._fadeKey = key;
   const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -193,6 +203,7 @@ function setMeshFadeOpacity(mesh: THREE.Mesh, opacity: number) {
       return;
     }
     mesh.visible = true;
+    const wasTransparent = m.transparent;
     if (opacity >= 0.999) {
       m.transparent = false;
       m.opacity = 1;
@@ -200,9 +211,11 @@ function setMeshFadeOpacity(mesh: THREE.Mesh, opacity: number) {
     } else {
       m.transparent = true;
       m.opacity = opacity;
-      // Keep depth writes while mostly solid so pitched slabs don't z-fight.
-      m.depthWrite = opacity > 0.42;
+      // Walls: always false so characters show through. Roofs: keep depth
+      // while mostly solid to avoid slab sorting flicker during lift.
+      m.depthWrite = keepDepthWhileSolid && opacity > 0.42;
     }
+    if (wasTransparent !== m.transparent) m.needsUpdate = true;
   }
   if (!handled && opacity <= 0.01) mesh.visible = false;
 }
@@ -211,10 +224,11 @@ function setGroupFadeOpacity(
   root: THREE.Object3D,
   opacity: number,
   castShadows: boolean,
+  keepDepthWhileSolid = false,
 ) {
   root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
-    setMeshFadeOpacity(obj, opacity);
+    setMeshFadeOpacity(obj, opacity, keepDepthWhileSolid);
     if (obj.userData._castShadowWas === undefined) {
       obj.userData._castShadowWas = obj.castShadow;
     }
@@ -948,11 +962,12 @@ function buildHouse(lot: LotBounds): BuildingHandle {
     // during the wake-up / indoor zoom.
     const fade = easeSmooth(Math.max(0, (t - 0.12) / 0.88));
     roof.position.y = e * ROOF_LIFT;
-    setGroupFadeOpacity(roof, 1 - fade, fade < 0.55);
-    // Near walls + door ease to the ghost opacity while inside.
-    const nearOpacity = ghostOpacity(t);
-    setGroupFadeOpacity(near, nearOpacity, e < 0.45);
-    setGroupFadeOpacity(doorPivot, nearOpacity, e < 0.45);
+    setGroupFadeOpacity(roof, 1 - fade, fade < 0.55, true);
+    // Camera-near shell (south/east + door): fully cut away indoors so the
+    // SE view never paints solid walls over characters. Internal partitions
+    // still soft-ghost via updateInternalWallFade.
+    setGroupFadeOpacity(near, 1 - e, e < 0.45);
+    setGroupFadeOpacity(doorPivot, 1 - e, e < 0.45);
     // Mute far-wall shadows while mostly open so they don't stripe the floor.
     for (const m of farCasters) m.castShadow = e < 0.45;
   };
@@ -976,9 +991,14 @@ function buildHouse(lot: LotBounds): BuildingHandle {
         open && data ? wallObscuresPlayer(data, playerX, playerZ) : false;
       const target = want ? 1 : 0;
       let t = (mesh.userData.fadeT as number) ?? 0;
-      if (t === target) continue;
-      t = approach(t, target, step);
-      mesh.userData.fadeT = t;
+      if (t === target) {
+        // Re-apply once so a mid-load material swap can't leave a solid wall.
+        if (mesh.userData._fadeApplied === target) continue;
+      } else {
+        t = approach(t, target, step);
+        mesh.userData.fadeT = t;
+      }
+      mesh.userData._fadeApplied = t === target ? target : -1;
       setMeshFadeOpacity(mesh, ghostOpacity(t));
     }
   };
