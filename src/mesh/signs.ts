@@ -108,7 +108,7 @@ export const TOWN_SIGNS: SignDef[] = [
     id: "sign_forest",
     lotId: "forest",
     name: "Whisperwood",
-    blurb: "Tall timber and dig mounds. Bring an axe and a shovel.",
+    blurb: "Tall timber, apple trees, and dig mounds. Bring an axe and a shovel.",
     side: "east",
     accent: Palette.leaf,
   },

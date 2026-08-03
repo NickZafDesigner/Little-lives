@@ -10,6 +10,7 @@ import {
 } from "../data/character";
 import {
   emptyInventory,
+  harvestRespawnDays,
   seedHarvestNodes,
   type HarvestNodeInstance,
   type InventoryState,
@@ -318,7 +319,7 @@ export class GameState {
   inventory: InventoryState = emptyInventory();
   /** Harvest node placements (static seed; depletion tracked separately). */
   harvestNodes: HarvestNodeInstance[] = seedHarvestNodes();
-  /** uid → dayIndex when depleted; respawns when dayIndex > value. */
+  /** uid → dayIndex when depleted; respawns after staggered multi-day delay. */
   harvestDepleted: Record<string, number> = {};
   /** First-visit toasts for forest / mine. */
   visitedGatherLots: Partial<Record<"forest" | "mine", boolean>> = {};
@@ -379,7 +380,9 @@ export class GameState {
   isHarvestDepleted(uid: string): boolean {
     const day = this.harvestDepleted[uid];
     if (day === undefined) return false;
-    return this.dayIndex <= day;
+    const node = this.harvestNodes.find((n) => n.uid === uid);
+    const need = harvestRespawnDays(node?.defId ?? "", uid);
+    return this.dayIndex < day + need;
   }
 
   depleteHarvest(uid: string) {

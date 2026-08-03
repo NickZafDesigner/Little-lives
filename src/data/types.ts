@@ -233,7 +233,7 @@ export interface SaveData {
   petCareStreak: number;
   /** Permanent tools + stackable materials. */
   inventory?: InventorySave;
-  /** Harvest node uid → dayIndex when depleted (respawns next day). */
+  /** Harvest node uid → dayIndex when depleted (respawns over following days). */
   harvestDepleted?: Record<string, number>;
   player: {
     x: number;

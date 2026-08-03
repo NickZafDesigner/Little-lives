@@ -341,58 +341,7 @@ export function buildTerrain(map: TownMapData): THREE.Group {
     }
   }
 
-  const placeTree = (tx: number, ty: number) => {
-    // Trees sit on a 2×2 footprint; mesh is centered in that block.
-    const cx = (tx + 1) * TILE;
-    const cz = (ty + 1) * TILE;
-    const n = noise(tx * 4.1, ty * 6.7);
-    const scale = 0.92 + n * 0.22;
-    const lean = (n - 0.5) * 4;
-    // Taller than cottage roofs (walls 64 + steep pitch ≈ 140+).
-    addProp(
-      matFlat(Palette.woodDark),
-      stemGeo(5.5 * scale, 9 * scale, 88 * scale),
-      cx,
-      44 * scale,
-      cz,
-    );
-    addProp(
-      matSmooth(Palette.leaf),
-      blobGeo(34 * scale, 16),
-      cx + lean,
-      118 * scale,
-      cz,
-      0.92,
-    );
-    addProp(
-      matSmooth(Palette.leafLight),
-      blobGeo(24 * scale, 14),
-      cx + 16 * scale + lean,
-      138 * scale,
-      cz - 12 * scale,
-      0.9,
-    );
-    addProp(
-      matSmooth(Palette.leaf),
-      blobGeo(22 * scale, 14),
-      cx - 18 * scale + lean,
-      132 * scale,
-      cz + 14 * scale,
-      0.9,
-    );
-    addProp(
-      matSmooth(Palette.leaf),
-      blobGeo(18 * scale, 12),
-      cx + 4 * scale,
-      152 * scale,
-      cz + 6 * scale,
-      0.85,
-    );
-  };
-
-  for (const [tx, ty] of map.trees) {
-    placeTree(tx, ty);
-  }
+  // Canopy oaks are choppable harvest nodes now (see mesh/harvest.ts).
 
   const lampStem = stemGeo(1.1, 1.4, 18);
   const lampBase = box(4, 2, 4);

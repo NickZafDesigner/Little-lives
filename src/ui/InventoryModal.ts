@@ -1,6 +1,10 @@
 import type { GameState } from "../systems/GameState";
-import { MATERIALS, TOOLS } from "../data/items";
-import { Audio } from "../audio/AudioManager";
+import {
+  MATERIALS,
+  TOOLS,
+  isConsumableMaterial,
+  materialHungerRelief,
+} from "../data/items";
 
 function escapeHtml(s: string): string {
   return s
@@ -9,128 +13,64 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
-export class InventoryModal {
-  private el: HTMLElement;
-  private state: GameState;
-  private visible = false;
-
-  constructor(parent: HTMLElement, state: GameState) {
-    this.state = state;
-    this.el = document.createElement("div");
-    this.el.className = "ll-inv-modal";
-    this.el.hidden = true;
-    this.el.setAttribute("role", "dialog");
-    this.el.setAttribute("aria-modal", "true");
-    this.el.setAttribute("aria-label", "Inventory");
-    parent.appendChild(this.el);
-  }
-
-  isOpen(): boolean {
-    return this.visible;
-  }
-
-  containsPoint(_clientX: number, _clientY: number): boolean {
-    void _clientX;
-    void _clientY;
-    return this.visible;
-  }
-
-  open() {
-    this.visible = true;
-    this.el.hidden = false;
-    this.rebuild();
-    Audio.sfx("ui");
-  }
-
-  close() {
-    if (!this.visible) return;
-    this.visible = false;
-    this.el.hidden = true;
-    Audio.sfx("ui");
-  }
-
-  toggle() {
-    if (this.visible) this.close();
-    else this.open();
-  }
-
-  refresh() {
-    if (!this.visible) return;
-    this.rebuild();
-  }
-
-  destroy() {
-    this.el.remove();
-  }
-
-  private rebuild() {
-    const s = this.state;
-    const toolRows = TOOLS.map((t) => {
-      const owned = s.hasTool(t.id);
-      return `
-        <li class="ll-inv-row${owned ? " is-owned" : " is-locked"}">
-          <div class="ll-inv-row-main">
-            <strong>${escapeHtml(t.name)}</strong>
-            <span>${escapeHtml(t.description)}</span>
-          </div>
-          <em>${owned ? "Owned" : `$${t.price} at Reed's`}</em>
-        </li>`;
-    }).join("");
-
-    const matEntries = MATERIALS.map((m) => {
-      const count = s.materialCount(m.id);
-      return { m, count };
-    }).filter((e) => e.count > 0);
-
-    const matRows =
-      matEntries.length === 0
-        ? `<li class="ll-inv-empty">No materials yet — chop, mine, dig, or fish.</li>`
-        : matEntries
-            .map(
-              ({ m, count }) => `
-        <li class="ll-inv-row is-owned">
-          <div class="ll-inv-row-main">
-            <strong>${escapeHtml(m.name)} × ${count}</strong>
-            <span>${escapeHtml(m.description)}</span>
-          </div>
-          <em>Sell $${m.sellPrice} ea</em>
-        </li>`,
-            )
-            .join("");
-
-    const totalValue = matEntries.reduce(
-      (sum, { m, count }) => sum + m.sellPrice * count,
-      0,
-    );
-
-    this.el.innerHTML = `
-      <div class="ll-inv-modal-scrim" data-inv-close></div>
-      <div class="ll-inv-modal-card">
-        <header class="ll-inv-modal-head">
-          <div>
-            <h2 class="ll-inv-modal-title">Bag</h2>
-            <p class="ll-inv-modal-sub">Tools stay forever · Sell materials at Vera's Market</p>
-          </div>
-          <button type="button" class="ll-status-modal-close" data-inv-close aria-label="Close">✕</button>
-        </header>
-        <div class="ll-inv-modal-body">
-          <section class="ll-inv-section">
-            <h3>Tools</h3>
-            <ul class="ll-inv-list">${toolRows}</ul>
-          </section>
-          <section class="ll-inv-section">
-            <h3>Materials${totalValue > 0 ? ` · ~$${totalValue}` : ""}</h3>
-            <ul class="ll-inv-list">${matRows}</ul>
-          </section>
+/** Shared bag body used by the status modal tab (and standalone inventory). */
+export function renderInventoryBody(state: GameState): string {
+  const toolRows = TOOLS.map((t) => {
+    const owned = state.hasTool(t.id);
+    return `
+      <li class="ll-inv-row${owned ? " is-owned" : " is-locked"}">
+        <div class="ll-inv-thumb" data-inv-thumb="tool:${t.id}" aria-hidden="true"></div>
+        <div class="ll-inv-row-main">
+          <strong>${escapeHtml(t.name)}</strong>
+          <span>${escapeHtml(t.description)}</span>
         </div>
-      </div>
-    `;
+        <em>${owned ? "Owned" : `$${t.price} at Reed's`}</em>
+      </li>`;
+  }).join("");
 
-    for (const btn of this.el.querySelectorAll("[data-inv-close]")) {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.close();
-      });
-    }
-  }
+  const matEntries = MATERIALS.map((m) => {
+    const count = state.materialCount(m.id);
+    return { m, count };
+  }).filter((e) => e.count > 0);
+
+  const matRows =
+    matEntries.length === 0
+      ? `<li class="ll-inv-empty">No materials yet — chop, mine, dig, or fish.</li>`
+      : matEntries
+          .map(({ m, count }) => {
+            const hunger = materialHungerRelief(m.id);
+            const eat = isConsumableMaterial(m.id)
+              ? `<button type="button" class="ll-inv-eat" data-eat-mat="${m.id}">Eat · +${hunger}</button>`
+              : "";
+            return `
+      <li class="ll-inv-row is-owned">
+        <div class="ll-inv-thumb" data-inv-thumb="mat:${m.id}" aria-hidden="true"></div>
+        <div class="ll-inv-row-main">
+          <strong>${escapeHtml(m.name)} × ${count}</strong>
+          <span>${escapeHtml(m.description)}</span>
+        </div>
+        <div class="ll-inv-row-side">
+          ${eat}
+          <em>Sell $${m.sellPrice} ea</em>
+        </div>
+      </li>`;
+          })
+          .join("");
+
+  const totalValue = matEntries.reduce(
+    (sum, { m, count }) => sum + m.sellPrice * count,
+    0,
+  );
+
+  return `
+    <p class="ll-status-bag-lead">Tools stay forever · Eat fish &amp; apples from the bag · Sell materials at Vera's Market</p>
+    <section class="ll-inv-section">
+      <h3>Tools</h3>
+      <ul class="ll-inv-list">${toolRows}</ul>
+    </section>
+    <section class="ll-inv-section">
+      <h3>Materials${totalValue > 0 ? ` · ~$${totalValue}` : ""}</h3>
+      <ul class="ll-inv-list">${matRows}</ul>
+    </section>
+  `;
 }

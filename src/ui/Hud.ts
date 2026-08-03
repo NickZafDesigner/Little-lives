@@ -16,7 +16,6 @@ import { lotAtTile } from "../world/lots";
 import { TILE } from "../game/constants";
 import { drawPortrait } from "./portraits";
 import { PlayerStatusModal } from "./PlayerStatusModal";
-import { InventoryModal } from "./InventoryModal";
 import { ShopModal, type ShopMode } from "./ShopModal";
 
 const BOOST_PULSE_MS = 1000;
@@ -60,7 +59,6 @@ export class Hud {
   private lastObjectiveKey = "";
   private pulseUntil = 0;
   private statusModal: PlayerStatusModal;
-  private inventoryModal: InventoryModal;
   private shopModal: ShopModal;
   private lastPortraitKey = "";
   private prevNeeds: NeedsState | null = null;
@@ -94,7 +92,6 @@ export class Hud {
     this.el.append(this.panel, this.floatHost);
     parent.appendChild(this.el);
     this.statusModal = new PlayerStatusModal(parent, state);
-    this.inventoryModal = new InventoryModal(parent, state);
     this.shopModal = new ShopModal(parent, state, () => {
       this.lastStructureKey = "";
       this.update();
@@ -106,18 +103,21 @@ export class Hud {
       if (t.closest("[data-hud-bag]")) {
         e.stopPropagation();
         if (this.state.mode !== "live") return;
-        this.statusModal.close();
         this.shopModal.close();
-        this.inventoryModal.toggle();
+        if (this.statusModal.isBagOpen()) this.statusModal.close();
+        else this.statusModal.open("bag");
         this.lastStructureKey = "";
         this.update();
         return;
       }
       if (t.closest("[data-hud-avatar]")) {
         e.stopPropagation();
-        this.inventoryModal.close();
         this.shopModal.close();
-        this.statusModal.toggle();
+        if (this.statusModal.isOpen() && !this.statusModal.isBagOpen()) {
+          this.statusModal.close();
+        } else {
+          this.statusModal.open("status");
+        }
         this.lastStructureKey = "";
         this.update();
         return;
@@ -154,7 +154,6 @@ export class Hud {
 
   containsHudCluster(clientX: number, clientY: number): boolean {
     if (this.statusModal.containsPoint(clientX, clientY)) return true;
-    if (this.inventoryModal.containsPoint(clientX, clientY)) return true;
     if (this.shopModal.containsPoint(clientX, clientY)) return true;
     const clusters = this.panel.querySelectorAll(
       ".ll-hud-top, .ll-hud-objectives > *, .ll-hud-left > *",
@@ -178,7 +177,7 @@ export class Hud {
   }
 
   isInventoryOpen(): boolean {
-    return this.inventoryModal.isOpen();
+    return this.statusModal.isBagOpen();
   }
 
   isShopOpen(): boolean {
@@ -186,11 +185,7 @@ export class Hud {
   }
 
   isAnyModalOpen(): boolean {
-    return (
-      this.statusModal.isOpen() ||
-      this.inventoryModal.isOpen() ||
-      this.shopModal.isOpen()
-    );
+    return this.statusModal.isOpen() || this.shopModal.isOpen();
   }
 
   closeStatus() {
@@ -198,7 +193,7 @@ export class Hud {
   }
 
   closeInventory() {
-    this.inventoryModal.close();
+    this.statusModal.close();
   }
 
   closeShop() {
@@ -207,16 +202,15 @@ export class Hud {
 
   toggleInventory() {
     if (this.state.mode !== "live") return;
-    this.statusModal.close();
     this.shopModal.close();
-    this.inventoryModal.toggle();
+    if (this.statusModal.isBagOpen()) this.statusModal.close();
+    else this.statusModal.open("bag");
     this.lastStructureKey = "";
     this.update();
   }
 
   openShop(mode: ShopMode, title: string) {
     this.statusModal.close();
-    this.inventoryModal.close();
     this.shopModal.open(mode, title);
     this.lastStructureKey = "";
     this.update();
@@ -287,8 +281,7 @@ export class Hud {
     // and retriggers the needs-panel entrance animation).
     // Urgency is patched onto the avatar so need recovery doesn't wipe floats.
     const structureKey = [
-      this.statusModal.isOpen() ? "1" : "0",
-      this.inventoryModal.isOpen() ? "1" : "0",
+      this.statusModal.isOpen() ? `1:${this.statusModal.currentTab()}` : "0",
       this.shopModal.isOpen() ? "1" : "0",
       s.mode,
       s.playerName,
@@ -519,8 +512,8 @@ export class Hud {
         ? `<svg viewBox="0 0 16 16" width="11" height="11"><path d="M9.2 2.4 13.6 6.8 7.4 13H3v-4.4L9.2 2.4z" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/><path d="M8 3.8 12.2 8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
         : `<svg viewBox="0 0 16 16" width="11" height="11"><circle cx="8" cy="5.2" r="2.2" fill="none" stroke="currentColor" stroke-width="1.45"/><path d="M3.6 13.2c.6-2.4 2.2-3.6 4.4-3.6s3.8 1.2 4.4 3.6" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/></svg>`;
 
-    const statusOpen = this.statusModal.isOpen();
-    const bagOpen = this.inventoryModal.isOpen();
+    const statusOpen = this.statusModal.isOpen() && !this.statusModal.isBagOpen();
+    const bagOpen = this.statusModal.isBagOpen();
     const urgencyTip =
       urgency === "critical"
         ? "Needs urgent - click for status"
@@ -734,7 +727,6 @@ export class Hud {
 
   destroy() {
     this.statusModal.destroy();
-    this.inventoryModal.destroy();
     this.shopModal.destroy();
     this.el.remove();
     this.toastEl.remove();

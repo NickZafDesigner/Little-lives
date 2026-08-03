@@ -213,7 +213,6 @@ body {
 /* Mute sits under modals - hide while build/status overlays are open */
 #ui-root:has(.ll-build-modal:not([hidden])) > .ll-mute,
 #ui-root:has(.ll-status-modal:not([hidden])) > .ll-mute,
-#ui-root:has(.ll-inv-modal:not([hidden])) > .ll-mute,
 #ui-root:has(.ll-shop-modal:not([hidden])) > .ll-mute {
   opacity: 0;
   pointer-events: none;
@@ -4860,6 +4859,13 @@ input:focus-visible {
   min-height: 0;
 }
 
+.ll-status-bag-lead {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  color: var(--ll-ink-soft);
+  line-height: 1.35;
+}
+
 /* ---------- Inventory / shop modals ---------- */
 
 .ll-inv-modal,
@@ -4973,6 +4979,28 @@ input:focus-visible {
   border-radius: var(--ll-r-sm);
 }
 
+.ll-inv-thumb {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--ll-r-sm);
+  background: linear-gradient(160deg, #fff8ea, #edd9b8);
+  border: 2px solid var(--ll-wood-light);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.ll-inv-thumb.is-fallback {
+  background: var(--ll-wood-light);
+}
+
+.ll-inv-thumb-canvas {
+  display: block;
+  width: 44px;
+  height: 44px;
+}
+
 .ll-inv-row.is-locked {
   opacity: 0.55;
 }
@@ -4983,6 +5011,7 @@ input:focus-visible {
   flex-direction: column;
   gap: 0.12rem;
   min-width: 0;
+  flex: 1;
 }
 
 .ll-inv-row-main strong,
@@ -4998,12 +5027,37 @@ input:focus-visible {
   font-weight: 600;
 }
 
+.ll-inv-row-side {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.28rem;
+}
+
 .ll-inv-row em {
   flex-shrink: 0;
   font-style: normal;
   font-size: 0.75rem;
   font-weight: 800;
   color: var(--ll-ink-soft);
+}
+
+.ll-inv-eat {
+  border: 2px solid var(--ll-wood-deep);
+  border-radius: var(--ll-r-sm);
+  padding: 0.28rem 0.55rem;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: linear-gradient(180deg, #f8b478, var(--ll-blush));
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ll-inv-eat:hover {
+  filter: brightness(1.06);
 }
 
 .ll-inv-empty {

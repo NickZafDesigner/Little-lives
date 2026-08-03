@@ -1,5 +1,9 @@
 import * as THREE from "three";
 import { createFurnitureMesh } from "../mesh/furniture";
+import {
+  createInventoryItemMesh,
+  type InventoryThumbId,
+} from "../mesh/inventoryItems";
 
 const PREVIEW_SIZE = 140;
 /** Slow continuous spin (radians per second) around world Y. */
@@ -304,6 +308,23 @@ export function paintFurnitureThumb(
   defId: string,
   cssSize = 52,
 ): boolean {
+  return paintMeshThumb(target, () => createFurnitureMesh(defId), cssSize);
+}
+
+/** Paint a bag / shop inventory tool or material silhouette. */
+export function paintInventoryThumb(
+  target: HTMLCanvasElement,
+  id: InventoryThumbId,
+  cssSize = 44,
+): boolean {
+  return paintMeshThumb(target, () => createInventoryItemMesh(id), cssSize);
+}
+
+function paintMeshThumb(
+  target: HTMLCanvasElement,
+  makeMesh: () => THREE.Group,
+  cssSize: number,
+): boolean {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const px = Math.max(32, Math.round(cssSize * dpr));
   target.width = px;
@@ -316,7 +337,7 @@ export function paintFurnitureThumb(
 
   let mesh: THREE.Group;
   try {
-    mesh = createFurnitureMesh(defId);
+    mesh = makeMesh();
   } catch {
     return false;
   }

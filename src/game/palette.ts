@@ -7,6 +7,8 @@ export const Palette = {
   grassLight: 0xbce67c,
   leaf: 0x4e9b3a,
   leafLight: 0x76c153,
+  apple: 0xe84c4c,
+  appleDark: 0xc93a3a,
 
   // Ground
   path: 0xdac9a2,

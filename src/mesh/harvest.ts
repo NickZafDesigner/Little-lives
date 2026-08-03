@@ -2,10 +2,11 @@ import * as THREE from "three";
 import { Palette } from "../game/palette";
 import { TILE } from "../game/constants";
 import {
+  harvestFootprint,
   harvestNodeById,
   type HarvestNodeInstance,
 } from "../data/items";
-import { matFlat } from "./materials";
+import { matFlat, matSmooth } from "./materials";
 import { addOutline } from "../render/outline";
 
 function addBox(
@@ -25,11 +26,105 @@ function addBox(
   parent.add(mesh);
 }
 
+function addBlob(
+  parent: THREE.Object3D,
+  mat: THREE.Material,
+  x: number,
+  y: number,
+  z: number,
+  r: number,
+  squash = 1,
+) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), mat);
+  mesh.position.set(x, y, z);
+  mesh.scale.set(1, squash, 1);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+}
+
 function makeTree(): THREE.Group {
   const g = new THREE.Group();
-  addBox(g, matFlat(Palette.woodDark), 0, 8, 0, 5, 16, 5);
-  addBox(g, matFlat(Palette.leaf), 0, 22, 0, 18, 14, 18);
-  addBox(g, matFlat(Palette.leafLight), 0, 30, 0, 12, 10, 12);
+  // Tall timber — shorter/narrower than the 2×2 canopy oaks.
+  addBox(g, matFlat(Palette.woodDark), 0, 24, 0, 8, 48, 8);
+  addBox(g, matFlat(Palette.leaf), 0, 60, 0, 34, 28, 34);
+  addBox(g, matFlat(Palette.leafLight), 0, 80, 0, 22, 18, 22);
+  return g;
+}
+
+/** Little red apple perched on the canopy exterior. */
+function addApple(
+  parent: THREE.Object3D,
+  x: number,
+  y: number,
+  z: number,
+  r: number,
+  dark = false,
+) {
+  addBlob(parent, matSmooth(dark ? Palette.appleDark : Palette.apple), x, y, z, r, 0.95);
+  addBox(parent, matFlat(Palette.woodDark), x, y + r * 0.95, z, r * 0.28, r * 0.7, r * 0.28);
+  addBlob(parent, matSmooth(Palette.leaf), x + r * 0.35, y + r * 1.05, z, r * 0.38, 0.55);
+}
+
+/** Timber-sized tree with fruit perched on the canopy. */
+function makeAppleTree(): THREE.Group {
+  const g = new THREE.Group();
+  addBox(g, matFlat(Palette.woodDark), 0, 24, 0, 8, 48, 8);
+  addBox(g, matFlat(Palette.leafLight), 0, 60, 0, 34, 28, 34);
+  addBox(g, matFlat(Palette.leaf), 0, 80, 0, 22, 18, 22);
+  // Sit apples on the outside of the leaf boxes so they read clearly.
+  addApple(g, 16, 58, 8, 3.4);
+  addApple(g, -17, 62, -6, 3.1);
+  addApple(g, 6, 74, -16, 2.9, true);
+  addApple(g, -8, 52, 16, 3.2);
+  addApple(g, 14, 68, -4, 2.7);
+  addApple(g, -4, 86, 8, 2.8);
+  return g;
+}
+
+/** Matches the old decorative canopy trees (2×2 footprint). */
+function makeCanopyTree(seed: number): THREE.Group {
+  const g = new THREE.Group();
+  const scale = 0.92 + (seed % 22) * 0.01;
+  const lean = ((seed % 10) - 5) * 0.8;
+  addBox(
+    g,
+    matFlat(Palette.woodDark),
+    0,
+    44 * scale,
+    0,
+    5.5 * scale,
+    88 * scale,
+    9 * scale,
+  );
+  addBlob(g, matSmooth(Palette.leaf), lean, 118 * scale, 0, 34 * scale, 0.92);
+  addBlob(
+    g,
+    matSmooth(Palette.leafLight),
+    16 * scale + lean,
+    138 * scale,
+    -12 * scale,
+    24 * scale,
+    0.9,
+  );
+  addBlob(
+    g,
+    matSmooth(Palette.leaf),
+    -18 * scale + lean,
+    132 * scale,
+    14 * scale,
+    22 * scale,
+    0.9,
+  );
+  addBlob(
+    g,
+    matSmooth(Palette.leaf),
+    4 * scale,
+    152 * scale,
+    6 * scale,
+    18 * scale,
+    0.85,
+  );
   return g;
 }
 
@@ -55,18 +150,25 @@ function makeDig(): THREE.Group {
   return g;
 }
 
-function meshForKind(kind: string): THREE.Group {
-  switch (kind) {
-    case "tree":
+function meshForDef(defId: string, seed: number): THREE.Group {
+  switch (defId) {
+    case "harvest_canopy":
+      return makeCanopyTree(seed);
+    case "harvest_apple":
+      return makeAppleTree();
+    case "harvest_tree":
       return makeTree();
-    case "rock":
+    case "harvest_rock":
       return makeRock();
-    case "ore":
+    case "harvest_ore":
       return makeOre();
-    case "dig":
+    case "harvest_dig":
       return makeDig();
-    default:
+    default: {
+      const def = harvestNodeById[defId];
+      if (def?.kind === "tree") return makeTree();
       return makeRock();
+    }
   }
 }
 
@@ -86,13 +188,15 @@ export function buildHarvestMeshes(
   for (const node of nodes) {
     const def = harvestNodeById[node.defId];
     if (!def) continue;
-    const root = meshForKind(def.kind);
+    const seed = node.tx * 17 + node.ty * 31;
+    const root = meshForDef(node.defId, seed);
     root.name = node.uid;
     root.userData.harvestUid = node.uid;
+    const fp = harvestFootprint(node.defId);
     root.position.set(
-      node.tx * TILE + TILE / 2,
+      (node.tx + fp / 2) * TILE,
       0,
-      node.ty * TILE + TILE / 2,
+      (node.ty + fp / 2) * TILE,
     );
     addOutline(root, 1.03);
     group.add(root);

@@ -53,6 +53,7 @@ import {
   type QuestEvent,
 } from "../data/quests";
 import {
+  harvestFootprint,
   harvestNodeById,
   materialById,
   rollHarvestYields,
@@ -210,6 +211,13 @@ export function createWorldScreen(
   let furnitureMeshes = new Map<string, THREE.Group>();
   let harvestHandles = new Map<string, HarvestMeshHandle>();
   let lastHarvestDay = -1;
+  /** Live shrink/tip while harvesting a node (trees especially). */
+  let harvestAnim: {
+    uid: string;
+    startMs: number;
+    durationMs: number;
+    isTree: boolean;
+  } | null = null;
   let wallMeshes = new Map<string, THREE.Mesh>();
   let floorMeshes = new Map<string, THREE.Mesh>();
   let uidCounter = 1000;
@@ -477,6 +485,7 @@ export function createWorldScreen(
       lines.push({ speakerId: def.id, speakerName: def.name, text });
     }
     dialogue.say(lines);
+    if (choice.id === "__ask_reed") pointToReed();
     if (choice.choices?.length) {
       presentAmbientChoices(npcId, choice.choices);
     }
@@ -502,9 +511,14 @@ export function createWorldScreen(
         text,
       })),
     );
-    if (beat.choices.length) {
-      presentAmbientChoices(id, beat.choices);
-    }
+    const reedAsk: AmbientChoice = {
+      id: "__ask_reed",
+      label: "Where's Reed?",
+      playerLine: "Do you know where I can find Reed?",
+      npcLines: [reedDirectionLine(def.id)],
+      anim: "pop",
+    };
+    presentAmbientChoices(id, [...beat.choices, reedAsk]);
   };
 
   const playerTile = (): GridPos => ({
@@ -601,11 +615,16 @@ export function createWorldScreen(
         }
       }
     }
-    // Depleted harvest nodes become walkable until they respawn next day.
+    // Depleted harvest nodes become walkable until they respawn.
     for (const node of state.harvestNodes) {
-      if (!inBounds(node.tx, node.ty)) continue;
-      if (state.isHarvestDepleted(node.uid)) {
-        collision[node.ty][node.tx] = false;
+      if (!state.isHarvestDepleted(node.uid)) continue;
+      const fp = harvestFootprint(node.defId);
+      for (let dy = 0; dy < fp; dy++) {
+        for (let dx = 0; dx < fp; dx++) {
+          const tx = node.tx + dx;
+          const ty = node.ty + dy;
+          if (inBounds(tx, ty)) collision[ty][tx] = false;
+        }
       }
     }
   };
@@ -614,7 +633,35 @@ export function createWorldScreen(
     for (const node of state.harvestNodes) {
       const handle = harvestHandles.get(node.uid);
       if (!handle) continue;
-      handle.root.visible = !state.isHarvestDepleted(node.uid);
+      const depleted = state.isHarvestDepleted(node.uid);
+      handle.root.visible = !depleted;
+      if (!depleted && harvestAnim?.uid !== node.uid) {
+        handle.root.scale.set(1, 1, 1);
+        handle.root.rotation.x = 0;
+        handle.root.rotation.z = 0;
+      }
+    }
+  };
+
+  const updateHarvestAnim = () => {
+    if (!harvestAnim) return;
+    const handle = harvestHandles.get(harvestAnim.uid);
+    if (!handle || !handle.root.visible) return;
+    const t = Math.min(
+      1,
+      (performance.now() - harvestAnim.startMs) / harvestAnim.durationMs,
+    );
+    // Ease-in so early chops nibble and the last stretch collapses.
+    const fall = t * t;
+    if (harvestAnim.isTree) {
+      const s = Math.max(0.04, 1 - fall * 0.96);
+      handle.root.scale.set(s * (1 - fall * 0.2), s, s * (1 - fall * 0.2));
+      handle.root.rotation.z = fall * 0.55;
+      handle.root.rotation.x = fall * 0.12;
+    } else {
+      const s = Math.max(0.2, 1 - fall * 0.75);
+      handle.root.scale.setScalar(s);
+      handle.root.rotation.z = Math.sin(fall * Math.PI * 4) * 0.08 * (1 - fall);
     }
   };
 
@@ -779,13 +826,20 @@ export function createWorldScreen(
       if (state.isHarvestDepleted(node.uid)) continue;
       const def = harvestNodeById[node.defId];
       if (!def) continue;
+      const fp = harvestFootprint(node.defId);
+      const tiles: GridPos[] = [];
+      for (let dy = 0; dy < fp; dy++) {
+        for (let dx = 0; dx < fp; dx++) {
+          tiles.push({ x: node.tx + dx, y: node.ty + dy });
+        }
+      }
       out.push({
         kind: "harvest",
         id: node.uid,
         label: def.label,
-        tiles: [{ x: node.tx, y: node.ty }],
-        x: node.tx * TILE + TILE / 2,
-        z: node.ty * TILE + TILE / 2,
+        tiles,
+        x: (node.tx + fp / 2) * TILE,
+        z: (node.ty + fp / 2) * TILE,
       });
     }
     // Indoor ↔ outdoor: only tip / interact with things in the same space.
@@ -895,7 +949,10 @@ export function createWorldScreen(
   const tipHeightFor = (t: Target): number => {
     if (t.kind === "npc" || t.kind === "pet") return 40;
     if (t.kind === "sign") return 48;
-    if (t.kind === "harvest") return 36;
+    if (t.kind === "harvest") {
+      const node = state.harvestNodes.find((n) => n.uid === t.id);
+      return harvestFootprint(node?.defId ?? "") >= 2 ? 56 : 36;
+    }
     return 28;
   };
 
@@ -1114,7 +1171,7 @@ export function createWorldScreen(
     if (lot === "pier") quests.emit("visited_pier");
     if (lot === "forest" && !state.visitedGatherLots.forest) {
       state.visitedGatherLots.forest = true;
-      state.showToast("Whisperwood — bring an axe (and a shovel).", 3200);
+      state.showToast("Whisperwood — timber, apples, and dig mounds. Bring an axe.", 3400);
     }
     if (lot === "mine" && !state.visitedGatherLots.mine) {
       state.visitedGatherLots.mine = true;
@@ -1470,6 +1527,22 @@ export function createWorldScreen(
     if (furn) openFurnitureMenu(furn, screen.x, screen.y);
   };
 
+  const pointToReed = () => {
+    const t = lotDoorWorld("workshop");
+    if (t) hintArrow?.showAt(t.x, t.z, "Reed", 8000);
+  };
+
+  const reedDirectionLine = (speakerId: string): string => {
+    const lines = [
+      "Reed? Workshop on the far east lane — past Vera's market. Follow the path east and look for sawdust.",
+      "Tool guy is Reed. East side of town, past the market — Reed's Workshop. He sells axes and such.",
+      "Head east along the main lanes. Reed's Workshop is out past the market. Can't miss the wood stacks.",
+    ];
+    let h = 0;
+    for (let i = 0; i < speakerId.length; i++) h = (h + speakerId.charCodeAt(i) * (i + 1)) | 0;
+    return lines[Math.abs(h) % lines.length]!;
+  };
+
   const beginHarvest = (target: Target) => {
     const node = state.harvestNodes.find((n) => n.uid === target.id);
     if (!node || state.isHarvestDepleted(node.uid)) return;
@@ -1481,15 +1554,41 @@ export function createWorldScreen(
       Audio.sfx("deny");
       state.showToast(
         tool
-          ? `Need a ${tool.name} — buy one from Reed.`
+          ? `Need a ${tool.name} — Reed sells them. Ask anyone where he is.`
           : "You need the right tool.",
+        3400,
       );
+      pointToReed();
       return;
     }
     Audio.sfx("interact");
-    const duration = 1800;
+    const duration = harvestFootprint(node.defId) >= 2 ? 2600 : 1800;
+    // Face the node and swing the matching tool while it shrinks.
+    {
+      const fp = harvestFootprint(node.defId);
+      const cx = (node.tx + fp / 2) * TILE;
+      const cz = (node.ty + fp / 2) * TILE;
+      const dx = cx - playerX;
+      const dz = cz - playerZ;
+      if (Math.abs(dx) > Math.abs(dz)) playerDir = dx > 0 ? "right" : "left";
+      else playerDir = dz > 0 ? "down" : "up";
+      player.setFacing(playerDir);
+      player.setWalking(false);
+    }
+    const swingTool =
+      toolId === "axe" || toolId === "pickaxe" || toolId === "shovel"
+        ? toolId
+        : "axe";
+    player.playToolSwing(swingTool, duration / 1000);
+    harvestAnim = {
+      uid: node.uid,
+      startMs: performance.now(),
+      durationMs: duration,
+      isTree: def.kind === "tree",
+    };
     state.startBusy(def.verb, duration);
     delayed(duration, () => {
+      harvestAnim = null;
       if (state.isHarvestDepleted(node.uid)) return;
       const yields = rollHarvestYields(def);
       const parts: string[] = [];
@@ -2004,7 +2103,11 @@ export function createWorldScreen(
     if (playMini.isOpen() || workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) return;
     if (kind === "fish" && !state.hasTool("fishing_rod")) {
       Audio.sfx("deny");
-      state.showToast("Need a Fishing Rod — buy one from Reed.");
+      state.showToast(
+        "Need a Fishing Rod — Reed sells them. Ask anyone where he is.",
+        3400,
+      );
+      pointToReed();
       return;
     }
     Audio.sfx("interact");
@@ -2350,6 +2453,12 @@ export function createWorldScreen(
         label: "Browse tools",
         sub: "Axes, pickaxes, shovels & rods",
       });
+    } else {
+      options.push({
+        id: "ask_reed",
+        label: "Where's Reed?",
+        sub: "Tools · east workshop",
+      });
     }
     if (def.id === "vera") {
       options.push({
@@ -2650,11 +2759,20 @@ export function createWorldScreen(
         }
         if (id === "browse_tools") {
           Audio.sfx("ui");
+          // Clear focus engagement so indoor/outdoor zoom works after the shop.
+          releaseEngagedNpc();
           hud.openShop("buy_tools", "Reed's Tools");
+          return;
+        }
+        if (id === "ask_reed") {
+          Audio.sfx("talk");
+          state.showDialogue(npcId, def.name, reedDirectionLine(npcId));
+          pointToReed();
           return;
         }
         if (id === "sell_materials") {
           Audio.sfx("ui");
+          releaseEngagedNpc();
           hud.openShop("sell_materials", "Vera's Buyback");
           return;
         }
@@ -3943,6 +4061,7 @@ export function createWorldScreen(
       unMute = wireMute(root.querySelector(".ll-mute") as HTMLElement);
 
       map = createTownMap();
+      state.harvestNodes = map.harvestNodes;
       baseCollision = map.collision.map((row) => [...row]);
       collision = baseCollision.map((row) => [...row]);
       app.renderer.buildWorld(map);
@@ -4454,6 +4573,7 @@ export function createWorldScreen(
 
       player.setPosition(playerX, playerZ);
       player.update(dt);
+      updateHarvestAnim();
       state.playerX = playerX;
       state.playerY = playerZ;
       wetTrail?.update(dt, playerX, playerZ, state.isWet);

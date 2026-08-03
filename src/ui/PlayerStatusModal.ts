@@ -4,6 +4,7 @@ import {
   NEED_IDS,
   NEED_LABELS,
   NEED_LOW,
+  applyNeedDeltas,
   moodFromNeeds,
 } from "../data/needs";
 import type { PetNeedId } from "../data/types";
@@ -15,11 +16,20 @@ import {
   furnitureForUnlockTask,
   listUnlockTasks,
 } from "../systems/unlockProgress";
-import { paintFurnitureThumb } from "./FurniturePreview";
+import { paintFurnitureThumb, paintInventoryThumb } from "./FurniturePreview";
 import { Audio } from "../audio/AudioManager";
 import { drawPortrait } from "./portraits";
+import { renderInventoryBody } from "./InventoryModal";
+import {
+  isConsumableMaterial,
+  materialById,
+  materialHungerRelief,
+  type MaterialId,
+} from "../data/items";
+import { hasTrait } from "../systems/traits";
+import type { InventoryThumbId } from "../mesh/inventoryItems";
 
-type StatusTab = "status" | "jobs" | "tasks" | "pets" | "guide";
+type StatusTab = "status" | "bag" | "jobs" | "tasks" | "pets" | "guide";
 
 const PET_NEED_IDS: PetNeedId[] = ["hunger", "energy", "fun", "bond"];
 const PET_NEED_LABELS: Record<PetNeedId, string> = {
@@ -73,6 +83,14 @@ export class PlayerStatusModal {
 
   isOpen(): boolean {
     return this.visible;
+  }
+
+  isBagOpen(): boolean {
+    return this.visible && this.tab === "bag";
+  }
+
+  currentTab(): StatusTab {
+    return this.tab;
   }
 
   containsPoint(_clientX: number, _clientY: number): boolean {
@@ -151,6 +169,7 @@ export class PlayerStatusModal {
         </header>
         <nav class="ll-status-tabs" role="tablist">
           <button type="button" class="ll-status-tab${this.tab === "status" ? " is-active" : ""}" data-tab="status" role="tab" aria-selected="${this.tab === "status"}">Status</button>
+          <button type="button" class="ll-status-tab${this.tab === "bag" ? " is-active" : ""}" data-tab="bag" role="tab" aria-selected="${this.tab === "bag"}">Bag</button>
           <button type="button" class="ll-status-tab${this.tab === "jobs" ? " is-active" : ""}" data-tab="jobs" role="tab" aria-selected="${this.tab === "jobs"}">Jobs</button>
           <button type="button" class="ll-status-tab${this.tab === "tasks" ? " is-active" : ""}" data-tab="tasks" role="tab" aria-selected="${this.tab === "tasks"}">Tasks</button>
           <button type="button" class="ll-status-tab${this.tab === "pets" ? " is-active" : ""}" data-tab="pets" role="tab" aria-selected="${this.tab === "pets"}">Pets</button>
@@ -181,11 +200,16 @@ export class PlayerStatusModal {
 
     const body = this.el.querySelector("[data-status-body]")!;
     if (this.tab === "status") body.innerHTML = this.renderStatus(mood, cozy);
+    else if (this.tab === "bag") body.innerHTML = renderInventoryBody(s);
     else if (this.tab === "jobs") body.innerHTML = this.renderJobs();
     else if (this.tab === "tasks") body.innerHTML = this.renderTasks();
     else if (this.tab === "pets") body.innerHTML = this.renderPets();
     else body.innerHTML = this.renderGuide();
 
+    if (this.tab === "bag") {
+      this.mountInventoryThumbs(body);
+      this.bindBagActions(body);
+    }
     if (this.tab === "tasks") {
       this.mountUnlockThumbs(body);
       this.scrollHighlightIntoView(body);
@@ -220,6 +244,53 @@ export class PlayerStatusModal {
         host.textContent = "";
       }
     }
+  }
+
+  private mountInventoryThumbs(root: ParentNode) {
+    for (const host of root.querySelectorAll<HTMLElement>("[data-inv-thumb]")) {
+      const id = host.dataset.invThumb as InventoryThumbId | undefined;
+      if (!id) continue;
+      const canvas = document.createElement("canvas");
+      canvas.className = "ll-inv-thumb-canvas";
+      canvas.setAttribute("aria-hidden", "true");
+      host.replaceChildren(canvas);
+      if (!paintInventoryThumb(canvas, id, 44)) {
+        host.classList.add("is-fallback");
+        host.replaceChildren();
+      }
+    }
+  }
+
+  private bindBagActions(root: ParentNode) {
+    for (const btn of root.querySelectorAll("[data-eat-mat]")) {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = (btn as HTMLElement).dataset.eatMat as MaterialId;
+        this.eatFromBag(id);
+      });
+    }
+  }
+
+  private eatFromBag(id: MaterialId) {
+    if (!isConsumableMaterial(id)) return;
+    if (!this.state.removeMaterial(id, 1)) {
+      Audio.sfx("deny");
+      return;
+    }
+    let hunger = materialHungerRelief(id);
+    let toastExtra = "";
+    if (hasTrait(this.state.playerTraits, "Foodie")) {
+      hunger += 8;
+      toastExtra = ` Foodie bonus!`;
+    }
+    this.state.needs = applyNeedDeltas(this.state.needs, { hunger });
+    const mat = materialById[id];
+    Audio.sfx("success");
+    this.state.showToast(
+      `Ate ${mat?.name ?? id} · +${hunger} Hunger.${toastExtra}`,
+      2400,
+    );
+    this.rebuild();
   }
 
   private renderStatus(mood: number, cozy: number): string {
@@ -398,6 +469,7 @@ export class PlayerStatusModal {
       <h3 class="ll-status-section">Tips</h3>
       <ul class="ll-status-tips">
         <li>Keep an eye on needs - hungry, sleepy neighbours aren't at their best.</li>
+        <li>Eat fish and apples from the Bag when you're peckish (or raid the fridge).</li>
         <li>Take a job in town, then spend your earnings on furniture and pets.</li>
         <li>Complete tasks to unlock new catalog pieces you can buy for your home.</li>
         <li>When the day winds down, head home and sleep to start fresh.</li>

@@ -13,6 +13,7 @@ import { AssetLibrary } from "../render/AssetLibrary";
 import { applyTints } from "../render/tint";
 import { addOutline } from "../render/outline";
 import { mat } from "./materials";
+import { createInventoryItemMesh } from "./inventoryItems";
 
 /** Short chat-outcome flourishes for ambient (and other) talk. */
 export type ActorReaction = "vibrate" | "pop" | "jump";
@@ -36,6 +37,8 @@ export interface ActorHandle {
   playYawn(): void;
   /** Friendly raised-hand wave, ~1.0s. */
   playWave(): void;
+  /** Swing a held tool (axe/pickaxe/shovel) for `durationSec`. */
+  playToolSwing(tool: "axe" | "pickaxe" | "shovel", durationSec: number): void;
   /** Big grin + ^ ^ happy eyes, ~0.85s. */
   playSmile(): void;
   /** Embarrassed blush bloom + head duck, ~2.4s. */
@@ -845,6 +848,9 @@ export function createActor(look: PlayerLook): ActorHandle {
   let smileDur = 0;
   let blushT = 0;
   let blushDur = 0;
+  let chopT = 0;
+  let chopDur = 0;
+  let heldTool: THREE.Object3D | null = null;
 
   type FaceRest = {
     mouth: THREE.Vector3 | null;
@@ -865,6 +871,25 @@ export function createActor(look: PlayerLook): ActorHandle {
 
   let faceRest = captureFaceRest();
   let smileFx = ensureSmileOverlays(body);
+
+  const clearHeldTool = () => {
+    if (heldTool) {
+      heldTool.removeFromParent();
+      heldTool = null;
+    }
+  };
+
+  const attachHeldTool = (tool: "axe" | "pickaxe" | "shovel") => {
+    clearHeldTool();
+    const mesh = createInventoryItemMesh(`tool:${tool}`);
+    mesh.name = "HeldTool";
+    // Inventory meshes are large; shrink and seat in the right hand.
+    mesh.scale.setScalar(0.42);
+    mesh.position.set(1.2, -6.5, 1.8);
+    mesh.rotation.set(0.15, 0.4, 0.85);
+    limbs.armR.add(mesh);
+    heldTool = mesh;
+  };
 
   const armRest = (arm: THREE.Object3D) => ({
     x: (arm.userData.restX as number) ?? -0.1,
@@ -981,9 +1006,11 @@ export function createActor(look: PlayerLook): ActorHandle {
     const waving = waveDur > 0 && waveT < waveDur;
     const smiling = smileDur > 0 && smileT < smileDur;
     const blushing = blushDur > 0 && blushT < blushDur;
+    const chopping = chopDur > 0 && chopT < chopDur;
     if (waving) waveT += dt;
     if (smiling) smileT += dt;
     if (blushing) blushT += dt;
+    if (chopping) chopT += dt;
 
     if (blushing) {
       applyEmbarrassedBlush(Math.sin(Math.min(1, blushT / blushDur) * Math.PI));
@@ -1005,6 +1032,11 @@ export function createActor(look: PlayerLook): ActorHandle {
       waveDur = 0;
       waveT = 0;
     }
+    if (!chopping && chopDur > 0) {
+      chopDur = 0;
+      chopT = 0;
+      clearHeldTool();
+    }
 
     return {
       waving,
@@ -1013,6 +1045,8 @@ export function createActor(look: PlayerLook): ActorHandle {
       blushU: blushing
         ? Math.sin(Math.min(1, blushT / blushDur) * Math.PI)
         : 0,
+      chopping,
+      chopSwing: chopping ? Math.sin(chopT * Math.PI * 2.6) : 0,
     };
   };
 
@@ -1168,6 +1202,9 @@ export function createActor(look: PlayerLook): ActorHandle {
         smileT = 0;
         blushDur = 0;
         blushT = 0;
+        chopDur = 0;
+        chopT = 0;
+        clearHeldTool();
         applyFaceRest();
         body.position.z = 0;
         limbs.legL.rotation.x = 0;
@@ -1191,6 +1228,15 @@ export function createActor(look: PlayerLook): ActorHandle {
       if (pose !== "stand") return;
       waveT = 0;
       waveDur = 1.15;
+    },
+    playToolSwing(tool, durationSec) {
+      if (pose !== "stand") return;
+      // Don't wave while swinging a tool.
+      waveDur = 0;
+      waveT = 0;
+      chopT = 0;
+      chopDur = Math.max(0.4, durationSec);
+      attachHeldTool(tool);
     },
     playSmile() {
       smileT = 0;
@@ -1298,8 +1344,10 @@ export function createActor(look: PlayerLook): ActorHandle {
         bob += dt * 1.6;
         const idle = Math.sin(bob);
         body.position.x = easeToward(body.position.x, 0, dt, 8);
-        body.position.y = easeToward(body.position.y, 0, dt, 8);
-        body.rotation.z = easeToward(body.rotation.z, 0, dt, 8);
+        if (!flourish.chopping) {
+          body.position.y = easeToward(body.position.y, 0, dt, 8);
+          body.rotation.z = easeToward(body.rotation.z, 0, dt, 8);
+        }
         applyBodyScale(1, 1 + idle * 0.006, 1);
 
         limbs.legL.rotation.x = easeToward(limbs.legL.rotation.x, 0, dt, 8);
@@ -1315,7 +1363,41 @@ export function createActor(look: PlayerLook): ActorHandle {
         );
         limbs.armL.rotation.z = easeToward(limbs.armL.rotation.z, l.z, dt, 6);
 
-        if (flourish.waving) {
+        if (flourish.chopping) {
+          // Raise → slam chop cycle; slight lean into the strike.
+          const swing = flourish.chopSwing;
+          const raised = (swing + 1) * 0.5; // 0 = down, 1 = up
+          limbs.armR.rotation.x = easeToward(
+            limbs.armR.rotation.x,
+            r.x - 1.55 * raised + 0.35 * (1 - raised),
+            dt,
+            18,
+          );
+          limbs.armR.rotation.y = easeToward(
+            limbs.armR.rotation.y,
+            -0.2 * raised,
+            dt,
+            14,
+          );
+          limbs.armR.rotation.z = easeToward(
+            limbs.armR.rotation.z,
+            r.z - 0.25 + 0.2 * raised,
+            dt,
+            14,
+          );
+          body.rotation.z = easeToward(
+            body.rotation.z,
+            (1 - raised) * 0.08,
+            dt,
+            12,
+          );
+          body.position.y = easeToward(
+            body.position.y,
+            raised * 0.04,
+            dt,
+            12,
+          );
+        } else if (flourish.waving) {
           // Side-raise away from torso (positive Z on Arm_R = out).
           const raise = flourish.waveU;
           const flap = flourish.waveSwing * raise;
@@ -1350,6 +1432,7 @@ export function createActor(look: PlayerLook): ActorHandle {
       }
     },
     rebuild(newLook) {
+      clearHeldTool();
       root.remove(body);
       built = assembleActor(newLook);
       body = built.group;
@@ -1368,9 +1451,12 @@ export function createActor(look: PlayerLook): ActorHandle {
       smileT = 0;
       blushDur = 0;
       blushT = 0;
+      chopDur = 0;
+      chopT = 0;
       root.add(body);
     },
     dispose() {
+      clearHeldTool();
       root.clear();
     },
   };

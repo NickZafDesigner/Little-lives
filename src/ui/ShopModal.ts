@@ -7,6 +7,8 @@ import {
   type ToolId,
 } from "../data/items";
 import { Audio } from "../audio/AudioManager";
+import { paintInventoryThumb } from "./FurniturePreview";
+import type { InventoryThumbId } from "../mesh/inventoryItems";
 
 export type ShopMode = "buy_tools" | "sell_materials";
 
@@ -83,6 +85,7 @@ export class ShopModal {
       else if (!canAfford) action = `Need $${t.price}`;
       return `
         <li class="ll-shop-row${owned ? " is-owned" : ""}">
+          <div class="ll-inv-thumb" data-inv-thumb="tool:${t.id}" aria-hidden="true"></div>
           <div class="ll-shop-row-main">
             <strong>${escapeHtml(t.name)}</strong>
             <span>${escapeHtml(t.description)}</span>
@@ -107,6 +110,7 @@ export class ShopModal {
       </div>
     `;
     this.bindChrome();
+    this.mountInventoryThumbs();
     for (const btn of this.el.querySelectorAll("[data-buy-tool]")) {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -130,11 +134,12 @@ export class ShopModal {
 
     const rows =
       entries.length === 0
-        ? `<li class="ll-inv-empty">Nothing to sell — gather wood, stone, ore, clay, or fish first.</li>`
+        ? `<li class="ll-inv-empty">Nothing to sell — gather wood, stone, ore, clay, fish, or apples first.</li>`
         : entries
             .map(
               ({ m, count }) => `
         <li class="ll-shop-row">
+          <div class="ll-inv-thumb" data-inv-thumb="mat:${m.id}" aria-hidden="true"></div>
           <div class="ll-shop-row-main">
             <strong>${escapeHtml(m.name)} × ${count}</strong>
             <span>$${m.sellPrice} each · stack $${m.sellPrice * count}</span>
@@ -169,6 +174,7 @@ export class ShopModal {
       </div>
     `;
     this.bindChrome();
+    this.mountInventoryThumbs();
     for (const btn of this.el.querySelectorAll("[data-sell-mat]")) {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -189,6 +195,21 @@ export class ShopModal {
         e.stopPropagation();
         this.close();
       });
+    }
+  }
+
+  private mountInventoryThumbs() {
+    for (const host of this.el.querySelectorAll<HTMLElement>("[data-inv-thumb]")) {
+      const id = host.dataset.invThumb as InventoryThumbId | undefined;
+      if (!id) continue;
+      const canvas = document.createElement("canvas");
+      canvas.className = "ll-inv-thumb-canvas";
+      canvas.setAttribute("aria-hidden", "true");
+      host.replaceChildren(canvas);
+      if (!paintInventoryThumb(canvas, id, 44)) {
+        host.classList.add("is-fallback");
+        host.replaceChildren();
+      }
     }
   }
 

@@ -1,6 +1,9 @@
 import { LOTS } from "./lots";
 import { allStructuralWallTiles } from "./rooms";
-import { seedHarvestNodes } from "../data/items";
+import {
+  seedHarvestNodes,
+  type HarvestNodeInstance,
+} from "../data/items";
 
 /** Tile codes for the overworld. */
 export const Tile = {
@@ -44,6 +47,8 @@ export interface TownMapData {
   trees: Array<[number, number]>;
   /** Path / plaza lamps. */
   lamps: Array<[number, number]>;
+  /** Chop / mine / dig nodes (timber fills empty grass). */
+  harvestNodes: HarvestNodeInstance[];
 }
 
 function fillRect(
@@ -384,16 +389,8 @@ export function createTownMap(): TownMapData {
   );
   clearInterior(collision, workshop.tx, workshop.ty, workshop.tw, workshop.th);
 
-  // Whisperwood Forest - dirt clearings; trails painted earlier.
+  // Whisperwood Forest trails were painted earlier; keep grass under the oaks.
   const forest = LOTS.find((l) => l.id === "forest")!;
-  for (let y = forest.ty; y < forest.ty + forest.th; y++) {
-    for (let x = forest.tx; x < forest.tx + forest.tw; x++) {
-      const t = ground[y][x];
-      if (t === Tile.path || t === Tile.dirt) continue;
-      // Soft dirt mottling under the canopy.
-      if ((x * 3 + y * 5) % 7 === 0) set(ground, x, y, Tile.dirt);
-    }
-  }
 
   // Rocky Quarries - rock / dirt floor east of the workshop.
   const mine = LOTS.find((l) => l.id === "mine")!;
@@ -867,8 +864,30 @@ export function createTownMap(): TownMapData {
     collision[y][x] = true;
   }
 
-  // Harvest nodes block their tile (respawn sync handled in WorldScreen).
-  for (const node of seedHarvestNodes()) {
+  // Harvest nodes: timber on empty grass town-wide + mine rocks/ore.
+  const blocked: Array<[number, number]> = [
+    ...rocks,
+    ...fencePosts,
+    ...lamps,
+  ];
+  for (const [tx, ty] of trees) {
+    blocked.push([tx, ty], [tx + 1, ty], [tx, ty + 1], [tx + 1, ty + 1]);
+  }
+  const harvestNodes = seedHarvestNodes({
+    ground,
+    collision,
+    mapW: MAP_W,
+    mapH: MAP_H,
+    plantable: new Set([
+      Tile.grass,
+      Tile.grassVar,
+      Tile.dirt,
+      Tile.flower,
+    ]),
+    blocked,
+    canopyTrees: trees,
+  });
+  for (const node of harvestNodes) {
     if (
       node.ty >= 0 &&
       node.ty < MAP_H &&
@@ -879,7 +898,7 @@ export function createTownMap(): TownMapData {
     }
   }
 
-  return { ground, collision, doors, rocks, fencePosts, trees, lamps };
+  return { ground, collision, doors, rocks, fencePosts, trees, lamps, harvestNodes };
 }
 
 export const SOLID_TILES = new Set<number>([Tile.water, Tile.wall, Tile.bush]);
