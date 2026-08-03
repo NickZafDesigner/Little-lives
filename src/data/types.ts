@@ -12,6 +12,9 @@ export type Dir = "down" | "up" | "left" | "right";
 
 export type GameMode = "live" | "build";
 
+/** Daily outdoor sky — rolls once per calendar day. */
+export type WeatherId = "clear" | "rain";
+
 export type LotId =
   | "home"
   | "neighbor"
@@ -221,6 +224,10 @@ export interface SaveData {
   dayTime: number;
   /** Calendar days lived (increments on sleep-to-morning). */
   dayIndex: number;
+  /** Today's sky — clear or rain. */
+  weather?: WeatherId;
+  /** dayIndex the current weather was rolled for. */
+  weatherDay?: number;
   /** True after a bladder accident until the player showers. */
   isWet?: boolean;
   hiredAtCafe: boolean;

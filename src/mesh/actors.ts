@@ -48,6 +48,8 @@ export interface ActorHandle {
   playReaction(kind: ActorReaction): void;
   /** Snap body into a bed/stand pose (overrides walk/idle until stand). */
   setPose(pose: ActorPose, opts?: { sitStyle?: SitStyle }): void;
+  /** Current body pose (stand / sit / lie). */
+  getPose(): ActorPose;
   /** Live overlay on the current pose (swing / slide / bounce). */
   setPoseMotion(motion: PoseMotion | null): void;
   /** Arms-up stretch, ~0.75s. */
@@ -1287,6 +1289,9 @@ export function createActor(look: PlayerLook): ActorHandle {
           head.scale.y = 1;
         }
       }
+    },
+    getPose() {
+      return pose;
     },
     setPoseMotion(motion) {
       poseMotion = motion;

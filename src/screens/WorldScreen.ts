@@ -60,6 +60,7 @@ import {
   WORK_OPEN,
   WORK_START,
   questItemClearedFlag,
+  type QuestDef,
   type QuestEvent,
   type QuestGroundItemId,
 } from "../data/quests";
@@ -97,6 +98,11 @@ import {
   type WeeklyBeat,
 } from "../systems/dayCycle";
 import { GameState } from "../systems/GameState";
+import {
+  ensureWeather,
+  weatherThought,
+  weatherToast,
+} from "../systems/weather";
 import {
   applyCollapseRecovery,
   finishSleepNight,
@@ -179,6 +185,7 @@ import { Audio } from "../audio/AudioManager";
 import { WetTrail, WET_TRAIL_INDOOR_Y, WET_TRAIL_OUTDOOR_Y } from "../fx/WetTrail";
 import { LootBurst } from "../fx/LootBurst";
 import { GiftToss } from "../fx/GiftToss";
+import { AmbientAtmosphere } from "../fx/AmbientAtmosphere";
 import { createInventoryItemMesh } from "../mesh/inventoryItems";
 import { createQuestItemMesh } from "../mesh/questItems";
 
@@ -233,6 +240,7 @@ export function createWorldScreen(
   }
   quests.bootstrap(!isContinue);
   aspirations.refresh();
+  ensureWeather(state);
 
   let map!: TownMapData;
   let baseCollision!: boolean[][];
@@ -257,6 +265,12 @@ export function createWorldScreen(
     durationMs: number;
     isTree: boolean;
   } | null = null;
+  /** Knockback after walking into a tree. */
+  let treeBumpVelX = 0;
+  let treeBumpVelZ = 0;
+  let treeBumpCooldown = 0;
+  /** Brief sway on the tree that got bumped. */
+  let treeBumpWobble: { uid: string; t: number; dur: number } | null = null;
   /** Restore walk position after seated / play activities. */
   let activityRestore: { x: number; z: number; dir: Dir } | null = null;
   /** One-shot slide/swing ride after a playground mini resolves. */
@@ -288,6 +302,7 @@ export function createWorldScreen(
   let confetti!: ConfettiBurst;
   let payCelebration!: PayCelebration;
   let momentCelebration!: MomentCelebration;
+  let pendingSideQuestCelebration: QuestDef | null = null;
   let giftHandoff!: GiftHandoffCard;
   let storyPrologue!: StoryPrologue;
   /** NPC under the cursor in live mode (for name tooltips). */
@@ -340,6 +355,7 @@ export function createWorldScreen(
   let wetTrail: WetTrail | null = null;
   let lootBurst: LootBurst | null = null;
   let giftToss: GiftToss | null = null;
+  let ambientAtmosphere: AmbientAtmosphere | null = null;
   let keyLatch = new Set<string>();
   let onPointerMove: ((e: PointerEvent) => void) | null = null;
   let onWheel: ((e: WheelEvent) => void) | null = null;
@@ -1363,6 +1379,30 @@ export function createWorldScreen(
     }
   };
 
+  /** Brief rubbery sway after bumping a tree (skipped while chopping). */
+  const updateTreeBumpWobble = (dt: number) => {
+    if (!treeBumpWobble) return;
+    treeBumpWobble.t += dt;
+    const handle = harvestHandles.get(treeBumpWobble.uid);
+    const chopping = harvestAnim?.uid === treeBumpWobble.uid;
+    if (handle && handle.root.visible && !chopping) {
+      const u = Math.min(1, treeBumpWobble.t / treeBumpWobble.dur);
+      const fade = 1 - u;
+      handle.root.rotation.z = Math.sin(treeBumpWobble.t * 26) * 0.14 * fade;
+      handle.root.rotation.x = Math.sin(treeBumpWobble.t * 18) * 0.04 * fade;
+      const squash = 1 + Math.sin(u * Math.PI) * 0.06 * fade;
+      handle.root.scale.set(squash, 1 - (squash - 1) * 0.5, squash);
+    }
+    if (treeBumpWobble.t >= treeBumpWobble.dur) {
+      if (handle && !chopping) {
+        handle.root.rotation.z = 0;
+        handle.root.rotation.x = 0;
+        handle.root.scale.set(1, 1, 1);
+      }
+      treeBumpWobble = null;
+    }
+  };
+
   /**
    * Tiles NPCs must not idle on: blocked ground plus any interactive furniture
    * footprint (desks, counters, etc.) so they never obstruct use / clicks.
@@ -1463,11 +1503,80 @@ export function createWorldScreen(
     app.renderer.add(pet.root);
   };
 
+  /** Interactions that claim a seat / bed (player snaps on). */
+  const SEAT_INTERACTION_IDS = new Set([
+    "relax",
+    "sit",
+    "sit_soft",
+    "nap",
+    "sleep",
+    "lounge",
+    "flop",
+    "cuddle_seat",
+    "picnic",
+    "perch",
+  ]);
+
+  const isSeatingDef = (defId: string): boolean => {
+    const def = furnitureById[defId];
+    return !!def?.interactions.some((i) => SEAT_INTERACTION_IDS.has(i.id));
+  };
+
+  /** Seat furniture whose footprint covers this tile. */
+  const seatingUidAtTile = (tx: number, ty: number): string | null => {
+    for (const f of state.furniture) {
+      if (!isSeatingDef(f.defId)) continue;
+      const { tw, th } = furnitureFootprint(f.defId, f.rot ?? "down");
+      if (tx >= f.tx && tx < f.tx + tw && ty >= f.ty && ty < f.ty + th) {
+        return f.uid;
+      }
+    }
+    return null;
+  };
+
+  /** Furniture uids currently claimed by a sitting/lying NPC. */
+  const occupiedSeatUids = (): Set<string> => {
+    const occupied = new Set<string>();
+    for (const npc of npcs) {
+      const pose = npc.actor.getPose();
+      if (pose !== "sit" && pose !== "lie") continue;
+      const p = npc.actor.getPosition();
+      const uid = seatingUidAtTile(
+        Math.floor(p.x / TILE),
+        Math.floor(p.z / TILE),
+      );
+      if (uid) occupied.add(uid);
+    }
+    return occupied;
+  };
+
+  const npcOnSeat = (uid: string): string | null => {
+    for (const npc of npcs) {
+      const pose = npc.actor.getPose();
+      if (pose !== "sit" && pose !== "lie") continue;
+      const p = npc.actor.getPosition();
+      if (
+        seatingUidAtTile(Math.floor(p.x / TILE), Math.floor(p.z / TILE)) === uid
+      ) {
+        return npc.id;
+      }
+    }
+    return null;
+  };
+
+  const denyOccupiedSeat = () => {
+    Audio.sfx("deny");
+    think("Someone's already sitting there.");
+  };
+
   const allTargets = (): Target[] => {
     const out: Target[] = [];
+    const takenSeats = occupiedSeatUids();
     for (const f of state.furniture) {
       const def = furnitureById[f.defId];
       if (!def || def.interactions.length === 0) continue;
+      // Taken seats tip as the sitter (Talk), not the chair.
+      if (takenSeats.has(f.uid)) continue;
       const rot = f.rot ?? "down";
       const { tw, th } = furnitureFootprint(f.defId, rot);
       const tiles: GridPos[] = [];
@@ -1632,7 +1741,18 @@ export function createWorldScreen(
     while (cur) {
       const uid = cur.userData.uid as string | undefined;
       if (uid) {
-        return targets.find((t) => t.kind === "furniture" && t.id === uid) ?? null;
+        const furnTarget = targets.find(
+          (t) => t.kind === "furniture" && t.id === uid,
+        );
+        if (furnTarget) return furnTarget;
+        // Occupied chair mesh: talk to the sitter instead of walking onto them.
+        const sitter = npcOnSeat(uid);
+        if (sitter) {
+          return (
+            targets.find((t) => t.kind === "npc" && t.id === sitter) ?? null
+          );
+        }
+        return null;
       }
       const harvestUid = cur.userData.harvestUid as string | undefined;
       if (harvestUid) {
@@ -1853,11 +1973,19 @@ export function createWorldScreen(
       out.push({ x, y });
     };
     for (const t of target.tiles) {
-      push(t.x, t.y);
-      push(t.x + 1, t.y);
-      push(t.x - 1, t.y);
-      push(t.x, t.y + 1);
-      push(t.x, t.y - 1);
+      // Footprint + 8-neighbors (diagonals matter in packed interiors).
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          push(t.x + dx, t.y + dy);
+        }
+      }
+    }
+    // Pocketed props (corner plants, etc.): ring-search any walkable stand tile.
+    if (out.length === 0) {
+      for (const t of target.tiles) {
+        const near = nearestWalkable(collision, t, MAP_W, MAP_H, 3);
+        if (near) push(near.x, near.y);
+      }
     }
     return out;
   };
@@ -1891,6 +2019,56 @@ export function createWorldScreen(
       if (!inBounds(tx, ty)) return false;
       return !collision[ty][tx];
     });
+  };
+
+  /** Live (non-depleted) harvest tree covering this tile. */
+  const treeUidAtTile = (tx: number, ty: number): string | null => {
+    for (const node of state.harvestNodes) {
+      if (state.isHarvestDepleted(node.uid)) continue;
+      const def = harvestNodeById[node.defId];
+      if (def?.kind !== "tree") continue;
+      const fp = harvestFootprint(node.defId);
+      if (tx >= node.tx && tx < node.tx + fp && ty >= node.ty && ty < node.ty + fp) {
+        return node.uid;
+      }
+    }
+    return null;
+  };
+
+  /** Whether a would-be stand pose collides with a tree footprint. */
+  const treeBlockingStand = (x: number, z: number): string | null => {
+    const points: Array<[number, number]> = [
+      [x - 7, z - 4],
+      [x + 7, z - 4],
+      [x, z - 1],
+    ];
+    for (const [px, pz] of points) {
+      const tx = Math.floor(px / TILE);
+      const ty = Math.floor(pz / TILE);
+      if (!inBounds(tx, ty)) continue;
+      const uid = treeUidAtTile(tx, ty);
+      if (uid) return uid;
+    }
+    return null;
+  };
+
+  const bounceOffTree = (uid: string, dirX: number, dirZ: number) => {
+    if (treeBumpCooldown > 0) return;
+    const len = Math.hypot(dirX, dirZ) || 1;
+    const nx = dirX / len;
+    const nz = dirZ / len;
+    treeBumpVelX = nx * 260;
+    treeBumpVelZ = nz * 260;
+    treeBumpCooldown = 0.4;
+    treeBumpWobble = { uid, t: 0, dur: 0.42 };
+    // Instant nudge so the rebound reads on the impact frame.
+    const nudge = 11;
+    const bx = playerX + nx * nudge;
+    const bz = playerZ + nz * nudge;
+    if (dirX !== 0 && canStand(bx, playerZ)) playerX = bx;
+    if (dirZ !== 0 && canStand(playerX, bz)) playerZ = bz;
+    Audio.sfx("boing");
+    player.playReaction("jump");
   };
 
   const walkSpeed = () => {
@@ -1974,6 +2152,10 @@ export function createWorldScreen(
     furn: PlacedFurniture,
     pose: "sit" | "lie",
   ) => {
+    if (occupiedSeatUids().has(furn.uid)) {
+      denyOccupiedSeat();
+      return;
+    }
     const pos = furnitureWorldPos(furn.uid);
     if (!pos) return;
     if (!activityRestore) {
@@ -2202,6 +2384,50 @@ export function createWorldScreen(
       durationMs: opts.durationMs ?? 3400,
       onDone: opts.onDone,
     });
+  };
+
+  /** Side-quest hand-in: wait for dialogue to finish, then banner + confetti. */
+  const flushSideQuestCelebration = () => {
+    const def = pendingSideQuestCelebration;
+    if (!def || !momentCelebration) return;
+    if (dialogue?.isOpen()) return;
+    pendingSideQuestCelebration = null;
+
+    const money = def.rewards?.money ?? 0;
+    const friendId = def.rewards?.friendshipNpcId;
+    const friendDelta = def.rewards?.friendshipDelta ?? 0;
+    const friend =
+      (friendId && NPCS.find((n) => n.id === friendId)) ||
+      (friendId ? ambientNpcById[friendId] : undefined);
+    const noteBits: string[] = [];
+    if (money > 0) noteBits.push(`+$${money}`);
+    if (friend && friendDelta > 0) {
+      noteBits.push(`+${friendDelta} with ${friend.name}`);
+    }
+
+    if (friendId) {
+      const npc = npcs.find((n) => n.id === friendId);
+      npc?.actor.playSmile();
+      npc?.actor.playReaction("pop");
+    }
+
+    celebrateKeyItem({
+      eyebrow: "Side quest complete!",
+      title: def.title,
+      note: noteBits.length ? noteBits.join(" · ") : "Thanks for helping out.",
+      badge: "✓",
+      accent: "mint",
+      confetti: money > 0 ? "huge" : "big",
+      palette: "party",
+      sfx: money > 0 ? "cash" : "chime",
+      durationMs: 4000,
+    });
+  };
+
+  const queueSideQuestCelebration = (def: QuestDef) => {
+    pendingSideQuestCelebration = def;
+    // If no thank-you dialogue is up, celebrate on the next frame.
+    window.setTimeout(() => flushSideQuestCelebration(), 0);
   };
 
   const celebrateToolPurchase = (toolId: import("../data/items").ToolId) => {
@@ -2631,10 +2857,17 @@ export function createWorldScreen(
         noteEndOfDayWorkAttendance();
         const summary = finishSleepNight(state, 45, bonus);
         placePlayerAtHomeBed();
+        ensureWeather(state);
+        app.renderer.setWeather(state.weather);
         app.renderer.setDayTime(state.dayTime);
         if (opts?.alarm) Audio.sfx("alarm");
         else Audio.sfx("success");
         state.showToast(summary, 3600);
+        window.setTimeout(() => {
+          state.showToast(weatherToast(state.weather), 2800);
+          const line = weatherThought(state.weather);
+          if (line) think(line, 3600);
+        }, 2200);
         // Keep alarm wakes clear for the commute thought (no trait dialogue pile-up).
         if (bonus > 0 && !opts?.alarm) {
           state.showDialogue(
@@ -3203,6 +3436,11 @@ export function createWorldScreen(
     const def = furnitureById[furn.defId];
     if (!def) return;
 
+    if (occupiedSeatUids().has(furn.uid)) {
+      denyOccupiedSeat();
+      return;
+    }
+
     // Library returns side-quest: shelve at the desk between shifts
     if (
       furn.defId === "library_desk" &&
@@ -3420,13 +3658,12 @@ export function createWorldScreen(
       }
 
       Audio.sfx("interact");
-      const seated =
-        interaction.id === "relax" ||
-        interaction.id === "sit" ||
-        interaction.id === "sit_soft" ||
-        interaction.id === "nap" ||
-        interaction.id === "sleep";
+      const seated = SEAT_INTERACTION_IDS.has(interaction.id);
       if (seated) {
+        if (occupiedSeatUids().has(furn.uid)) {
+          denyOccupiedSeat();
+          return;
+        }
         beginSeatedUse(
           furn,
           interaction.id === "nap" || interaction.id === "sleep" ? "lie" : "sit",
@@ -5167,8 +5404,28 @@ export function createWorldScreen(
   };
 
   const approach = (target: Target) => {
+    // Already close enough to reach through packed décor.
+    if (distanceToTarget(playerX, playerZ, target) <= TILE * 1.2) {
+      faceTowards(target.x, target.z);
+      openTargetMenu(target);
+      return;
+    }
     const start = playerTile();
-    const goals = approachTiles(target);
+    let goals = approachTiles(target);
+    if (goals.length === 0) {
+      // Last resort: nearest walkable to footprint centre.
+      const near = nearestWalkable(
+        collision,
+        {
+          x: Math.floor(target.x / TILE),
+          y: Math.floor(target.z / TILE),
+        },
+        MAP_W,
+        MAP_H,
+        4,
+      );
+      if (near) goals = [near];
+    }
     if (goals.length === 0) {
       Audio.sfx("deny");
       think("Can't reach that…");
@@ -5179,7 +5436,29 @@ export function createWorldScreen(
       openTargetMenu(target);
       return;
     }
-    const path = findPathToAny(collision, start, goals, MAP_W, MAP_H);
+    let path = findPathToAny(collision, start, goals, MAP_W, MAP_H);
+    if (path.length === 0) {
+      // Expand stand goals out to a short ring so boxed-in props stay usable.
+      const expanded: GridPos[] = [...goals];
+      const seen = new Set(goals.map((g) => `${g.x},${g.y}`));
+      for (const t of target.tiles) {
+        for (let r = 2; r <= 3; r++) {
+          for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+              if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+              const x = t.x + dx;
+              const y = t.y + dy;
+              if (!inBounds(x, y) || collision[y][x]) continue;
+              const key = `${x},${y}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              expanded.push({ x, y });
+            }
+          }
+        }
+      }
+      path = findPathToAny(collision, start, expanded, MAP_W, MAP_H);
+    }
     if (path.length === 0) {
       Audio.sfx("deny");
       think("Can't reach that…");
@@ -6170,6 +6449,7 @@ export function createWorldScreen(
       dialogue.setPlayerLook(state.playerLook);
       dialogue.setOnClosed(() => {
         if (!menu.isOpen()) releaseEngagedNpc();
+        flushSideQuestCelebration();
       });
       nametags = new NpcNameTags(ui);
       buildingTags = new BuildingNameTags(ui);
@@ -6181,6 +6461,9 @@ export function createWorldScreen(
       confetti = new ConfettiBurst(ui);
       payCelebration = new PayCelebration(ui);
       momentCelebration = new MomentCelebration(ui);
+      quests.onQuestComplete((def) => {
+        if (def.side) queueSideQuestCelebration(def);
+      });
       giftHandoff = new GiftHandoffCard(ui);
       wetTrail = new WetTrail(
         (o) => app.renderer.add(o),
@@ -6203,6 +6486,12 @@ export function createWorldScreen(
         (o) => app.renderer.add(o),
         (o) => app.renderer.remove(o),
       );
+      ambientAtmosphere = new AmbientAtmosphere(
+        (o) => app.renderer.add(o),
+        (o) => app.renderer.remove(o),
+      );
+      app.renderer.setWeather(state.weather);
+      app.renderer.setDayTime(state.dayTime);
       workMini = new WorkMinigame(ui);
       playMini = new PlayMinigame(ui);
       tvViewer = new TvViewer(ui);
@@ -6356,6 +6645,8 @@ export function createWorldScreen(
       confetti?.destroy();
       payCelebration?.destroy();
       momentCelebration?.destroy();
+      quests.onQuestComplete(null);
+      pendingSideQuestCelebration = null;
       giftHandoff?.destroy();
       storyPrologue?.destroy();
       wetTrail?.dispose();
@@ -6364,6 +6655,9 @@ export function createWorldScreen(
       lootBurst = null;
       giftToss?.dispose();
       giftToss = null;
+      ambientAtmosphere?.dispose();
+      ambientAtmosphere = null;
+      Audio.setAmbience("none");
       clearPorchMeshes();
       clearQuestItemMeshes();
       hoveredNpcId = null;
@@ -6440,6 +6734,7 @@ export function createWorldScreen(
         p.needs.fun = clampNeed(p.needs.fun - 0.055 * dt);
       }
 
+      app.renderer.setWeather(state.weather);
       app.renderer.setDayTime(state.dayTime);
 
       // Hotkeys - Space advances wake thoughts, else E / Space walk-to-interact.
@@ -6545,6 +6840,20 @@ export function createWorldScreen(
       }
 
       // Movement
+      if (treeBumpCooldown > 0) treeBumpCooldown = Math.max(0, treeBumpCooldown - dt);
+      if (treeBumpVelX !== 0 || treeBumpVelZ !== 0) {
+        const bx = playerX + treeBumpVelX * dt;
+        const bz = playerZ + treeBumpVelZ * dt;
+        if (canStand(bx, playerZ)) playerX = bx;
+        if (canStand(playerX, bz)) playerZ = bz;
+        const damp = Math.exp(-9 * dt);
+        treeBumpVelX *= damp;
+        treeBumpVelZ *= damp;
+        if (Math.hypot(treeBumpVelX, treeBumpVelZ) < 12) {
+          treeBumpVelX = 0;
+          treeBumpVelZ = 0;
+        }
+      }
       if (
         !introActive &&
         !timeMontage?.isPlaying() &&
@@ -6572,14 +6881,35 @@ export function createWorldScreen(
           const step = walkSpeed() * dt;
           const nx = playerX + (vx / len) * step;
           const nz = playerZ + (vz / len) * step;
-          const movedX = vx !== 0 && canStand(nx, playerZ);
-          const movedZ = vz !== 0 && canStand(playerX, nz);
+          let movedX = vx !== 0 && canStand(nx, playerZ);
+          let movedZ = vz !== 0 && canStand(playerX, nz);
           if (movedX) playerX = nx;
           if (movedZ) playerZ = nz;
           if ((vx !== 0 && !movedX) || (vz !== 0 && !movedZ)) {
             slideIntoGap(vx, vz, step);
-            if (vx !== 0 && !movedX && canStand(nx, playerZ)) playerX = nx;
-            if (vz !== 0 && !movedZ && canStand(playerX, nz)) playerZ = nz;
+            if (vx !== 0 && !movedX && canStand(nx, playerZ)) {
+              playerX = nx;
+              movedX = true;
+            }
+            if (vz !== 0 && !movedZ && canStand(playerX, nz)) {
+              playerZ = nz;
+              movedZ = true;
+            }
+          }
+          // Walked into a tree? Boing + bounce back.
+          if ((vx !== 0 && !movedX) || (vz !== 0 && !movedZ)) {
+            const hitX =
+              vx !== 0 && !movedX ? treeBlockingStand(nx, playerZ) : null;
+            const hitZ =
+              vz !== 0 && !movedZ ? treeBlockingStand(playerX, nz) : null;
+            const hitUid = hitX ?? hitZ;
+            if (hitUid) {
+              bounceOffTree(
+                hitUid,
+                hitX ? -Math.sign(vx) : 0,
+                hitZ ? -Math.sign(vz) : 0,
+              );
+            }
           }
           if (Math.abs(vx) > Math.abs(vz))
             playerDir = vx > 0 ? "right" : "left";
@@ -6625,11 +6955,23 @@ export function createWorldScreen(
       player.setPosition(playerX, playerZ);
       player.update(dt);
       updateHarvestAnim();
+      updateTreeBumpWobble(dt);
       state.playerX = playerX;
       state.playerY = playerZ;
       wetTrail?.update(dt, playerX, playerZ, state.isWet);
       lootBurst?.update(dt);
       giftToss?.update(dt);
+      ambientAtmosphere?.update(
+        dt,
+        state.dayTime,
+        playerX,
+        playerZ,
+        !app.renderer.isIndoors(),
+        state.weather,
+      );
+      Audio.setAmbience(
+        !app.renderer.isIndoors() && state.weather === "rain" ? "rain" : "none",
+      );
 
       // Boss walks up for attendance warnings / firing.
       tickBossApproach();

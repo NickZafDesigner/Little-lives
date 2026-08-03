@@ -11,6 +11,7 @@ import {
 } from "../data/needs";
 import { computeCozyScore } from "../systems/cozyScore";
 import { beatForDay } from "../systems/dayCycle";
+import { weatherHudLabel, weatherLabel } from "../systems/weather";
 import { jobById, jobDisplayName, jobTaskCount } from "../data/jobs";
 import { lotAtTile } from "../world/lots";
 import { TILE } from "../game/constants";
@@ -229,6 +230,9 @@ export class Hud {
     const urgency = needsUrgency(s.needs);
     const place = lot?.name ?? "Town";
     const timeTip = `Time · Day ${s.dayIndex} · ${clockLabel(s.dayTime)}`;
+    const weatherTip = `Weather · ${weatherLabel(s.weather)}`;
+    const weatherText = weatherHudLabel(s.weather);
+    const raining = s.weather === "rain";
     const modeTip = s.mode === "build" ? "Build mode" : "Live mode";
     const clock = clockLabel(s.dayTime);
 
@@ -300,6 +304,9 @@ export class Hud {
         urgency,
         place,
         timeTip,
+        weatherTip,
+        weatherText,
+        raining,
         modeTip,
         clock,
         showBeat,
@@ -325,6 +332,9 @@ export class Hud {
       money: s.money,
       clock,
       timeTip,
+      weatherTip,
+      weatherText,
+      raining,
       place,
       cozy,
       modeTip,
@@ -462,6 +472,9 @@ export class Hud {
     urgency: Urgency;
     place: string;
     timeTip: string;
+    weatherTip: string;
+    weatherText: string;
+    raining: boolean;
     modeTip: string;
     clock: string;
     showBeat: boolean;
@@ -481,7 +494,7 @@ export class Hud {
     shiftTask?: string;
     shiftName?: string;
   }): string {
-    const { s, cozy, urgency, place, timeTip, modeTip, clock, showBeat, shown } =
+    const { s, cozy, urgency, place, timeTip, weatherTip, weatherText, raining, modeTip, clock, showBeat, shown } =
       opts;
 
     const pet = s.adoptedPet
@@ -585,6 +598,15 @@ export class Hud {
           </span>
           <b data-stat-val="time">${clock}</b>
         </div>
+        <div class="ll-stat ll-stat-weather${raining ? " is-rain" : ""}" data-stat="weather" data-tip="${escapeHtml(weatherTip)}" aria-label="${escapeHtml(weatherTip)}">
+          <span class="ll-stat-ico ll-weather-clear" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="2.6" fill="currentColor"/><path d="M8 1.6v1.5M8 12.9v1.5M1.6 8h1.5M12.9 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>
+          </span>
+          <span class="ll-stat-ico ll-weather-rain" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="12" height="12"><path d="M4.2 7.2a3.4 3.4 0 0 1 6.5-.9A2.6 2.6 0 0 1 12.2 11H4.6a2.2 2.2 0 0 1-.4-4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.4 12.2 4.8 14M8 12.2 7.4 14M10.6 12.2 10 14" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>
+          </span>
+          <b data-stat-val="weather">${escapeHtml(weatherText)}</b>
+        </div>
         <div class="ll-stat ll-stat-icon" data-stat="place" data-tip="Place · ${escapeHtml(place)}" aria-label="Place: ${escapeHtml(place)}">
           <span class="ll-stat-ico" aria-hidden="true">
             <svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 1.8c-2.5 0-4.5 1.9-4.5 4.3 0 3.2 4.5 8.1 4.5 8.1s4.5-4.9 4.5-8.1C12.5 3.7 10.5 1.8 8 1.8z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="6" r="1.6" fill="currentColor"/></svg>
@@ -623,6 +645,9 @@ export class Hud {
     money: number;
     clock: string;
     timeTip: string;
+    weatherTip: string;
+    weatherText: string;
+    raining: boolean;
     place: string;
     cozy: number;
     modeTip: string;
@@ -653,6 +678,10 @@ export class Hud {
     setTip("money", `Money · $${v.money}`, `Money: $${v.money}`);
     setVal("time", v.clock);
     setTip("time", v.timeTip);
+    setVal("weather", v.weatherText);
+    setTip("weather", v.weatherTip);
+    const weatherEl = this.panel.querySelector("[data-stat='weather']");
+    if (weatherEl) weatherEl.classList.toggle("is-rain", v.raining);
     setTip("place", `Place · ${v.place}`, `Place: ${v.place}`);
     setVal("cozy", String(v.cozy));
     setTip("cozy", `Cozy · ${v.cozy}`, `Cozy score: ${v.cozy}`);

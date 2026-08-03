@@ -32,10 +32,12 @@ import type {
   PorchDrop,
   RelationshipState,
   SaveData,
+  WeatherId,
 } from "../data/types";
 import { SAVE_VERSION } from "../save/saveLoad";
 import { TILE } from "../game/constants";
 import { emptyDailyStats, type DailyStats } from "./dayCycle";
+import { ensureWeather } from "./weather";
 import { LOTS } from "../world/lots";
 import { interiorFurniture } from "../world/rooms";
 
@@ -256,6 +258,10 @@ export class GameState {
   money = STARTING_MONEY;
   dayTime = 0.4; // ~9:36 AM - café already open
   dayIndex = 1;
+  /** Outdoor weather for the current calendar day. */
+  weather: WeatherId = "clear";
+  /** dayIndex when weather was last rolled. */
+  weatherDay = 0;
   mode: GameMode = "live";
   playerName = "Pippin";
   playerLook: PlayerLook = defaultPlayerLook();
@@ -542,6 +548,7 @@ export class GameState {
       this.relationships[npc.id] = { score: 0, met: false };
     }
     this.seedStarterFurniture();
+    ensureWeather(this);
   }
 
   wallKey(tx: number, ty: number): string {
@@ -745,6 +752,8 @@ export class GameState {
       money: this.money,
       dayTime: this.dayTime,
       dayIndex: this.dayIndex,
+      weather: this.weather,
+      weatherDay: this.weatherDay,
       isWet: this.isWet,
       hiredAtCafe: this.hiredAtCafe,
       hiredJobs: [...this.hiredJobs],
@@ -832,6 +841,13 @@ export class GameState {
     this.money = data.money;
     this.dayTime = data.dayTime;
     this.dayIndex = data.dayIndex ?? 1;
+    if (data.weather && data.weatherDay === this.dayIndex) {
+      this.weather = data.weather;
+      this.weatherDay = data.weatherDay;
+    } else {
+      this.weatherDay = 0;
+      ensureWeather(this);
+    }
     this.hiredJobs = data.hiredJobs?.length
       ? [...data.hiredJobs]
       : data.hiredAtCafe

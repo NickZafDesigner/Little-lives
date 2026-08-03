@@ -3,6 +3,8 @@
  * Clicking the tip (or its action chip) starts walk-to-interact.
  */
 export class InteractTip {
+  private static readonly FADE_MS = 180;
+
   private root: HTMLElement;
   private tip: HTMLElement;
   private nameEl: HTMLElement;
@@ -12,6 +14,7 @@ export class InteractTip {
   private worldZ = 0;
   private worldY = 36;
   private onAction: (() => void) | null = null;
+  private hideTimer: number | null = null;
   private readonly onTipPointerDown: (e: PointerEvent) => void;
 
   constructor(parent: HTMLElement) {
@@ -70,10 +73,20 @@ export class InteractTip {
     this.tip.setAttribute("aria-label", `${action} ${label}`);
     this.tip.classList.toggle("is-quest-offer", Boolean(opts?.questOffer));
     this.tip.classList.toggle("ll-quest-glow", Boolean(opts?.questOffer));
+    if (this.hideTimer !== null) {
+      window.clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
+    this.tip.classList.remove("is-out");
     if (!this.visible) {
       this.visible = true;
       this.tip.hidden = false;
-      this.tip.classList.remove("is-out");
+      // Force a reflow so the enter animation restarts after [hidden]/display:none.
+      this.tip.classList.remove("is-in");
+      void this.tip.offsetWidth;
+      this.tip.classList.add("is-in");
+    } else {
+      this.tip.hidden = false;
       this.tip.classList.add("is-in");
     }
   }
@@ -83,9 +96,14 @@ export class InteractTip {
     this.visible = false;
     this.tip.classList.remove("is-in", "is-quest-offer", "ll-quest-glow");
     this.tip.classList.add("is-out");
-    window.setTimeout(() => {
-      if (!this.visible) this.tip.hidden = true;
-    }, 180);
+    if (this.hideTimer !== null) window.clearTimeout(this.hideTimer);
+    this.hideTimer = window.setTimeout(() => {
+      this.hideTimer = null;
+      if (!this.visible) {
+        this.tip.hidden = true;
+        this.tip.classList.remove("is-out");
+      }
+    }, InteractTip.FADE_MS);
   }
 
   containsPoint(clientX: number, clientY: number): boolean {
@@ -104,7 +122,7 @@ export class InteractTip {
     canvasW: number,
     canvasH: number,
   ) {
-    if (!this.visible) return;
+    if (!this.visible && !this.tip.classList.contains("is-out")) return;
     const screen = project(this.worldX, this.worldY, this.worldZ);
     const pad = 12;
     const x = Math.min(canvasW - pad, Math.max(pad, screen.x));
@@ -114,6 +132,8 @@ export class InteractTip {
   }
 
   destroy() {
+    if (this.hideTimer !== null) window.clearTimeout(this.hideTimer);
+    this.hideTimer = null;
     this.tip.removeEventListener("pointerdown", this.onTipPointerDown);
     this.onAction = null;
     this.root.remove();

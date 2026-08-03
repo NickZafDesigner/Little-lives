@@ -26,9 +26,15 @@ export interface QuestTrackerInfo {
  */
 export class QuestSystem {
   private state: GameState;
+  private completeHandler: ((def: QuestDef) => void) | null = null;
 
   constructor(state: GameState) {
     this.state = state;
+  }
+
+  /** Optional hook for UI celebrations when a quest finishes. */
+  onQuestComplete(handler: ((def: QuestDef) => void) | null) {
+    this.completeHandler = handler;
   }
 
   /** Call once when entering the world (new game or continue). */
@@ -203,6 +209,15 @@ export class QuestSystem {
           );
         }
       }
+    }
+
+    // Side quests get a proper hand-in celebration from the world UI.
+    if (def.side && this.completeHandler) {
+      this.completeHandler(def);
+      return;
+    }
+
+    if (def.rewards) {
       const bits: string[] = [`${def.title} complete!`];
       if (def.rewards.money) bits.push(`+$${def.rewards.money}`);
       this.state.showToast(bits.join(" "), 2800);

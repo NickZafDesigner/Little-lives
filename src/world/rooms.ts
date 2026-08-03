@@ -114,7 +114,8 @@ const CAFE: LotInterior = {
     { defId: "lounge_chair", rx: 8, ry: 2, uid: "c_chair_w", rot: "right" },
     { defId: "lounge_chair", rx: 9, ry: 3, uid: "c_chair_s", rot: "up" },
     { defId: "side_table", rx: 11, ry: 1, uid: "c_side1" },
-    { defId: "plant", rx: 12, ry: 1, uid: "c_plant" },
+    // Open aisle so café watering shifts stay reachable.
+    { defId: "plant", rx: 6, ry: 4, uid: "c_plant" },
     { defId: "love_seat", rx: 12, ry: 2, uid: "c_booth", rot: "left" },
     { defId: "jukebox", rx: 12, ry: 5, uid: "c_jukebox", rot: "left" },
     { defId: "wall_art", rx: 12, ry: 6, uid: "c_art_e" },

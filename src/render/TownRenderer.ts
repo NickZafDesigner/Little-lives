@@ -5,7 +5,7 @@ import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { Palette } from "../game/palette";
 import { TILE, GAME_WIDTH, GAME_HEIGHT, CAM_OFFSET_X, CAM_OFFSET_Z } from "../game/constants";
-import type { LotId } from "../data/types";
+import type { LotId, WeatherId } from "../data/types";
 import { MAP_H, MAP_W, type TownMapData } from "../world/townMap";
 import { buildTerrain, type FlowerHandle } from "../mesh/terrain";
 import {
@@ -117,6 +117,7 @@ export class TownRenderer {
   private camQuat = new THREE.Quaternion();
   private composer: EffectComposer;
   private gradePass: ShaderPass;
+  private weather: WeatherId = "clear";
   /** Sun offset from follow target - direction changes with time of day. */
   private sunOffset = new THREE.Vector3(180, 380, 140);
 
@@ -622,6 +623,10 @@ export class TownRenderer {
     };
   }
 
+  setWeather(weather: WeatherId) {
+    this.weather = weather;
+  }
+
   setDayTime(t: number) {
     // 0 night → morning → day → evening → night
     let sunIntensity = 1.2;
@@ -631,6 +636,8 @@ export class TownRenderer {
     let fogCol = new THREE.Color(Palette.sky);
     let warmth = 0.06;
     let vignette = 0.35;
+    let fogNear = 2200;
+    let fogFar = 7000;
 
     if (t < 0.2 || t >= 0.88) {
       sunIntensity = 0.18;
@@ -670,12 +677,35 @@ export class TownRenderer {
       vignette = 0.35 + k * 0.15;
     }
 
+    if (this.weather === "rain") {
+      const rainSky = new THREE.Color(0x6a7a88);
+      const rainFog = new THREE.Color(0x5c6a78);
+      if (t >= 0.2 && t < 0.88) {
+        clear.lerp(rainSky, 0.62);
+        fogCol.copy(clear).lerp(rainFog, 0.35);
+        sunIntensity *= 0.42;
+        hemiIntensity *= 0.72;
+        sunColor.lerp(new THREE.Color(0xc8d0d8), 0.55);
+        warmth *= 0.15;
+        vignette = Math.min(0.58, vignette + 0.1);
+      } else {
+        clear.lerp(new THREE.Color(0x152033), 0.35);
+        fogCol.copy(clear);
+        sunIntensity *= 0.7;
+        hemiIntensity *= 0.85;
+      }
+      fogNear = 900;
+      fogFar = 4200;
+    }
+
     this.sun.intensity = sunIntensity;
     this.sun.color.copy(sunColor);
     this.hemi.intensity = hemiIntensity;
     this.renderer.setClearColor(clear, 1);
     if (this.scene.fog instanceof THREE.Fog) {
       this.scene.fog.color.copy(fogCol);
+      this.scene.fog.near = fogNear;
+      this.scene.fog.far = fogFar;
     }
     this.gradePass.uniforms.warmth!.value = warmth;
     this.gradePass.uniforms.vignette!.value = vignette;

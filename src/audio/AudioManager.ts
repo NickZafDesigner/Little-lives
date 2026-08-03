@@ -47,6 +47,7 @@ type SfxId =
   | "yawn"
   | "jump"
   | "thud"
+  | "boing"
   | "thought"
   | "birds"
   | "zoom_in"
@@ -1658,25 +1659,25 @@ const BPM: Record<TrackId, number> = {
 };
 
 const MUSIC_GAIN: Record<TrackId, number> = {
-  title: 0.32,
-  create: 0.3,
-  story: 0.28,
-  world: 0.26,
-  build: 0.3,
-  work: 0.28,
-  tv_comedy: 0.3,
-  tv_action: 0.32,
-  tv_horror: 0.28,
+  title: 0.34,
+  create: 0.32,
+  story: 0.3,
+  world: 0.34,
+  build: 0.32,
+  work: 0.3,
+  tv_comedy: 0.32,
+  tv_action: 0.34,
+  tv_horror: 0.3,
 };
 
 /** Wet send amount for music reverb/echo (SFX stay dry). */
 const MUSIC_WET: Record<TrackId, number> = {
   title: 0.2,
   create: 0.22,
-  story: 0.36,
-  world: 0.12,
-  build: 0.3,
-  work: 0.32,
+  story: 0.32,
+  world: 0.2,
+  build: 0.28,
+  work: 0.3,
   tv_comedy: 0.16,
   tv_action: 0.28,
   tv_horror: 0.42,
@@ -1708,12 +1709,16 @@ class AudioManagerImpl {
   private watchingCtx = false;
   /** Live music oscillators / buffer sources — stopped on track change. */
   private musicSources: AudioScheduledSourceNode[] = [];
-  /** Hard cap — dense beds used to exhaust Chromium's AudioContext. */
-  private readonly maxMusicVoices = 14;
   /** Deferred start after crossfade so kills settle before scheduling. */
   private musicStartTimer: number | null = null;
   /** Chunked playPattern continuation. */
   private patternChunkTimer: number | null = null;
+  /** Soft outdoor weather bed — one looped noise source only. */
+  private ambience: "none" | "rain" = "none";
+  private rainGain: GainNode | null = null;
+  private rainSource: AudioBufferSourceNode | null = null;
+  private rainFilter: BiquadFilterNode | null = null;
+  private rainBuffer: AudioBuffer | null = null;
 
   isMuted(): boolean {
     return this.muted;
@@ -1770,6 +1775,20 @@ class AudioManagerImpl {
   toggleMute(): boolean {
     this.setMuted(!this.muted);
     return this.muted;
+  }
+
+  /**
+   * Soft outdoor ambience. Uses a single looped noise buffer — never
+   * schedules dense oscillators (those broke village audio before).
+   */
+  setAmbience(kind: "none" | "rain"): void {
+    if (this.ambience === kind) {
+      if (kind === "rain" && !this.rainSource) this.startRainBed();
+      return;
+    }
+    this.ambience = kind;
+    if (kind === "rain") this.startRainBed();
+    else this.stopRainBed();
   }
 
   playMusic(track: TrackId): void {
@@ -2080,6 +2099,15 @@ class AudioManagerImpl {
         this.noiseBurst(now + 0.008, bus, 0.055, 0.05 * g, r(500, 900));
         this.pop(now + 0.035, bus, r(160, 210) * p, 0.04, 0.04 * g);
         break;
+      case "boing":
+        // Cartoon tree bounce - rubbery spring boing
+        this.pop(now, bus, r(150, 190) * p, 0.055, 0.095 * g);
+        this.swoop(now, bus, 240 * p, 720 * p, 0.11, 0.1 * g, "triangle", 2400);
+        this.swoop(now + 0.07, bus, 780 * p, 280 * p, 0.2, 0.09 * g, "sine", 2600);
+        this.blip(now + 0.09, bus, 990 * p, 0.09, 0.048 * g, "triangle", 4200);
+        this.blip(now + 0.16, bus, 520 * p, 0.12, 0.032 * g, "sine", 1800);
+        this.noiseBurst(now + 0.01, bus, 0.05, 0.022 * g, r(1100, 1700));
+        break;
       case "thought":
         // Soft thought-bubble pop
         this.blip(now, bus, r(620, 720) * p, 0.06, 0.07 * g, "sine", 3200);
@@ -2355,6 +2383,98 @@ class AudioManagerImpl {
     g.linearRampToValueAtTime(1, now + 0.05);
   }
 
+  private makeRainNoiseBuffer(ctx: AudioContext): AudioBuffer {
+    // ~2s of filtered-ish white noise; loop seams are soft enough under LP.
+    const seconds = 2;
+    const frames = Math.floor(ctx.sampleRate * seconds);
+    const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    let prev = 0;
+    for (let i = 0; i < frames; i++) {
+      const white = Math.random() * 2 - 1;
+      // Mild brown-ish smoothing so it reads as rain, not static.
+      prev = (prev + white * 0.02) / 1.02;
+      data[i] = prev * 3.2;
+    }
+    return buf;
+  }
+
+  private startRainBed(): void {
+    const ctx = this.ensure();
+    if (!this.master) return;
+    this.stopRainBed();
+    if (!this.rainBuffer) this.rainBuffer = this.makeRainNoiseBuffer(ctx);
+
+    this.rainGain = ctx.createGain();
+    this.rainGain.gain.value = 0;
+    this.rainFilter = ctx.createBiquadFilter();
+    this.rainFilter.type = "bandpass";
+    this.rainFilter.frequency.value = 1400;
+    this.rainFilter.Q.value = 0.55;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 3200;
+
+    this.rainSource = ctx.createBufferSource();
+    this.rainSource.buffer = this.rainBuffer;
+    this.rainSource.loop = true;
+    this.rainSource.connect(this.rainFilter);
+    this.rainFilter.connect(lp);
+    lp.connect(this.rainGain);
+    this.rainGain.connect(this.master);
+
+    const now = ctx.currentTime;
+    this.rainGain.gain.setValueAtTime(0.0001, now);
+    this.rainGain.gain.linearRampToValueAtTime(0.045, now + 1.2);
+    try {
+      this.rainSource.start();
+    } catch {
+      this.rainSource = null;
+    }
+
+    // If audio isn't unlocked yet, resume later will keep the bed ready;
+    // unlock() already restarts pending music — also nudge rain.
+    if (ctx.state !== "running") {
+      void this.unlock().then(() => {
+        if (this.ambience === "rain" && !this.rainSource) this.startRainBed();
+      });
+    }
+  }
+
+  private stopRainBed(): void {
+    if (this.rainGain && this.ctx) {
+      const now = this.ctx.currentTime;
+      try {
+        this.rainGain.gain.cancelScheduledValues(now);
+        this.rainGain.gain.setValueAtTime(
+          Math.max(0.0001, this.rainGain.gain.value),
+          now,
+        );
+        this.rainGain.gain.linearRampToValueAtTime(0.0001, now + 0.6);
+      } catch {
+        /* ignore */
+      }
+    }
+    const src = this.rainSource;
+    this.rainSource = null;
+    if (src) {
+      window.setTimeout(() => {
+        try {
+          src.stop();
+        } catch {
+          /* already stopped */
+        }
+        try {
+          src.disconnect();
+        } catch {
+          /* ignore */
+        }
+      }, 700);
+    }
+    this.rainGain = null;
+    this.rainFilter = null;
+  }
+
   private connectMusicBus(bus: GainNode): void {
     if (this.musicDry) bus.connect(this.musicDry);
     if (this.musicDelay) bus.connect(this.musicDelay);
@@ -2427,6 +2547,7 @@ class AudioManagerImpl {
 
   /** Begin the queued track once the AudioContext is allowed to run. */
   private startPendingMusic(): void {
+    if (this.ambience === "rain" && !this.rainSource) this.startRainBed();
     if (!this.track || !this.unlocked || this.ctx?.state !== "running") return;
     if (this.loopTimer !== null) return;
     this.scheduleLoop(true);
@@ -2473,21 +2594,8 @@ class AudioManagerImpl {
     dest: AudioNode,
   ): void {
     if (dest !== this.musicBus) return;
-    // Steal oldest voices so village music can never pile up hundreds of nodes.
-    while (this.musicSources.length >= this.maxMusicVoices) {
-      const old = this.musicSources.shift();
-      if (!old) break;
-      try {
-        old.stop();
-      } catch {
-        /* already stopped */
-      }
-      try {
-        old.disconnect();
-      } catch {
-        /* ignore */
-      }
-    }
+    // Track only for cleanup on track change. Do NOT steal/stop here —
+    // stopping a not-yet-started oscillator cancels it, which wiped the bed.
     this.musicSources.push(src);
     src.addEventListener("ended", () => {
       const i = this.musicSources.indexOf(src);

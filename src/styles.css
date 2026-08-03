@@ -2884,6 +2884,22 @@ input:focus-visible {
   background: rgba(196, 100, 90, 0.18);
 }
 
+.ll-stat-weather .ll-weather-rain {
+  display: none;
+}
+
+.ll-stat-weather.is-rain .ll-weather-clear {
+  display: none;
+}
+
+.ll-stat-weather.is-rain .ll-weather-rain {
+  display: inline-flex;
+}
+
+.ll-stat-weather.is-rain {
+  color: #3d5a73;
+}
+
 .ll-stat::after {
   content: attr(data-tip);
   position: absolute;
@@ -3916,6 +3932,7 @@ input:focus-visible {
   white-space: nowrap;
   pointer-events: auto;
   cursor: pointer;
+  opacity: 0;
   transform: translate(-50%, -100%);
   will-change: transform, opacity;
 }
@@ -3937,24 +3954,28 @@ input:focus-visible {
 }
 
 .ll-interact-tip.is-out {
-  animation: ll-interact-tip-out 0.16s ease-in both;
+  animation: ll-interact-tip-out 0.18s ease-in both;
 }
 
 @keyframes ll-interact-tip-in {
   from {
     opacity: 0;
-    transform: translate(-50%, -85%) scale(0.92);
+    transform: translate(-50%, -94%);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -100%) scale(1);
+    transform: translate(-50%, -100%);
   }
 }
 
 @keyframes ll-interact-tip-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -100%);
+  }
   to {
     opacity: 0;
-    transform: translate(-50%, -90%) scale(0.94);
+    transform: translate(-50%, -94%);
   }
 }
 
