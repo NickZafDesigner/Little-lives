@@ -5995,183 +5995,245 @@ input:focus-visible {
   display: none !important;
 }
 .ll-gift.is-in {
-  animation: ll-pay-in 0.38s cubic-bezier(0.22, 1.2, 0.36, 1) forwards;
+  animation: ll-gift-fade-in 0.45s ease-out forwards;
 }
 .ll-gift.is-out {
-  animation: ll-montage-out 0.28s ease-in forwards;
+  animation: ll-gift-fade-out 0.38s ease-in forwards;
 }
-.ll-gift-card {
+@keyframes ll-gift-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ll-gift-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.ll-gift-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(42, 28, 18, 0.52);
+  backdrop-filter: blur(10px) saturate(0.85);
+  -webkit-backdrop-filter: blur(10px) saturate(0.85);
+}
+.ll-gift-stage {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.55rem;
-  min-width: min(340px, 88vw);
-  max-width: min(420px, 94vw);
-  padding: 1rem 1.15rem 0.95rem;
-  border-radius: 22px;
-  background:
-    radial-gradient(ellipse at 50% 0%, rgba(255, 209, 102, 0.42), transparent 62%),
-    linear-gradient(180deg, #fff8e8, #f6e4c4);
-  border: 4px solid var(--ll-wood-deep);
-  box-shadow:
-    inset 0 0 0 3px var(--ll-wood-light),
-    0 14px 36px rgba(62, 44, 34, 0.28),
-    0 0 0 1px rgba(255, 209, 102, 0.35);
+  gap: 1.15rem;
+  width: min(640px, 94vw);
+  padding: 0.5rem 0.75rem;
   text-align: center;
-  transition: box-shadow 0.25s ease;
-}
-.ll-gift-card.is-land {
-  box-shadow:
-    inset 0 0 0 3px var(--ll-wood-light),
-    0 14px 36px rgba(62, 44, 34, 0.28),
-    0 0 22px rgba(255, 196, 90, 0.55);
 }
 .ll-gift-title {
   margin: 0;
   font-family: var(--ll-font-display);
-  font-size: 1.05rem;
+  font-size: clamp(1.25rem, 4vw, 1.7rem);
   font-weight: 800;
-  color: var(--ll-wood-deep);
+  color: #fff8ec;
+  text-shadow: 0 2px 12px rgba(20, 12, 6, 0.45);
+  opacity: 0;
+  transform: translateY(8px);
+  animation: ll-gift-title-in 0.5s ease-out 0.12s forwards;
+}
+@keyframes ll-gift-title-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .ll-gift-row {
   display: grid;
-  grid-template-columns: auto minmax(110px, 1fr) auto;
+  grid-template-columns: auto minmax(140px, 1fr) auto;
   align-items: center;
-  gap: 0.45rem;
+  gap: clamp(0.6rem, 3vw, 1.4rem);
   width: 100%;
 }
 .ll-gift-person {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.28rem;
-  min-width: 64px;
+  gap: 0.55rem;
+  min-width: 0;
 }
-.ll-gift-face {
-  width: 64px;
-  height: 64px;
-  border-radius: 14px;
-  border: 3px solid var(--ll-wood);
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-  background: #fff6e5;
+.ll-gift-orb {
+  width: clamp(110px, 22vw, 148px);
+  height: clamp(110px, 22vw, 148px);
+  border-radius: 50%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 35% 28%, #fff9ef 0%, #f3e2c0 72%);
   box-shadow:
-    inset 0 0 0 1px var(--ll-wood-light),
-    0 3px 0 rgba(58, 40, 24, 0.14);
+    0 0 0 5px rgba(255, 248, 230, 0.55),
+    0 14px 34px rgba(20, 12, 6, 0.38);
+  opacity: 1;
+  transform: scale(1);
+  animation: ll-gift-orb-in 0.55s cubic-bezier(0.22, 1.35, 0.36, 1) both;
 }
-.ll-gift-person.is-npc .ll-gift-face {
-  animation: ll-gift-receive 0.45s cubic-bezier(0.22, 1.35, 0.36, 1) both;
-  animation-delay: 1.05s;
+.ll-gift-person.is-npc .ll-gift-orb {
+  animation-delay: 0.1s;
 }
-@keyframes ll-gift-receive {
-  0%,
-  40% {
+@keyframes ll-gift-orb-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
     transform: scale(1);
   }
-  70% {
-    transform: scale(1.12);
+}
+.ll-gift-person.is-give .ll-gift-orb {
+  animation: ll-gift-give-pulse 0.55s ease-out;
+}
+.ll-gift-person.is-receive .ll-gift-orb {
+  animation: ll-gift-receive-pulse 0.55s cubic-bezier(0.22, 1.35, 0.36, 1);
+  box-shadow:
+    0 0 0 6px rgba(255, 214, 120, 0.7),
+    0 0 28px rgba(255, 196, 90, 0.55),
+    0 14px 34px rgba(20, 12, 6, 0.38);
+}
+@keyframes ll-gift-give-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.06);
+  }
+}
+@keyframes ll-gift-receive-pulse {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.14);
   }
   100% {
     transform: scale(1);
   }
 }
+.ll-gift-face {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
 .ll-gift-who {
   font-family: var(--ll-font-display);
-  font-size: 0.72rem;
+  font-size: clamp(0.9rem, 2.4vw, 1.05rem);
   font-weight: 800;
-  color: var(--ll-wood-deep);
-  max-width: 7.5ch;
+  color: #fff6e8;
+  text-shadow: 0 2px 8px rgba(20, 12, 6, 0.5);
+  max-width: 10ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ll-gift-stage {
+.ll-gift-flight {
   position: relative;
-  height: 88px;
+  height: clamp(120px, 24vw, 160px);
   min-width: 0;
-  border-radius: 16px;
-  background:
-    radial-gradient(ellipse at 50% 70%, rgba(255, 248, 230, 0.9), transparent 72%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(232, 210, 170, 0.25));
-  box-shadow: inset 0 0 0 2px rgba(92, 58, 30, 0.1);
-  overflow: hidden;
-}
-.ll-gift-arc {
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  top: 58%;
-  height: 28px;
-  border: 2px dashed rgba(160, 110, 50, 0.28);
-  border-top: none;
-  border-radius: 0 0 50% 50% / 0 0 100% 100%;
-  pointer-events: none;
 }
 .ll-gift-item {
   position: absolute;
-  left: 4%;
+  left: 0;
   top: 50%;
-  width: 72px;
-  height: 72px;
-  margin-top: -36px;
+  width: 104px;
+  height: 104px;
+  margin-top: -52px;
   display: grid;
   place-items: center;
   opacity: 0;
-  transform: translateY(10px) scale(0.35);
-  filter: drop-shadow(0 6px 8px rgba(62, 44, 34, 0.28));
+  transform: translateY(12px) scale(0.4);
+  filter: drop-shadow(0 10px 16px rgba(20, 12, 6, 0.4));
+  pointer-events: none;
+}
+.ll-gift-item.is-appear {
+  animation: ll-gift-item-appear 0.28s ease-out forwards;
 }
 .ll-gift-item.is-toss {
-  animation: ll-gift-fly 1.05s cubic-bezier(0.33, 0.9, 0.35, 1) forwards;
+  animation: ll-gift-fly 1.2s cubic-bezier(0.33, 0.85, 0.35, 1) forwards;
 }
 .ll-gift-item.is-land {
-  filter: drop-shadow(0 4px 10px rgba(255, 180, 60, 0.55));
+  filter: drop-shadow(0 8px 18px rgba(255, 190, 80, 0.55));
+}
+.ll-gift-item.is-gone {
+  animation: ll-gift-item-gone 0.35s ease-in forwards;
+}
+@keyframes ll-gift-item-appear {
+  from {
+    left: 0;
+    opacity: 0;
+    transform: translateY(12px) scale(0.4);
+  }
+  to {
+    left: 0;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 @keyframes ll-gift-fly {
   0% {
-    left: 4%;
-    opacity: 0;
-    transform: translateY(10px) scale(0.35) rotate(-12deg);
-  }
-  12% {
+    left: 0;
     opacity: 1;
-    transform: translateY(-6px) scale(1.12) rotate(-4deg);
+    transform: translateY(0) scale(1) rotate(-6deg);
   }
-  50% {
+  45% {
     left: 42%;
-    transform: translateY(-34px) scale(1.2) rotate(8deg);
-  }
-  88% {
     opacity: 1;
-    transform: translateY(-4px) scale(1.05) rotate(2deg);
+    transform: translateY(-48px) scale(1.18) rotate(8deg);
   }
   100% {
-    left: calc(96% - 72px);
+    left: calc(100% - 104px);
     opacity: 1;
-    transform: translateY(6px) scale(1) rotate(0deg);
+    transform: translateY(4px) scale(1) rotate(0deg);
+  }
+}
+@keyframes ll-gift-item-gone {
+  from {
+    left: calc(100% - 104px);
+    opacity: 1;
+    transform: translateY(4px) scale(1);
+  }
+  to {
+    left: calc(100% - 104px);
+    opacity: 0;
+    transform: translateY(-8px) scale(0.7);
   }
 }
 .ll-gift-item-preview {
-  width: 72px;
-  height: 72px;
-  border-radius: 16px;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 45%, #fff8e8 0%, #edd9b0 78%);
-  box-shadow:
-    inset 0 0 0 1px rgba(90, 60, 30, 0.12),
-    0 0 0 2px rgba(255, 248, 230, 0.5);
+  background: radial-gradient(circle at 50% 42%, rgba(255, 248, 232, 0.92), rgba(237, 217, 176, 0.55) 78%);
 }
 .ll-gift-item-preview .ll-build-tip-canvas {
   display: block;
-  width: 72px;
-  height: 72px;
+  width: 104px;
+  height: 104px;
 }
 .ll-gift-caption {
   margin: 0;
+  min-height: 1.2em;
   font-family: var(--ll-font-display);
-  font-size: 0.82rem;
+  font-size: clamp(0.95rem, 2.6vw, 1.15rem);
   font-weight: 800;
-  color: var(--ll-wood-deep);
+  color: rgba(255, 246, 230, 0.92);
+  text-shadow: 0 2px 10px rgba(20, 12, 6, 0.45);
+  opacity: 0;
+  animation: ll-gift-title-in 0.5s ease-out 0.22s forwards;
 }
 
 /* -- Confetti celebrations (work / play success) -- */

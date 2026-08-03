@@ -640,7 +640,7 @@ export function createWorldScreen(
     const villager = !ambient ? NPCS.find((n) => n.id === npcId) : undefined;
     const npcName = ambient?.name ?? villager?.name ?? "friend";
     const itemName = materialById[itemId]?.name ?? gift.label;
-    const handoffMs = 1900;
+    const handoffMs = 3200;
 
     Audio.sfx("pickup");
     player.playWave();
