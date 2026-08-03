@@ -101,13 +101,16 @@ function makeAppleTree(): THREE.Group {
   addBox(g, matFlat(Palette.woodDark), 0, 24, 0, 8, 48, 8);
   addBox(g, matFlat(Palette.leafLight), 0, 60, 0, 34, 28, 34);
   addBox(g, matFlat(Palette.leaf), 0, 80, 0, 22, 18, 22);
+  const fruit = new THREE.Group();
+  fruit.name = "fruit";
   // Sit apples on the outside of the leaf boxes so they read clearly.
-  addApple(g, 16, 58, 8, 3.4);
-  addApple(g, -17, 62, -6, 3.1);
-  addApple(g, 6, 74, -16, 2.9, true);
-  addApple(g, -8, 52, 16, 3.2);
-  addApple(g, 14, 68, -4, 2.7);
-  addApple(g, -4, 86, 8, 2.8);
+  addApple(fruit, 16, 58, 8, 3.4);
+  addApple(fruit, -17, 62, -6, 3.1);
+  addApple(fruit, 6, 74, -16, 2.9, true);
+  addApple(fruit, -8, 52, 16, 3.2);
+  addApple(fruit, 14, 68, -4, 2.7);
+  addApple(fruit, -4, 86, 8, 2.8);
+  g.add(fruit);
   return g;
 }
 
@@ -116,12 +119,15 @@ function makeOrangeTree(): THREE.Group {
   addBox(g, matFlat(Palette.woodDark), 0, 24, 0, 8, 48, 8);
   addBox(g, matFlat(Palette.leaf), 0, 60, 0, 34, 28, 34);
   addBox(g, matFlat(Palette.leafLight), 0, 80, 0, 22, 18, 22);
-  addOrange(g, 16, 58, 8, 3.3);
-  addOrange(g, -17, 62, -6, 3.0);
-  addOrange(g, 6, 74, -16, 2.8, true);
-  addOrange(g, -8, 52, 16, 3.1);
-  addOrange(g, 14, 68, -4, 2.6);
-  addOrange(g, -4, 86, 8, 2.7);
+  const fruit = new THREE.Group();
+  fruit.name = "fruit";
+  addOrange(fruit, 16, 58, 8, 3.3);
+  addOrange(fruit, -17, 62, -6, 3.0);
+  addOrange(fruit, 6, 74, -16, 2.8, true);
+  addOrange(fruit, -8, 52, 16, 3.1);
+  addOrange(fruit, 14, 68, -4, 2.6);
+  addOrange(fruit, -4, 86, 8, 2.7);
+  g.add(fruit);
   return g;
 }
 
@@ -131,11 +137,14 @@ function makeGrapeTree(): THREE.Group {
   addBox(g, matFlat(Palette.woodDark), 0, 18, 0, 6, 36, 6);
   addBox(g, matFlat(Palette.leafLight), 0, 46, 0, 36, 16, 28);
   addBox(g, matFlat(Palette.leaf), 0, 58, 0, 26, 14, 22);
-  addGrapeCluster(g, 14, 42, 8, 1.15);
-  addGrapeCluster(g, -15, 44, -6, 1.05);
-  addGrapeCluster(g, 4, 40, -14, 1.1);
-  addGrapeCluster(g, -6, 48, 12, 0.95);
-  addGrapeCluster(g, 12, 52, -2, 0.9);
+  const fruit = new THREE.Group();
+  fruit.name = "fruit";
+  addGrapeCluster(fruit, 14, 42, 8, 1.15);
+  addGrapeCluster(fruit, -15, 44, -6, 1.05);
+  addGrapeCluster(fruit, 4, 40, -14, 1.1);
+  addGrapeCluster(fruit, -6, 48, 12, 0.95);
+  addGrapeCluster(fruit, 12, 52, -2, 0.9);
+  g.add(fruit);
   return g;
 }
 

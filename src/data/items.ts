@@ -50,6 +50,11 @@ export interface HarvestNodeDef {
   /** Verb shown on interact tip / busy bar. */
   verb: string;
   yields: HarvestYield[];
+  /**
+   * Fruit knocked loose by bumping the tree (no tool). When set, walking into
+   * the tree can drop these without depleting the wood harvest.
+   */
+  shakeYields?: HarvestYield[];
   /** Square footprint in tiles (canopy trees are 2×2). */
   footprint?: number;
   /** Base days until respawn after chop/mine (staggered per-node). */
@@ -68,6 +73,8 @@ export interface HarvestNodeInstance {
 export interface InventoryState {
   tools: ToolId[];
   materials: Partial<Record<MaterialId, number>>;
+  /** Handmade goods from the craft table (CraftedId keys). */
+  crafted: Partial<Record<string, number>>;
 }
 
 export const TOOLS: ToolDef[] = [
@@ -139,21 +146,21 @@ export const MATERIALS: MaterialDef[] = [
     id: "apple",
     name: "Apple",
     sellPrice: 3,
-    description: "Crisp fruit from apple trees around town. Eat from the bag.",
+    description: "Crisp fruit from apple trees around town. Bump a tree to knock some loose, then eat from the bag.",
     hungerRelief: 14,
   },
   {
     id: "orange",
     name: "Orange",
     sellPrice: 3,
-    description: "Sunny citrus from orange trees around town. Eat from the bag.",
+    description: "Sunny citrus from orange trees around town. Bump a tree to knock some loose, then eat from the bag.",
     hungerRelief: 14,
   },
   {
     id: "grape",
     name: "Grapes",
     sellPrice: 4,
-    description: "Sweet clusters from grape vines around town. Eat from the bag.",
+    description: "Sweet clusters from grape vines around town. Bump a vine to knock some loose, then eat from the bag.",
     hungerRelief: 12,
   },
   {
@@ -184,6 +191,7 @@ export const HARVEST_NODE_DEFS: HarvestNodeDef[] = [
       { itemId: "apple", min: 2, max: 4 },
       { itemId: "wood", min: 1, max: 2 },
     ],
+    shakeYields: [{ itemId: "apple", min: 1, max: 2 }],
     respawnDays: 2,
   },
   {
@@ -196,6 +204,7 @@ export const HARVEST_NODE_DEFS: HarvestNodeDef[] = [
       { itemId: "orange", min: 2, max: 4 },
       { itemId: "wood", min: 1, max: 2 },
     ],
+    shakeYields: [{ itemId: "orange", min: 1, max: 2 }],
     respawnDays: 2,
   },
   {
@@ -208,6 +217,7 @@ export const HARVEST_NODE_DEFS: HarvestNodeDef[] = [
       { itemId: "grape", min: 2, max: 5 },
       { itemId: "wood", min: 1, max: 2 },
     ],
+    shakeYields: [{ itemId: "grape", min: 1, max: 2 }],
     respawnDays: 2,
   },
   {
@@ -284,15 +294,28 @@ export const harvestNodeById: Record<string, HarvestNodeDef> = Object.fromEntrie
 );
 
 export function emptyInventory(): InventoryState {
-  return { tools: [], materials: {} };
+  return { tools: [], materials: {}, crafted: {} };
 }
 
 /** Roll yield counts for a harvest def (0-max inclusive; skips 0 totals). */
 export function rollHarvestYields(
   def: HarvestNodeDef,
 ): Array<{ itemId: MaterialId; count: number }> {
+  return rollYieldList(def.yields);
+}
+
+/** Fruit knocked down by bumping a shakeable tree. */
+export function rollShakeYields(
+  def: HarvestNodeDef,
+): Array<{ itemId: MaterialId; count: number }> {
+  return rollYieldList(def.shakeYields ?? []);
+}
+
+function rollYieldList(
+  yields: HarvestYield[],
+): Array<{ itemId: MaterialId; count: number }> {
   const out: Array<{ itemId: MaterialId; count: number }> = [];
-  for (const y of def.yields) {
+  for (const y of yields) {
     const count =
       y.min + Math.floor(Math.random() * (y.max - y.min + 1));
     if (count > 0) out.push({ itemId: y.itemId, count });

@@ -5,6 +5,7 @@ import {
   isConsumableMaterial,
   materialHungerRelief,
 } from "../data/items";
+import { RECIPES } from "../data/crafting";
 
 function escapeHtml(s: string): string {
   return s
@@ -57,13 +58,41 @@ export function renderInventoryBody(state: GameState): string {
           })
           .join("");
 
+  const craftEntries = RECIPES.map((r) => {
+    const count = state.craftedCount(r.id);
+    return { r, count };
+  }).filter((e) => e.count > 0);
+
+  const craftRows =
+    craftEntries.length === 0
+      ? `<li class="ll-inv-empty">No handmade goods yet - use Reed's craft table.</li>`
+      : craftEntries
+          .map(({ r, count }) => {
+            const usePet =
+              r.output === "pet_toy" && state.adoptedPet
+                ? `<button type="button" class="ll-inv-eat" data-use-craft="${r.id}">Play with pet</button>`
+                : "";
+            return `
+      <li class="ll-inv-row is-owned">
+        <div class="ll-inv-row-main">
+          <strong>${escapeHtml(r.name)} × ${count}</strong>
+          <span>${escapeHtml(r.description)}</span>
+        </div>
+        <div class="ll-inv-row-side">
+          ${usePet}
+          <em>${r.output === "furniture" ? "Build unlock" : r.output === "pet_toy" ? "Pet toy" : "Gift"}</em>
+        </div>
+      </li>`;
+          })
+          .join("");
+
   const totalValue = matEntries.reduce(
     (sum, { m, count }) => sum + m.sellPrice * count,
     0,
   );
 
   return `
-    <p class="ll-status-bag-lead">Tools stay forever · Eat fish &amp; fruit · Gift wildflowers · Sell materials at Vera's</p>
+    <p class="ll-status-bag-lead">Tools stay forever · Craft gifts at the workshop · Check the park notice board</p>
     <section class="ll-inv-section">
       <h3>Tools</h3>
       <ul class="ll-inv-list">${toolRows}</ul>
@@ -71,6 +100,10 @@ export function renderInventoryBody(state: GameState): string {
     <section class="ll-inv-section">
       <h3>Materials${totalValue > 0 ? ` · ~$${totalValue}` : ""}</h3>
       <ul class="ll-inv-list">${matRows}</ul>
+    </section>
+    <section class="ll-inv-section">
+      <h3>Handmade</h3>
+      <ul class="ll-inv-list">${craftRows}</ul>
     </section>
   `;
 }

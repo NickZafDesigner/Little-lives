@@ -185,6 +185,7 @@ export interface DailyStatsSave {
   friendsMade: number;
   petBondGain: number;
   shiftsDone: number;
+  commissionsDone?: number;
 }
 
 export interface AspirationSave {
@@ -195,6 +196,8 @@ export interface AspirationSave {
   weeklyBeatsDone: number;
   totalShifts: number;
   petTricks: number;
+  craftsMade?: number;
+  commissionsDone?: number;
 }
 
 export type {
@@ -218,6 +221,7 @@ export interface QuestSaveData {
 export interface InventorySave {
   tools: string[];
   materials: Record<string, number>;
+  crafted?: Record<string, number>;
 }
 
 export interface PorchDrop {
@@ -268,8 +272,25 @@ export interface SaveData {
   petCareStreak: number;
   /** Permanent tools + stackable materials. */
   inventory?: InventorySave;
+  /** Town notice board commissions + favor. */
+  townBoard?: {
+    day: number;
+    offers: Array<{
+      uid: string;
+      templateId: string;
+      dayPosted: number;
+      done: boolean;
+    }>;
+    favor: number;
+    completedCount: number;
+    craftsMade: number;
+  };
+  /** Furniture def ids unlocked by crafting. */
+  craftedUnlocks?: string[];
   /** Harvest node uid → dayIndex when depleted (respawns over following days). */
   harvestDepleted?: Record<string, number>;
+  /** Harvest node uid → dayIndex when fruit was shaken loose (respawns next day). */
+  harvestShaken?: Record<string, number>;
   /** Flower tile key "tx,ty" → dayIndex when picked. */
   flowerDepleted?: Record<string, number>;
   /** Villagers who have moved into the player's home. */

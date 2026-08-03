@@ -37,6 +37,7 @@ import {
 } from "../data/ambientNpcs";
 import {
   BAG_GIFTS,
+  CRAFTED_GIFTS,
   DIALOGUE_TONES,
   NPCS,
   RELATIONSHIP_CLOSE,
@@ -46,6 +47,10 @@ import {
   SOCIAL_ACTIONS,
   TONE_RECEPTIVENESS,
 } from "../data/npcs";
+import { recipeById, type CraftedId } from "../data/crafting";
+import { TownBoardSystem } from "../systems/TownBoardSystem";
+import { CraftModal } from "../ui/CraftModal";
+import { TownBoardModal } from "../ui/TownBoardModal";
 import {
   chatScript,
   favouriteFoodNpcLine,
@@ -73,6 +78,7 @@ import {
   harvestNodeById,
   materialById,
   rollHarvestYields,
+  rollShakeYields,
   toolById,
   type MaterialId,
   type ToolId,
@@ -234,6 +240,7 @@ export function createWorldScreen(
   const state = new GameState();
   const quests = new QuestSystem(state);
   const aspirations = new AspirationSystem(state);
+  const townBoard = new TownBoardSystem(state);
   const isContinue = Boolean(data.continue && hasSave());
   if (data.fresh) clearSave();
   if (isContinue) {
@@ -244,6 +251,7 @@ export function createWorldScreen(
   }
   quests.bootstrap(!isContinue);
   aspirations.refresh();
+  townBoard.refreshIfNeeded();
   ensureWeather(state);
 
   let map!: TownMapData;
@@ -302,6 +310,8 @@ export function createWorldScreen(
   } | null = null;
   let workMini!: WorkMinigame;
   let playMini!: PlayMinigame;
+  let craftModal!: CraftModal;
+  let boardModal!: TownBoardModal;
   let tvViewer!: TvViewer;
   let confetti!: ConfettiBurst;
   let payCelebration!: PayCelebration;
@@ -672,6 +682,9 @@ export function createWorldScreen(
   const ownedBagGifts = () =>
     BAG_GIFTS.filter((g) => state.materialCount(g.itemId) > 0);
 
+  const ownedCraftedGifts = () =>
+    CRAFTED_GIFTS.filter((g) => state.craftedCount(g.craftedId) > 0);
+
   const bagGiftThankLines = (itemId: MaterialId): string[] => {
     const matName = materialById[itemId]?.name ?? "gift";
     if (itemId === "flower") {
@@ -778,6 +791,85 @@ export function createWorldScreen(
     aspirations.refresh();
   };
 
+  /** Apply friendship / vibes after a handmade gift arrives. */
+  const applyCraftedGiftResult = (npcId: string, craftedId: CraftedId) => {
+    const gift = CRAFTED_GIFTS.find((g) => g.craftedId === craftedId);
+    if (!gift) return;
+    const recipe = recipeById[craftedId];
+
+    const npc = npcs.find((n) => n.id === npcId);
+    npc?.actor.playReaction("pop");
+    npc?.actor.playSmile();
+
+    const { mult, toast } = socialOutcomeMultiplier(
+      state.playerTraits,
+      state.needs.hygiene,
+      moodFromNeeds(state.needs),
+      "friendly",
+      state.isWet,
+    );
+
+    if (isAmbientNpcId(npcId)) {
+      const def = ambientNpcById[npcId];
+      if (!def) return;
+      const result = state.adjustRelationship(
+        npcId,
+        Math.round(gift.delta * mult),
+        RELATIONSHIP_FRIEND,
+      );
+      state.needs = applyNeedDeltas(state.needs, { social: 14, fun: 10 });
+      if (result.becameFriend || result.becameClose || result.becameBestie) {
+        if (result.becameFriend) state.dailyStats.friendsMade += 1;
+        Audio.sfx("success");
+        hud?.pulseAvatar();
+        if (result.becameBestie) confetti.burst("big");
+      } else {
+        Audio.sfx("chime");
+      }
+      dialogue.say([
+        {
+          speakerId: def.id,
+          speakerName: def.name,
+          text: `A handmade ${recipe?.name ?? "gift"}? You're something else.`,
+        },
+      ]);
+      if (toast) think(toast, 2800);
+      aspirations.refresh();
+      return;
+    }
+
+    const def = NPCS.find((n) => n.id === npcId);
+    if (!def) return;
+    const villagerId = npcId as NpcId;
+    const bonus = gift.preference?.[villagerId] ?? 0;
+    const result = state.adjustRelationship(
+      villagerId,
+      Math.round((gift.delta + bonus) * mult),
+      RELATIONSHIP_FRIEND,
+    );
+    state.needs = applyNeedDeltas(state.needs, { social: 20, fun: 8 });
+    if (result.becameFriend || result.becameClose || result.becameBestie) {
+      noteFriendshipGain(villagerId as ChatNpcId, result, def.name);
+    } else {
+      Audio.sfx("chime");
+      state.showDialogue(
+        villagerId,
+        def.name,
+        `You made this ${recipe?.name ?? "gift"} yourself? I'm keeping it forever.`,
+      );
+    }
+    if (toast) think(toast, 2800);
+    aspirations.refresh();
+  };
+
+  const craftedGiftVisual = (craftedId: CraftedId): MaterialId => {
+    if (craftedId === "flower_crown") return "flower";
+    if (craftedId === "fruit_jam") return "grape";
+    if (craftedId === "clay_mug") return "clay";
+    if (craftedId === "ore_trinket") return "ore";
+    return "wood";
+  };
+
   /** Remove from bag, show handoff card + world arc, then resolve thanks. */
   const giveBagGift = (npcId: string, itemId: MaterialId) => {
     if (!state.canGiftNpc(npcId)) {
@@ -826,10 +918,70 @@ export function createWorldScreen(
     hud?.pulseAvatar();
     confetti?.burst("soft");
 
-    // World-space toss for flavor under the card (result resolves from the card).
     const from = { x: playerX, y: 16, z: playerZ };
     giftToss?.spawn(
       itemId,
+      from,
+      () => {
+        const target = npcs.find((n) => n.id === npcId);
+        if (!target) return { x: from.x, y: 16, z: from.z };
+        const p = target.actor.getPosition();
+        return { x: p.x, y: 16, z: p.z };
+      },
+      { onComplete: () => {} },
+    );
+  };
+
+  const giveCraftedGift = (npcId: string, craftedId: CraftedId) => {
+    if (!state.canGiftNpc(npcId)) {
+      Audio.sfx("deny");
+      think("I already gave them a gift today…");
+      return;
+    }
+    const gift = CRAFTED_GIFTS.find((g) => g.craftedId === craftedId);
+    if (!gift || !state.removeCrafted(craftedId, 1)) {
+      Audio.sfx("deny");
+      think("I don't have that anymore…");
+      return;
+    }
+    state.markNpcGifted(npcId);
+
+    holdNpcStill(npcId);
+    const npc = npcs.find((n) => n.id === npcId);
+    if (npc) {
+      const p = npc.actor.getPosition();
+      facePlayerToward(p.x, p.z);
+    }
+
+    const ambient = isAmbientNpcId(npcId) ? ambientNpcById[npcId] : undefined;
+    const villager = !ambient ? NPCS.find((n) => n.id === npcId) : undefined;
+    const npcName = ambient?.name ?? villager?.name ?? "friend";
+    const recipe = recipeById[craftedId];
+    const itemName = recipe?.name ?? gift.label;
+    const visual = craftedGiftVisual(craftedId);
+    const handoffMs = 3200;
+
+    Audio.sfx("pickup");
+    player.playWave();
+    state.startBusy(gift.label, handoffMs);
+
+    giftHandoff?.show({
+      itemId: visual,
+      itemName,
+      playerLook: state.playerLook,
+      playerName: state.playerName,
+      npcId,
+      npcName,
+      npcLook: ambient?.look,
+      durationMs: handoffMs,
+      onDone: () => applyCraftedGiftResult(npcId, craftedId),
+    });
+    hud?.pulseAvatar();
+    confetti?.burst("soft");
+
+    const from = { x: playerX, y: 16, z: playerZ };
+    giftToss?.spawn(
+      visual,
       from,
       () => {
         const target = npcs.find((n) => n.id === npcId);
@@ -854,7 +1006,8 @@ export function createWorldScreen(
       return;
     }
     const owned = ownedBagGifts();
-    if (!owned.length) {
+    const crafted = ownedCraftedGifts();
+    if (!owned.length && !crafted.length) {
       Audio.sfx("deny");
       think("Nothing giftable in my bag yet…");
       return;
@@ -876,6 +1029,14 @@ export function createWorldScreen(
         sub: `${state.materialCount(g.itemId)} in bag · +${g.delta + bonus} friendship`,
       };
     });
+    for (const g of crafted) {
+      const bonus = isAmbient ? 0 : (g.preference?.[npcId as NpcId] ?? 0);
+      giftOptions.push({
+        id: `gift_craft_${g.craftedId}`,
+        label: g.label,
+        sub: `${state.craftedCount(g.craftedId)} handmade · +${g.delta + bonus} friendship`,
+      });
+    }
     giftOptions.push({
       id: "gift_cancel",
       label: "Never mind",
@@ -890,6 +1051,11 @@ export function createWorldScreen(
       (giftId) => {
         if (giftId === "gift_cancel") {
           onCancel();
+          return;
+        }
+        if (giftId.startsWith("gift_craft_")) {
+          const craftedId = giftId.slice("gift_craft_".length) as CraftedId;
+          giveCraftedGift(npcId, craftedId);
           return;
         }
         if (!giftId.startsWith("gift_item_")) return;
@@ -915,6 +1081,7 @@ export function createWorldScreen(
     if (!def) return;
     holdNpcStill(def.id);
     const owned = ownedBagGifts();
+    const craftedOwned = ownedCraftedGifts();
     const options: MenuOption[] = [];
 
     const offer = quests.pendingOfferFor(def.id);
@@ -966,14 +1133,16 @@ export function createWorldScreen(
       label: "Have a chat",
       sub: "Banter · vibes · nonsense",
     });
-    if (owned.length > 0) {
+    if (owned.length > 0 || craftedOwned.length > 0) {
       const canGift = state.canGiftNpc(def.id);
+      const names = [
+        ...owned.map((g) => materialById[g.itemId]?.name ?? g.itemId),
+        ...craftedOwned.map((g) => recipeById[g.craftedId]?.name ?? g.craftedId),
+      ];
       options.push({
         id: "gift_bag",
         label: "Gift from bag",
-        sub: canGift
-          ? owned.map((g) => materialById[g.itemId]?.name ?? g.itemId).join(" · ")
-          : "Already gifted today",
+        sub: canGift ? names.join(" · ") : "Already gifted today",
         disabled: !canGift,
       });
     }
@@ -1195,6 +1364,8 @@ export function createWorldScreen(
         handle.root.rotation.x = 0;
         handle.root.rotation.z = 0;
       }
+      const fruit = handle.root.getObjectByName("fruit");
+      if (fruit) fruit.visible = !depleted && !state.isHarvestShaken(node.uid);
     }
   };
 
@@ -1852,8 +2023,8 @@ export function createWorldScreen(
     return best;
   };
 
-  /** Walk-to-interact range (~4 tiles from footprint edge). */
-  const INTERACT_RANGE = 4 * TILE;
+  /** Walk-to-interact range (~2 tiles from footprint edge). */
+  const INTERACT_RANGE = 2 * TILE;
 
   const tipHeightFor = (t: Target): number => {
     if (t.kind === "npc" || t.kind === "pet") return 40;
@@ -2099,6 +2270,59 @@ export function createWorldScreen(
     if (dirZ !== 0 && canStand(playerX, bz)) playerZ = bz;
     Audio.sfx("boing");
     player.playReaction("jump");
+    tryShakeFruit(uid);
+  };
+
+  /** Knock ripe fruit loose when bumping a fruit tree (once per day). */
+  const tryShakeFruit = (uid: string) => {
+    if (state.isHarvestDepleted(uid) || state.isHarvestShaken(uid)) return;
+    const node = state.harvestNodes.find((n) => n.uid === uid);
+    if (!node) return;
+    const def = harvestNodeById[node.defId];
+    if (!def?.shakeYields?.length) return;
+    const yields = rollShakeYields(def);
+    if (!yields.length) return;
+
+    state.shakeHarvest(uid);
+    syncHarvestVisuals();
+    Audio.sfx("rustle");
+
+    const parts: string[] = [];
+    const remaining = new Map<MaterialId, number>();
+    for (const y of yields) {
+      const mat = materialById[y.itemId];
+      parts.push(`+${y.count} ${mat?.name ?? y.itemId}`);
+      remaining.set(y.itemId, (remaining.get(y.itemId) ?? 0) + y.count);
+    }
+
+    const fp = harvestFootprint(node.defId);
+    const cx = (node.tx + fp / 2) * TILE;
+    const cz = (node.ty + fp / 2) * TILE;
+
+    const finishLoot = () => {
+      for (const [itemId, count] of remaining) {
+        if (count > 0) state.addMaterial(itemId, count);
+      }
+      remaining.clear();
+      Audio.sfx("chime");
+      state.showToast(parts.join(" · "), 2400);
+    };
+
+    if (!lootBurst) {
+      finishLoot();
+      return;
+    }
+
+    lootBurst.spawn(cx, 52, cz, yields, {
+      onPieceCollect: (itemId) => {
+        const left = remaining.get(itemId) ?? 0;
+        if (left <= 0) return;
+        remaining.set(itemId, left - 1);
+        state.addMaterial(itemId, 1);
+        Audio.sfx("coin");
+      },
+      onComplete: finishLoot,
+    });
   };
 
   const walkSpeed = () => {
@@ -2123,6 +2347,8 @@ export function createWorldScreen(
     !!workMini?.isOpen() ||
     !!playMini?.isOpen() ||
     !!tvViewer?.isOpen() ||
+    !!craftModal?.isOpen() ||
+    !!boardModal?.isOpen() ||
     !!payCelebration?.isVisible() ||
     !!momentCelebration?.isVisible();
 
@@ -2999,6 +3225,7 @@ export function createWorldScreen(
           );
         }
         aspirations.refresh();
+        townBoard.refreshIfNeeded();
         clearDayScopedHints();
         if (primaryJobId()) {
           startMorningCommuteBeat({ softAudio: !!opts?.alarm });
@@ -3363,7 +3590,11 @@ export function createWorldScreen(
     delayed(duration, () => {
       harvestAnim = null;
       if (state.isHarvestDepleted(node.uid)) return;
-      const yields = rollHarvestYields(def);
+      const yields = rollHarvestYields(def).filter((y) => {
+        // Already knocked fruit loose today - chopping is timber only.
+        if (!state.isHarvestShaken(node.uid)) return true;
+        return y.itemId === "wood";
+      });
       const parts: string[] = [];
       const remaining = new Map<MaterialId, number>();
       for (const y of yields) {
@@ -3372,6 +3603,8 @@ export function createWorldScreen(
         remaining.set(y.itemId, (remaining.get(y.itemId) ?? 0) + y.count);
       }
       state.depleteHarvest(node.uid);
+      // Clear shake so a respawned tree shows fruit again.
+      delete state.harvestShaken[node.uid];
       state.needs = applyNeedDeltas(state.needs, { energy: -4 });
       rebuildCollision();
       syncHarvestVisuals();
@@ -3625,6 +3858,11 @@ export function createWorldScreen(
       return;
     }
 
+    if (furn.defId === "notice_board") {
+      openTownBoard();
+      return;
+    }
+
     const options: MenuOption[] = [];
 
     if (furn.defId === "park_bench") {
@@ -3710,13 +3948,19 @@ export function createWorldScreen(
         state.startBusy(beat.title, 1400);
         delayed(1400, () => {
           state.weeklyBeatDay = state.dayIndex;
-          state.needs = applyNeedDeltas(state.needs, {
-            fun: beat.fun,
-            social: beat.social,
-          });
+          let fun = beat.fun;
+          let social = beat.social;
+          if (townBoard.tryCompleteBringBeat(beat.id)) {
+            fun += 10;
+            social += 8;
+            think(`${beat.title} — and they loved your handmade stool!`, 3600);
+          } else {
+            think(`${beat.title} - lovely!`, 3200);
+          }
+          state.needs = applyNeedDeltas(state.needs, { fun, social });
           Audio.sfx("success");
-          think(`${beat.title} - lovely!`, 3200);
           aspirations.noteWeeklyBeat();
+          aspirations.refresh();
         });
         return;
       }
@@ -3744,6 +3988,11 @@ export function createWorldScreen(
 
       const interaction = def.interactions.find((i) => i.id === id);
       if (!interaction) return;
+
+      if (interaction.id === "craft" && furn.defId === "craft_table") {
+        openCraftTable(furn);
+        return;
+      }
 
       const playKinds: Record<string, PlayMiniKind> = {
         swing: "swing",
@@ -3911,7 +4160,9 @@ export function createWorldScreen(
   const completeShift = (job: JobDef) => {
     const promoted = state.isPromoted(job.id);
     const basePay =
-      jobPay(job.id, promoted) + (state.hasUnlock("trusted_employee") ? 8 : 0);
+      jobPay(job.id, promoted) +
+      (state.hasUnlock("trusted_employee") ? 8 : 0) +
+      (state.hasUnlock("town_favor_helper") ? 3 : 0);
     const mood = moodFromNeeds(state.needs);
     const payMod = jobPayMultiplier(state.playerTraits, job.id, mood);
     const scores = state.jobQualityScores;
@@ -4197,6 +4448,124 @@ export function createWorldScreen(
     });
   };
 
+  const openCraftTable = (furn: PlacedFurniture) => {
+    if (
+      craftModal?.isOpen() ||
+      boardModal?.isOpen() ||
+      workMini.isOpen() ||
+      playMini.isOpen() ||
+      timeMontage.isPlaying() ||
+      tvViewer.isOpen()
+    ) {
+      return;
+    }
+    faceTowards(
+      furnitureWorldPos(furn.uid)?.x ?? playerX,
+      furnitureWorldPos(furn.uid)?.z ?? playerZ,
+    );
+    player.setWalking(false);
+    craftModal.open((recipeId) => {
+      const recipe = recipeById[recipeId];
+      if (!recipe) return;
+      faceTowards(
+        furnitureWorldPos(furn.uid)?.x ?? playerX,
+        furnitureWorldPos(furn.uid)?.z ?? playerZ,
+      );
+      player.setPoseMotion({ leanX: 0.18 });
+      workMini.play(
+        recipe.mini,
+        recipe.name,
+        (grade) => {
+          player.setPoseMotion(null);
+          if (!townBoard.finishCraft(recipeId, grade)) {
+            Audio.sfx("deny");
+            think("Couldn’t finish that craft…");
+            return;
+          }
+          Audio.sfx("success");
+          confetti.burst(grade === "perfect" ? "big" : "soft");
+          const label =
+            grade === "perfect"
+              ? `Perfect ${recipe.name}!`
+              : grade === "ok"
+                ? `Made a ${recipe.name}.`
+                : `Rough ${recipe.name}, but it’ll do.`;
+          think(label, 3200);
+          aspirations.refresh();
+        },
+        (grade) => celebrateGrade(grade),
+      );
+    });
+  };
+
+  const openTownBoard = () => {
+    if (
+      craftModal?.isOpen() ||
+      boardModal?.isOpen() ||
+      workMini.isOpen() ||
+      playMini.isOpen() ||
+      timeMontage.isPlaying() ||
+      tvViewer.isOpen()
+    ) {
+      return;
+    }
+    boardModal.open((action) => {
+      if (action.kind === "turn_in") {
+        if (!townBoard.completeOffer(action.offerUid)) {
+          Audio.sfx("deny");
+          think("Not ready to turn that in yet.");
+          return;
+        }
+        Audio.sfx("success");
+        confetti.burst("soft");
+        think("Commission done — the town noticed!", 3000);
+        aspirations.refresh();
+        boardModal.refresh();
+        return;
+      }
+      if (action.kind === "pet_care") {
+        if (!townBoard.completeOffer(action.offerUid)) {
+          Audio.sfx("deny");
+          think("Need a pet toy and a pet first.");
+          return;
+        }
+        Audio.sfx("success");
+        confetti.burst("soft");
+        think("Enrichment win — pet and board both happy!", 3200);
+        aspirations.refresh();
+        return;
+      }
+      if (action.kind === "work_assist") {
+        const job = jobById[action.jobId];
+        const task = job?.tasks[0];
+        if (!job || !task) {
+          Audio.sfx("deny");
+          return;
+        }
+        workMini.play(
+          task.mini,
+          `Help: ${task.label}`,
+          (grade) => {
+            if (!townBoard.completeOffer(action.offerUid, { grade })) {
+              Audio.sfx("deny");
+              return;
+            }
+            Audio.sfx("success");
+            confetti.burst(grade === "perfect" ? "big" : "soft");
+            state.needs = applyNeedDeltas(state.needs, {
+              energy: grade === "perfect" ? -4 : -6,
+              fun: 8,
+              social: 10,
+            });
+            think(`Helped ${NPCS.find((n) => n.id === job.hireNpcId)?.name ?? "town"} — favor up!`, 3200);
+            aspirations.refresh();
+          },
+          (grade) => celebrateGrade(grade),
+        );
+      }
+    });
+  };
+
   const beginWorkTask = (job: JobDef, task: JobTaskDef) => {
     if (workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) return;
     Audio.sfx("interact");
@@ -4273,7 +4642,9 @@ export function createWorldScreen(
 
     const promoted = state.isPromoted(job.id);
     const basePay =
-      jobPay(job.id, promoted) + (state.hasUnlock("trusted_employee") ? 8 : 0);
+      jobPay(job.id, promoted) +
+      (state.hasUnlock("trusted_employee") ? 8 : 0) +
+      (state.hasUnlock("town_favor_helper") ? 3 : 0);
     const mood = moodFromNeeds(state.needs);
     const payMod = jobPayMultiplier(state.playerTraits, job.id, mood);
     const estPay = Math.round(basePay * payMod.mult);
@@ -4325,13 +4696,19 @@ export function createWorldScreen(
           state.startBusy(beat.title, 1400);
           delayed(1400, () => {
             state.weeklyBeatDay = state.dayIndex;
-            state.needs = applyNeedDeltas(state.needs, {
-              fun: beat.fun,
-              social: beat.social,
-            });
+            let fun = beat.fun;
+            let social = beat.social;
+            if (townBoard.tryCompleteBringBeat(beat.id)) {
+              fun += 10;
+              social += 8;
+              think(`${beat.title} — and they loved your handmade stool!`, 3600);
+            } else {
+              think(`${beat.title} - lovely!`, 3200);
+            }
+            state.needs = applyNeedDeltas(state.needs, { fun, social });
             Audio.sfx("success");
-            think(`${beat.title} - lovely!`, 3200);
             aspirations.noteWeeklyBeat();
+            aspirations.refresh();
           });
           return;
         }
@@ -4653,14 +5030,17 @@ export function createWorldScreen(
       const tired = a.id === "hangout" && socialBlock !== null;
       if (a.id === "gift_bag") {
         const owned = ownedBagGifts();
-        if (owned.length === 0) continue;
+        const crafted = ownedCraftedGifts();
+        if (owned.length === 0 && crafted.length === 0) continue;
         const canGift = state.canGiftNpc(npcId);
+        const names = [
+          ...owned.map((g) => materialById[g.itemId]?.name ?? g.itemId),
+          ...crafted.map((g) => recipeById[g.craftedId]?.name ?? g.craftedId),
+        ];
         options.push({
           id: a.id,
           label: a.label,
-          sub: canGift
-            ? owned.map((g) => materialById[g.itemId]?.name ?? g.itemId).join(" · ")
-            : "Already gifted today",
+          sub: canGift ? names.join(" · ") : "Already gifted today",
           disabled: !canGift,
         });
         continue;
@@ -6107,6 +6487,8 @@ export function createWorldScreen(
     if (tvViewer?.isOpen()) return true;
     if (workMini?.isOpen()) return true;
     if (playMini?.isOpen()) return true;
+    if (craftModal?.isOpen()) return true;
+    if (boardModal?.isOpen()) return true;
     return false;
   };
 
@@ -6722,6 +7104,8 @@ export function createWorldScreen(
       app.renderer.setDayTime(state.dayTime);
       workMini = new WorkMinigame(ui);
       playMini = new PlayMinigame(ui);
+      craftModal = new CraftModal(ui, state);
+      boardModal = new TownBoardModal(ui, state, townBoard);
       tvViewer = new TvViewer(ui);
       menu = new InteractionMenu(ui);
       menu.setPlayerLook(state.playerLook);
@@ -6890,6 +7274,8 @@ export function createWorldScreen(
       timeScrub = null;
       workMini?.destroy();
       playMini?.destroy();
+      craftModal?.destroy();
+      boardModal?.destroy();
       cancelPlayRide();
       tvViewer?.destroy();
       confetti?.destroy();
@@ -6944,6 +7330,8 @@ export function createWorldScreen(
         !!workMini?.isOpen() ||
         !!playMini?.isOpen() ||
         !!tvViewer?.isOpen() ||
+        !!craftModal?.isOpen() ||
+        !!boardModal?.isOpen() ||
         !!timeScrub;
       if (!freezeClock) {
         state.dayTime = (state.dayTime + dt / (14 * 60)) % 1;

@@ -170,6 +170,7 @@ const MARKET: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
   furniture: [
     { defId: "welcome_mat", rx: 6, ry: 8, uid: "m_mat" },
+    { defId: "notice_board", rx: 9, ry: 8, uid: "m_notice", rot: "up" },
     { defId: "jam_shelf", rx: 1, ry: 1, uid: "m_jam", rot: "down" },
     { defId: "counter", rx: 3, ry: 1, uid: "m_counter", rot: "down" },
     { defId: "radio", rx: 3, ry: 1, uid: "m_radio", parentUid: "m_counter" },

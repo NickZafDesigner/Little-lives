@@ -174,6 +174,60 @@ function craftTable(): THREE.Group {
   return g;
 }
 
+/** Outdoor notice board with pinned notes. */
+function noticeBoard(): THREE.Group {
+  const g = rootNamed("notice_board");
+  // posts
+  box(g, 2.5, 28, 2.5, SECONDARY, "Secondary", -12, 14, 0);
+  box(g, 2.5, 28, 2.5, SECONDARY, "Secondary", 12, 14, 0);
+  // board
+  box(g, 28, 20, 2, PRIMARY, "Primary", 0, 22, 0);
+  // header bar
+  box(g, 30, 3, 3, SECONDARY, "Secondary", 0, 33, 0);
+  // pinned notes
+  box(g, 6, 7, 1.2, ACCENT, "Accent", -7, 24, 1.2);
+  box(g, 5, 6, 1.2, ACCENT, "Accent", 2, 22, 1.2);
+  box(g, 6, 5, 1.2, ACCENT, "Accent", 8, 26, 1.2);
+  return g;
+}
+
+/** Handmade stool. */
+function craftStool(): THREE.Group {
+  const g = rootNamed("craft_stool");
+  box(g, 14, 2.5, 14, PRIMARY, "Primary", 0, 12, 0);
+  for (const [x, z] of [
+    [-5, -5],
+    [5, -5],
+    [-5, 5],
+    [5, 5],
+  ] as const) {
+    box(g, 2.2, 11, 2.2, SECONDARY, "Secondary", x, 5.5, z);
+  }
+  box(g, 12, 1.2, 12, ACCENT, "Accent", 0, 13.5, 0);
+  return g;
+}
+
+/** Stone planter with greenery. */
+function craftPlanter(): THREE.Group {
+  const g = rootNamed("craft_planter");
+  cyl(g, 9, 11, 10, PRIMARY, "Primary", 0, 5, 0);
+  cyl(g, 7, 8, 3, SECONDARY, "Secondary", 0, 11, 0);
+  cyl(g, 3, 4, 8, ACCENT, "Accent", 0, 16, 0);
+  box(g, 2, 6, 2, ACCENT, "Accent", -3, 18, 1);
+  box(g, 2, 5, 2, ACCENT, "Accent", 3, 17, -1);
+  return g;
+}
+
+/** Small wall / surface frame. */
+function craftFrame(): THREE.Group {
+  const g = rootNamed("craft_frame");
+  box(g, 16, 14, 1.5, PRIMARY, "Primary", 0, 16, 0);
+  box(g, 12, 10, 1.2, ACCENT, "Accent", 0, 16, 0.8);
+  box(g, 14, 1.5, 2, SECONDARY, "Secondary", 0, 23.5, 0);
+  box(g, 14, 1.5, 2, SECONDARY, "Secondary", 0, 8.5, 0);
+  return g;
+}
+
 /** Pottery wheel with clay mound. */
 function potteryWheel(): THREE.Group {
   const g = rootNamed("pottery_wheel");
@@ -465,6 +519,10 @@ const BUILDERS: Record<string, () => THREE.Group> = {
   tool_rack: toolRack,
   fishing_spot: fishingSpot,
   craft_table: craftTable,
+  notice_board: noticeBoard,
+  craft_stool: craftStool,
+  craft_planter: craftPlanter,
+  craft_frame: craftFrame,
   pottery_wheel: potteryWheel,
   wood_shelf: woodShelf,
   lantern,

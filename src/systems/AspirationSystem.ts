@@ -55,6 +55,9 @@ export class AspirationSystem {
     a.progress.career_kid = a.totalShifts;
     a.progress.town_helper =
       this.sideQuestsDone() + Math.min(3, a.weeklyBeatsDone);
+    a.progress.maker =
+      Math.min(8, this.state.townBoard.craftsMade) +
+      Math.min(5, this.state.townBoard.completedCount);
 
     for (const def of ASPIRATIONS) {
       if (a.completed.includes(def.id)) continue;
@@ -156,6 +159,9 @@ export class AspirationSystem {
     }
     if (id === "town_helper") {
       objective = `Side quests ${this.sideQuestsDone()}/5 · weekly beats ${Math.min(3, a.weeklyBeatsDone)}/3`;
+    }
+    if (id === "maker") {
+      objective = `Crafts ${Math.min(8, this.state.townBoard.craftsMade)}/8 · board ${Math.min(5, this.state.townBoard.completedCount)}/5`;
     }
     return { title: def.title, objective };
   }

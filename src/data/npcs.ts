@@ -124,6 +124,39 @@ export const BAG_GIFTS: Array<{
   },
 ];
 
+/** Handmade gifts from the craft table. */
+export const CRAFTED_GIFTS: Array<{
+  craftedId: import("./crafting").CraftedId;
+  label: string;
+  delta: number;
+  preference?: Partial<Record<NpcId, number>>;
+}> = [
+  {
+    craftedId: "flower_crown",
+    label: "Give Flower Crown",
+    delta: 28,
+    preference: { mabel: 6, pip: 8, jun: 3 },
+  },
+  {
+    craftedId: "fruit_jam",
+    label: "Give Fruit Jam",
+    delta: 26,
+    preference: { jun: 7, vera: 5, mabel: 4 },
+  },
+  {
+    craftedId: "clay_mug",
+    label: "Give Clay Mug",
+    delta: 24,
+    preference: { sage: 8, theo: 4, reed: 3 },
+  },
+  {
+    craftedId: "ore_trinket",
+    label: "Give Ore Trinket",
+    delta: 30,
+    preference: { reed: 8, theo: 5, vera: 3 },
+  },
+];
+
 /** How you choose to speak - shown before other social actions. */
 export const DIALOGUE_TONES: Array<{
   id: DialogueTone;

@@ -15,6 +15,8 @@ export interface DailyStats {
   friendsMade: number;
   petBondGain: number;
   shiftsDone: number;
+  /** Town board commissions finished today. */
+  commissionsDone?: number;
 }
 
 export function emptyDailyStats(): DailyStats {
@@ -23,6 +25,7 @@ export function emptyDailyStats(): DailyStats {
     friendsMade: 0,
     petBondGain: 0,
     shiftsDone: 0,
+    commissionsDone: 0,
   };
 }
 
@@ -62,6 +65,11 @@ export function formatDailySummary(
   if (stats.shiftsDone > 0) bits.push(`${stats.shiftsDone} shift${stats.shiftsDone > 1 ? "s" : ""}`);
   if (stats.friendsMade > 0) bits.push(`${stats.friendsMade} new friend${stats.friendsMade > 1 ? "s" : ""}`);
   if (stats.petBondGain > 0) bits.push(`pet +${Math.round(stats.petBondGain)} bond`);
+  if ((stats.commissionsDone ?? 0) > 0) {
+    bits.push(
+      `${stats.commissionsDone} board job${(stats.commissionsDone ?? 0) > 1 ? "s" : ""}`,
+    );
+  }
   bits.push(`cozy ${cozyScore}`);
   return bits.join(" · ");
 }

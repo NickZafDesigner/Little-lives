@@ -120,7 +120,11 @@ export function isFurnitureUnlocked(
   def: FurnitureDef,
   state: GameState,
 ): boolean {
+  if (state.craftedUnlocks.includes(def.id)) return true;
   if (!def.unlockTaskId) return true;
+  if (def.unlockTaskId.startsWith("craft_only_")) {
+    return state.craftedUnlocks.includes(def.id);
+  }
   const task = unlockTaskById[def.unlockTaskId];
   if (!task) return true;
   return getUnlockProgress(task, state).done;
@@ -130,7 +134,19 @@ export function getFurnitureUnlockProgress(
   def: FurnitureDef,
   state: GameState,
 ): UnlockProgress | null {
+  if (state.craftedUnlocks.includes(def.id)) return null;
   if (!def.unlockTaskId) return null;
+  if (def.unlockTaskId.startsWith("craft_only_")) {
+    return {
+      taskId: def.unlockTaskId,
+      title: "Handmade",
+      hint: "Craft this at Reed's craft table",
+      current: 0,
+      target: 1,
+      done: false,
+      label: "Craft",
+    };
+  }
   const task = unlockTaskById[def.unlockTaskId];
   if (!task) return null;
   return getUnlockProgress(task, state);

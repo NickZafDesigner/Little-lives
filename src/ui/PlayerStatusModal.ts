@@ -26,6 +26,8 @@ import {
   materialHungerRelief,
   type MaterialId,
 } from "../data/items";
+import type { CraftedId } from "../data/crafting";
+import { TownBoardSystem } from "../systems/TownBoardSystem";
 import { hasTrait } from "../systems/traits";
 import { AMBIENT_NPCS } from "../data/ambientNpcs";
 import { NPCS, RELATIONSHIP_MAX } from "../data/npcs";
@@ -302,6 +304,14 @@ export class PlayerStatusModal {
       });
       this.keys.attachHover(btn);
     }
+    for (const btn of root.querySelectorAll<HTMLButtonElement>("[data-use-craft]")) {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.useCraft as CraftedId;
+        this.useCraftFromBag(id);
+      });
+      this.keys.attachHover(btn);
+    }
   }
 
   private eatFromBag(id: MaterialId) {
@@ -324,6 +334,17 @@ export class PlayerStatusModal {
       2400,
     );
     this.rebuild((btn) => btn.dataset.eatMat === id);
+  }
+
+  private useCraftFromBag(id: CraftedId) {
+    const board = new TownBoardSystem(this.state);
+    if (!board.usePetToy(id)) {
+      Audio.sfx("deny");
+      return;
+    }
+    Audio.sfx("success");
+    this.state.showToast("Playtime! Your pet loved the handmade toy.", 2600);
+    this.rebuild((btn) => btn.dataset.useCraft === id);
   }
 
   private renderStatus(mood: number, cozy: number): string {

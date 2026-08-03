@@ -9,6 +9,11 @@ import {
   type PlayerProfile,
 } from "../data/character";
 import {
+  emptyTownBoard,
+  type CraftedId,
+  type TownBoardState,
+} from "../data/crafting";
+import {
   emptyInventory,
   harvestRespawnDays,
   seedHarvestNodes,
@@ -152,6 +157,14 @@ function parkOutdoorFurniture(): PlacedFurniture[] {
       tx: park.tx + 11,
       ty: park.ty + 1,
       lotId: "park",
+    },
+    {
+      uid: "p_notice",
+      defId: "notice_board",
+      tx: park.tx + 9,
+      ty: park.ty + 11,
+      lotId: "park",
+      rot: "up",
     },
   ];
 }
@@ -340,10 +353,16 @@ export class GameState {
   selectedFloorStyle: string | null = "honey";
   buildTool: "furniture" | "wall" | "floor" | "sell" = "furniture";
   inventory: InventoryState = emptyInventory();
+  /** Town notice board offers + favor meter. */
+  townBoard: TownBoardState = emptyTownBoard();
+  /** Furniture def ids unlocked by crafting recipes. */
+  craftedUnlocks: string[] = [];
   /** Harvest node placements (static seed; depletion tracked separately). */
   harvestNodes: HarvestNodeInstance[] = seedHarvestNodes();
   /** uid → dayIndex when depleted; respawns after staggered multi-day delay. */
   harvestDepleted: Record<string, number> = {};
+  /** uid → dayIndex when fruit was bumped loose; fruit returns next day. */
+  harvestShaken: Record<string, number> = {};
   /** Flower tile "tx,ty" → dayIndex when picked (respawns next day). */
   flowerDepleted: Record<string, number> = {};
   /** Villagers living at the player's home. */
@@ -457,6 +476,24 @@ export class GameState {
     return true;
   }
 
+  craftedCount(id: CraftedId | string): number {
+    return this.inventory.crafted[id] ?? 0;
+  }
+
+  addCrafted(id: CraftedId | string, count: number) {
+    if (count <= 0) return;
+    this.inventory.crafted[id] = this.craftedCount(id) + count;
+  }
+
+  removeCrafted(id: CraftedId | string, count: number): boolean {
+    const have = this.craftedCount(id);
+    if (count <= 0 || have < count) return false;
+    const next = have - count;
+    if (next <= 0) delete this.inventory.crafted[id];
+    else this.inventory.crafted[id] = next;
+    return true;
+  }
+
   isHarvestDepleted(uid: string): boolean {
     const day = this.harvestDepleted[uid];
     if (day === undefined) return false;
@@ -467,6 +504,16 @@ export class GameState {
 
   depleteHarvest(uid: string) {
     this.harvestDepleted[uid] = this.dayIndex;
+  }
+
+  isHarvestShaken(uid: string): boolean {
+    const day = this.harvestShaken[uid];
+    if (day === undefined) return false;
+    return this.dayIndex < day + 1;
+  }
+
+  shakeHarvest(uid: string) {
+    this.harvestShaken[uid] = this.dayIndex;
   }
 
   flowerKey(tx: number, ty: number): string {
@@ -792,8 +839,18 @@ export class GameState {
       inventory: {
         tools: [...this.inventory.tools],
         materials: { ...this.inventory.materials } as Record<string, number>,
+        crafted: { ...this.inventory.crafted } as Record<string, number>,
       },
+      townBoard: {
+        day: this.townBoard.day,
+        offers: this.townBoard.offers.map((o) => ({ ...o })),
+        favor: this.townBoard.favor,
+        completedCount: this.townBoard.completedCount,
+        craftsMade: this.townBoard.craftsMade,
+      },
+      craftedUnlocks: [...this.craftedUnlocks],
       harvestDepleted: { ...this.harvestDepleted },
+      harvestShaken: { ...this.harvestShaken },
       flowerDepleted: { ...this.flowerDepleted },
       roommates: [...this.roommates],
       porchDrops: this.porchDrops.map((d) => ({ ...d })),
@@ -917,8 +974,25 @@ export class GameState {
           this.inventory.materials[k as MaterialId] = v;
         }
       }
+      const crafted = data.inventory.crafted ?? {};
+      for (const [k, v] of Object.entries(crafted)) {
+        if (typeof v === "number" && v > 0) {
+          this.inventory.crafted[k] = v;
+        }
+      }
     }
+    this.townBoard = data.townBoard
+      ? {
+          day: data.townBoard.day ?? -1,
+          offers: (data.townBoard.offers ?? []).map((o) => ({ ...o })),
+          favor: data.townBoard.favor ?? 0,
+          completedCount: data.townBoard.completedCount ?? 0,
+          craftsMade: data.townBoard.craftsMade ?? 0,
+        }
+      : emptyTownBoard();
+    this.craftedUnlocks = [...(data.craftedUnlocks ?? [])];
     this.harvestDepleted = { ...(data.harvestDepleted ?? {}) };
+    this.harvestShaken = { ...(data.harvestShaken ?? {}) };
     this.flowerDepleted = { ...(data.flowerDepleted ?? {}) };
     this.roommates = (data.roommates ?? []).filter((id): id is NpcId =>
       NPCS.some((n) => n.id === id),

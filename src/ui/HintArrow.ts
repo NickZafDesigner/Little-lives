@@ -28,7 +28,7 @@ export class HintArrow {
       <div class="ll-hint-arrow-bob">
         <span class="ll-hint-arrow-label"></span>
         <span class="ll-hint-arrow-chev" aria-hidden="true">
-          <svg viewBox="0 0 28 22" width="28" height="22" focusable="false">
+          <svg viewBox="0 0 28 22" width="42" height="33" focusable="false">
             <path d="M4 2 L14 12 L24 2" />
             <path d="M4 10 L14 20 L24 10" />
           </svg>
@@ -90,7 +90,7 @@ export class HintArrow {
     const aimY = 20;
     const target = project(this.worldX, aimY, this.worldZ);
     const player = project(playerX, aimY, playerZ);
-    const pad = 40;
+    const pad = 60;
     const cx = viewW / 2;
     const cy = viewH / 2;
 
@@ -118,7 +118,7 @@ export class HintArrow {
 
     if (onScreen) {
       // Sit just short of the goal along the approach so the tip reads as "this way".
-      const standOff = Math.min(46, Math.max(22, approachLen * 0.22));
+      const standOff = Math.min(69, Math.max(33, approachLen * 0.22));
       x = target.x - dirX * standOff;
       y = target.y - dirY * standOff;
       this.marker.classList.remove("is-edge");

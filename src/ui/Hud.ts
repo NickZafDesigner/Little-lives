@@ -13,8 +13,6 @@ import { computeCozyScore } from "../systems/cozyScore";
 import { beatForDay } from "../systems/dayCycle";
 import { weatherHudLabel, weatherLabel } from "../systems/weather";
 import { jobById, jobDisplayName, jobTaskCount } from "../data/jobs";
-import { lotAtTile } from "../world/lots";
-import { TILE } from "../game/constants";
 import { drawPortrait } from "./portraits";
 import { PlayerStatusModal } from "./PlayerStatusModal";
 import { ShopModal, type ShopMode } from "./ShopModal";
@@ -28,6 +26,14 @@ function clockLabel(dayTime: number): string {
   const h12 = ((hours + 11) % 12) + 1;
   const ampm = hours >= 12 ? "PM" : "AM";
   return `${h12}:${mins.toString().padStart(2, "0")} ${ampm}`;
+}
+
+/** Total stackable items in the bag (materials + handmade goods). */
+function bagItemCount(state: GameState): number {
+  let n = 0;
+  for (const v of Object.values(state.inventory.materials)) n += v ?? 0;
+  for (const v of Object.values(state.inventory.crafted)) n += v ?? 0;
+  return n;
 }
 
 type Urgency = "ok" | "warn" | "critical";
@@ -72,6 +78,8 @@ export class Hud {
     stack: number;
   }> = [];
   private onShowBeat: (() => void) | null = null;
+  /** dayIndex whose weekly beat card the player dismissed (−1 = none). */
+  private dismissedBeatDay = -1;
 
   constructor(
     parent: HTMLElement,
@@ -126,6 +134,13 @@ export class Hud {
         } else {
           this.statusModal.open("status");
         }
+        this.lastStructureKey = "";
+        this.update();
+        return;
+      }
+      if (t.closest("[data-dismiss-beat]")) {
+        e.stopPropagation();
+        this.dismissedBeatDay = this.state.dayIndex;
         this.lastStructureKey = "";
         this.update();
         return;
@@ -220,21 +235,16 @@ export class Hud {
   update() {
     const s = this.state;
     const mood = Math.round(moodFromNeeds(s.needs));
-    const lot = lotAtTile(
-      Math.floor(s.playerX / TILE),
-      Math.floor(s.playerY / TILE),
-    );
     const cozy = computeCozyScore(s.furniture);
     const beat = beatForDay(s.dayIndex);
     const beatClaimed = s.weeklyBeatDay === s.dayIndex;
     const urgency = needsUrgency(s.needs);
-    const place = lot?.name ?? "Town";
     const timeTip = `Time · Day ${s.dayIndex} · ${clockLabel(s.dayTime)}`;
     const weatherTip = `Weather · ${weatherLabel(s.weather)}`;
     const weatherText = weatherHudLabel(s.weather);
     const raining = s.weather === "rain";
-    const modeTip = s.mode === "build" ? "Build mode" : "Live mode";
     const clock = clockLabel(s.dayTime);
+    const bagCount = bagItemCount(s);
 
     const tracker = this.getTracker();
     const aspiration = !tracker ? this.getAspiration() : null;
@@ -274,7 +284,11 @@ export class Hud {
       this.pulseUntil = performance.now() + 700;
     }
 
-    const showBeat = !!(beat && !beatClaimed);
+    const showBeat = !!(
+      beat &&
+      !beatClaimed &&
+      this.dismissedBeatDay !== s.dayIndex
+    );
     const shiftActive = s.jobActive && !!s.activeJobId;
     const shiftJob = shiftActive ? jobById[s.activeJobId!] : null;
     const shiftTotal = shiftJob ? jobTaskCount(shiftJob) : 0;
@@ -302,13 +316,12 @@ export class Hud {
         mood,
         cozy,
         urgency,
-        place,
         timeTip,
         weatherTip,
         weatherText,
         raining,
-        modeTip,
         clock,
+        bagCount,
         showBeat,
         beatTitle: beat?.title ?? "",
         beatPlace: beat?.place ?? "",
@@ -335,10 +348,8 @@ export class Hud {
       weatherTip,
       weatherText,
       raining,
-      place,
       cozy,
-      modeTip,
-      isBuild: s.mode === "build",
+      bagCount,
       mood,
       urgency,
       petName: s.adoptedPetName,
@@ -470,13 +481,12 @@ export class Hud {
     mood: number;
     cozy: number;
     urgency: Urgency;
-    place: string;
     timeTip: string;
     weatherTip: string;
     weatherText: string;
     raining: boolean;
-    modeTip: string;
     clock: string;
+    bagCount: number;
     showBeat: boolean;
     beatTitle: string;
     beatPlace: string;
@@ -494,8 +504,19 @@ export class Hud {
     shiftTask?: string;
     shiftName?: string;
   }): string {
-    const { s, cozy, urgency, place, timeTip, weatherTip, weatherText, raining, modeTip, clock, showBeat, shown } =
-      opts;
+    const {
+      s,
+      cozy,
+      urgency,
+      timeTip,
+      weatherTip,
+      weatherText,
+      raining,
+      clock,
+      bagCount,
+      showBeat,
+      shown,
+    } = opts;
 
     const pet = s.adoptedPet
       ? `<div class="ll-pet-chip" title="Pet bond"><strong data-pet-name>${escapeHtml(s.adoptedPetName)}</strong><span data-pet-bond>${Math.round(s.adoptedPet.needs.bond)}${s.petCareStreak > 1 ? ` · ${s.petCareStreak}d` : ""}</span></div>`
@@ -535,6 +556,7 @@ export class Hud {
 
     const beatHtml = showBeat
       ? `<div class="ll-beat">
+          <button type="button" class="ll-beat-dismiss" data-dismiss-beat aria-label="Dismiss">✕</button>
           <small>Today</small>
           <strong>${escapeHtml(opts.beatTitle)}</strong>
           <span>${escapeHtml(opts.beatPlace)}</span>
@@ -549,12 +571,6 @@ export class Hud {
           <span data-shift-progress>${escapeHtml(opts.shiftProgress ?? "")} · ${escapeHtml(opts.shiftTask ?? "")}</span>
         </div>`
       : "";
-
-    const modeCls = s.mode === "build" ? " is-build" : "";
-    const modeIcon =
-      s.mode === "build"
-        ? `<svg viewBox="0 0 16 16" width="11" height="11"><path d="M9.2 2.4 13.6 6.8 7.4 13H3v-4.4L9.2 2.4z" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/><path d="M8 3.8 12.2 8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
-        : `<svg viewBox="0 0 16 16" width="11" height="11"><circle cx="8" cy="5.2" r="2.2" fill="none" stroke="currentColor" stroke-width="1.45"/><path d="M3.6 13.2c.6-2.4 2.2-3.6 4.4-3.6s3.8 1.2 4.4 3.6" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/></svg>`;
 
     const statusOpen = this.statusModal.isOpen() && !this.statusModal.isBagOpen();
     const bagOpen = this.statusModal.isBagOpen();
@@ -580,17 +596,18 @@ export class Hud {
         </div>
         <button
           type="button"
-          class="ll-stat ll-stat-icon ll-stat-bag${bagOpen ? " is-open" : ""}${s.mode !== "live" ? " is-disabled" : ""}"
+          class="ll-stat ll-stat-bag${bagOpen ? " is-open" : ""}${s.mode !== "live" ? " is-disabled" : ""}"
           data-hud-bag
           data-stat="bag"
-          data-tip="Bag · I"
-          aria-label="Open bag"
+          data-tip="Bag · ${bagCount} · I"
+          aria-label="Bag: ${bagCount} items"
           aria-expanded="${bagOpen ? "true" : "false"}"
           ${s.mode !== "live" ? "disabled" : ""}
         >
           <span class="ll-stat-ico" aria-hidden="true">
             <svg viewBox="0 0 16 16" width="12" height="12"><path d="M4.2 5.2h7.6l.7 8.2H3.5l.7-8.2z" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/><path d="M6 5.2V4.1a2 2 0 0 1 4 0v1.1" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/></svg>
           </span>
+          <b data-stat-val="bag">${bagCount}</b>
         </button>
         <div class="ll-stat" data-stat="time" data-tip="${escapeHtml(timeTip)}" aria-label="${escapeHtml(timeTip)}">
           <span class="ll-stat-ico" aria-hidden="true">
@@ -607,19 +624,11 @@ export class Hud {
           </span>
           <b data-stat-val="weather">${escapeHtml(weatherText)}</b>
         </div>
-        <div class="ll-stat ll-stat-icon" data-stat="place" data-tip="Place · ${escapeHtml(place)}" aria-label="Place: ${escapeHtml(place)}">
-          <span class="ll-stat-ico" aria-hidden="true">
-            <svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 1.8c-2.5 0-4.5 1.9-4.5 4.3 0 3.2 4.5 8.1 4.5 8.1s4.5-4.9 4.5-8.1C12.5 3.7 10.5 1.8 8 1.8z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="6" r="1.6" fill="currentColor"/></svg>
-          </span>
-        </div>
         <div class="ll-stat" data-stat="cozy" data-tip="Cozy · ${cozy}" aria-label="Cozy score: ${cozy}">
           <span class="ll-stat-ico" aria-hidden="true">
             <svg viewBox="0 0 16 16" width="12" height="12"><path d="M2.5 7.2 8 2.8l5.5 4.4V13a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V7.2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           </span>
           <b data-stat-val="cozy">${cozy}</b>
-        </div>
-        <div class="ll-stat ll-stat-icon ll-stat-mode${modeCls}" data-stat="mode" data-tip="${modeTip}" aria-label="${modeTip}">
-          <span class="ll-stat-ico" aria-hidden="true">${modeIcon}</span>
         </div>
       </div>
       <div class="ll-hud-left">
@@ -648,10 +657,8 @@ export class Hud {
     weatherTip: string;
     weatherText: string;
     raining: boolean;
-    place: string;
     cozy: number;
-    modeTip: string;
-    isBuild: boolean;
+    bagCount: number;
     mood: number;
     urgency: Urgency;
     petName: string;
@@ -676,18 +683,16 @@ export class Hud {
 
     setVal("money", `$${v.money}`);
     setTip("money", `Money · $${v.money}`, `Money: $${v.money}`);
+    setVal("bag", String(v.bagCount));
+    setTip("bag", `Bag · ${v.bagCount} · I`, `Bag: ${v.bagCount} items`);
     setVal("time", v.clock);
     setTip("time", v.timeTip);
     setVal("weather", v.weatherText);
     setTip("weather", v.weatherTip);
     const weatherEl = this.panel.querySelector("[data-stat='weather']");
     if (weatherEl) weatherEl.classList.toggle("is-rain", v.raining);
-    setTip("place", `Place · ${v.place}`, `Place: ${v.place}`);
     setVal("cozy", String(v.cozy));
     setTip("cozy", `Cozy · ${v.cozy}`, `Cozy score: ${v.cozy}`);
-    setTip("mode", v.modeTip);
-    const modeEl = this.panel.querySelector("[data-stat='mode']");
-    if (modeEl) modeEl.classList.toggle("is-build", v.isBuild);
 
     const avatar = this.panel.querySelector(
       "[data-hud-avatar]",

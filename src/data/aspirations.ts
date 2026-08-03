@@ -3,7 +3,8 @@ export type AspirationId =
   | "social_butterfly"
   | "pet_parent"
   | "career_kid"
-  | "town_helper";
+  | "town_helper"
+  | "maker";
 
 export interface AspirationDef {
   id: AspirationId;
@@ -62,6 +63,15 @@ export const ASPIRATIONS: AspirationDef[] = [
     rewardMoney: 45,
     rewardToast: "Town Helper! The notice board has your name on it.",
     unlockId: "notice_star",
+  },
+  {
+    id: "maker",
+    title: "Maker",
+    description: "Craft 8 handmade goods and finish 5 board commissions.",
+    target: 13,
+    rewardMoney: 55,
+    rewardToast: "Maker! Reed left you a craft-table polish kit.",
+    unlockId: "maker_kit",
   },
 ];
 
