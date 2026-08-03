@@ -258,6 +258,16 @@ export class TownRenderer {
     return TownRenderer.FRUSTUM_DEFAULT / this.frustumTarget;
   }
 
+  /** Current vertical world units in view (larger = more zoomed out). */
+  getFrustumSize(): number {
+    return this.frustumSize;
+  }
+
+  /** Canvas aspect used by the ortho camera. */
+  getViewAspect(): number {
+    return this.viewWidth / Math.max(1, this.viewHeight);
+  }
+
   /** Set zoom factor (1 = default). Clamped to FRUSTUM_MIN/MAX. */
   setZoom(zoom: number) {
     const z = Math.max(0.05, zoom);

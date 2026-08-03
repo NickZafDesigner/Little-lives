@@ -6968,6 +6968,8 @@ export function createWorldScreen(
         playerZ,
         !app.renderer.isIndoors(),
         state.weather,
+        app.renderer.getFrustumSize(),
+        app.renderer.getViewAspect(),
       );
       Audio.setAmbience(
         !app.renderer.isIndoors() && state.weather === "rain" ? "rain" : "none",

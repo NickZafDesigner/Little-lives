@@ -6,12 +6,15 @@ import { isNight, MORNING_TIME, EVENING_START } from "../systems/dayCycle";
 const MAX_LEAVES = 14;
 const MAX_MOTES = 28;
 const MAX_FIREFLIES = 18;
-const MAX_RAIN = 220;
-const MAX_SPLASH = 36;
+/** Cap for line-streak rain; density scales with camera view size. */
+const MAX_RAIN = 520;
+const MAX_SPLASH = 48;
 const GROUND_Y = 1.6;
 /** Steady diagonal slant for rain streaks (world units along X/Z per unit of length). */
 const RAIN_SLANT_X = 0.55;
 const RAIN_SLANT_Z = 0.18;
+/** Reference frustum — rain count is scaled from this. */
+const RAIN_REF_FRUSTUM = 560;
 
 type Leaf = {
   mesh: THREE.Mesh;
@@ -117,6 +120,9 @@ export class AmbientAtmosphere {
   private gustIn = 0;
   private windX = 18;
   private windZ = 6;
+  /** Live camera ground coverage for rain (world units from follow centre). */
+  private rainHalfX = 420;
+  private rainHalfZ = 280;
 
   constructor(
     addToScene: (obj: THREE.Object3D) => void,
@@ -324,6 +330,8 @@ export class AmbientAtmosphere {
     playerZ: number,
     outdoors: boolean,
     weather: WeatherId = "clear",
+    viewFrustum = RAIN_REF_FRUSTUM,
+    viewAspect = 16 / 9,
   ) {
     if (!outdoors) {
       this.clearLeaves();
@@ -359,11 +367,29 @@ export class AmbientAtmosphere {
       this.syncMotes();
       this.syncFlies();
 
-      this.rainSpawnAcc += dt * (night ? 70 : 95);
-      while (this.rainSpawnAcc >= 1 && this.rain.length < MAX_RAIN) {
+      // Cover the whole visible town — expand with zoom-out, not a player bubble.
+      const span = Math.max(240, viewFrustum);
+      this.rainHalfX = span * Math.max(1.1, viewAspect) * 0.62;
+      this.rainHalfZ = span * 0.58;
+      const areaScale = Math.min(
+        2.4,
+        Math.max(0.7, (span / RAIN_REF_FRUSTUM) ** 2),
+      );
+      const rainCap = Math.min(MAX_RAIN, Math.floor(220 * areaScale));
+      const spawnRate = (night ? 110 : 150) * areaScale;
+
+      // Fill the sky quickly when rain starts / zoom jumps.
+      while (this.rain.length < rainCap * 0.85) {
+        this.spawnRain(playerX, playerZ);
+      }
+      this.rainSpawnAcc += dt * spawnRate;
+      while (this.rainSpawnAcc >= 1 && this.rain.length < rainCap) {
         this.rainSpawnAcc -= 1;
         this.spawnRain(playerX, playerZ);
       }
+      // Trim if the player zoomed in a lot.
+      while (this.rain.length > rainCap) this.rain.pop();
+
       this.tickRain(dt, playerX, playerZ);
       this.tickSplashes(dt);
       return;
@@ -606,15 +632,13 @@ export class AmbientAtmosphere {
       true;
   }
 
-  private spawnRain(px: number, pz: number) {
-    const ang = Math.random() * Math.PI * 2;
-    const rad = Math.random() * 58;
+  private spawnRain(cx: number, cz: number) {
     const len = 5.5 + Math.random() * 5.5;
     const speed = 72 + Math.random() * 38;
     this.rain.push({
-      x: px + Math.cos(ang) * rad,
-      y: GROUND_Y + 26 + Math.random() * 34,
-      z: pz + Math.sin(ang) * rad,
+      x: cx + (Math.random() * 2 - 1) * this.rainHalfX,
+      y: GROUND_Y + 22 + Math.random() * 40,
+      z: cz + (Math.random() * 2 - 1) * this.rainHalfZ,
       vx: -speed * RAIN_SLANT_X,
       vy: -speed,
       vz: -speed * RAIN_SLANT_Z,
@@ -624,7 +648,21 @@ export class AmbientAtmosphere {
     });
   }
 
-  private tickRain(dt: number, px: number, pz: number) {
+  /** Recycle a drop at the top of the current camera ground coverage. */
+  private recycleRain(d: RainDrop, cx: number, cz: number) {
+    const speed = 72 + Math.random() * 38;
+    d.x = cx + (Math.random() * 2 - 1) * this.rainHalfX;
+    d.y = GROUND_Y + 28 + Math.random() * 36;
+    d.z = cz + (Math.random() * 2 - 1) * this.rainHalfZ;
+    d.vx = -speed * RAIN_SLANT_X;
+    d.vy = -speed;
+    d.vz = -speed * RAIN_SLANT_Z;
+    d.len = 5.5 + Math.random() * 5.5;
+    d.life = 0;
+    d.maxLife = 1.0 + Math.random() * 0.55;
+  }
+
+  private tickRain(dt: number, cx: number, cz: number) {
     for (let i = this.rain.length - 1; i >= 0; i--) {
       const d = this.rain[i]!;
       d.life += dt;
@@ -633,21 +671,23 @@ export class AmbientAtmosphere {
       d.z += d.vz * dt;
       if (d.y <= GROUND_Y + 0.4 || d.life >= d.maxLife) {
         if (d.y <= GROUND_Y + 1.2 && this.splashes.length < MAX_SPLASH) {
-          this.splashes.push({
-            x: d.x,
-            y: GROUND_Y + 0.35,
-            z: d.z,
-            life: 0,
-            maxLife: 0.28 + Math.random() * 0.22,
-            size: 5 + Math.random() * 6,
-          });
+          // Only splash inside the current view — avoids offscreen work.
+          if (
+            Math.abs(d.x - cx) < this.rainHalfX &&
+            Math.abs(d.z - cz) < this.rainHalfZ
+          ) {
+            this.splashes.push({
+              x: d.x,
+              y: GROUND_Y + 0.35,
+              z: d.z,
+              life: 0,
+              maxLife: 0.28 + Math.random() * 0.22,
+              size: 5 + Math.random() * 6,
+            });
+          }
         }
-        this.rain.splice(i, 1);
-        continue;
+        this.recycleRain(d, cx, cz);
       }
-      // Soft leash so rain stays around the player as they walk.
-      d.x += (px - d.x) * 0.03 * dt;
-      d.z += (pz - d.z) * 0.03 * dt;
     }
     this.syncRain();
   }
