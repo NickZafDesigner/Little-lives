@@ -152,7 +152,7 @@ function box(
 }
 
 /** SE camera looks NW - player is behind a wall when on its north/west side. */
-const WALL_FADE_OPACITY = 0.18;
+const WALL_FADE_OPACITY = 0.48;
 /** Enter / exit cutaway (roof + near walls) ease duration - matches indoor zoom. */
 const CUTAWAY_FADE_SEC = 0.9;
 /** How far the roof lifts while fading open (avoids transparent z-fight glitches). */
@@ -963,11 +963,12 @@ function buildHouse(lot: LotBounds): BuildingHandle {
     const fade = easeSmooth(Math.max(0, (t - 0.12) / 0.88));
     roof.position.y = e * ROOF_LIFT;
     setGroupFadeOpacity(roof, 1 - fade, fade < 0.55, true);
-    // Camera-near shell (south/east + door): fully cut away indoors so the
-    // SE view never paints solid walls over characters. Internal partitions
-    // still soft-ghost via updateInternalWallFade.
-    setGroupFadeOpacity(near, 1 - e, e < 0.45);
-    setGroupFadeOpacity(doorPivot, 1 - e, e < 0.45);
+    // Camera-near shell (south/east + door): soft-ghost indoors so the room
+    // still reads as architecture while characters stay visible through it.
+    // Internal partitions use the same opacity via updateInternalWallFade.
+    const nearOpacity = ghostOpacity(t);
+    setGroupFadeOpacity(near, nearOpacity, e < 0.45);
+    setGroupFadeOpacity(doorPivot, nearOpacity, e < 0.45);
     // Mute far-wall shadows while mostly open so they don't stripe the floor.
     for (const m of farCasters) m.castShadow = e < 0.45;
   };
