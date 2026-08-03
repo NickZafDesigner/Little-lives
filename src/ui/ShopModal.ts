@@ -26,10 +26,17 @@ export class ShopModal {
   private mode: ShopMode = "buy_tools";
   private title = "";
   private onChange: () => void;
+  private onBuyTool: ((id: ToolId) => void) | null;
 
-  constructor(parent: HTMLElement, state: GameState, onChange: () => void) {
+  constructor(
+    parent: HTMLElement,
+    state: GameState,
+    onChange: () => void,
+    onBuyTool?: (id: ToolId) => void,
+  ) {
     this.state = state;
     this.onChange = onChange;
+    this.onBuyTool = onBuyTool ?? null;
     this.el = document.createElement("div");
     this.el.className = "ll-shop-modal";
     this.el.hidden = true;
@@ -232,6 +239,7 @@ export class ShopModal {
     Audio.sfx("coin");
     this.rebuild();
     this.onChange();
+    this.onBuyTool?.(id);
   }
 
   private sellMaterial(id: MaterialId) {

@@ -249,6 +249,8 @@ export interface SaveData {
   roommates?: string[];
   /** Gathered goods left on the home porch for pickup. */
   porchDrops?: PorchDrop[];
+  /** One-shot tutorial / discovery thoughts. */
+  storyFlags?: Record<string, boolean>;
   player: {
     x: number;
     y: number;

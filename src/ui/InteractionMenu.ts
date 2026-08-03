@@ -14,7 +14,7 @@ export type MenuPortrait = {
   look?: PlayerLook;
 };
 
-const SOCIAL_IDS = new Set(["joke", "gift", "gift_flower", "hangout"]);
+const SOCIAL_IDS = new Set(["joke", "gift", "gift_bag", "hangout"]);
 
 function isTone(id: string): boolean {
   return id.startsWith("tone_");

@@ -2,13 +2,14 @@ import * as THREE from "three";
 import type { MaterialId } from "../data/items";
 import { createInventoryItemMesh } from "../mesh/inventoryItems";
 
-const POP_SEC = 0.45;
 const REST_SEC = 1.0;
 const ZIP_SEC = 0.38;
 const GRAVITY = 420;
 const MESH_SCALE = 0.55;
 const GROUND_Y = 2.2;
 const MAX_PIECES = 10;
+/** Soft horizontal drag so arcs settle instead of skating forever. */
+const AIR_DRAG = 1.8;
 
 type Phase = "pop" | "rest" | "zip";
 
@@ -17,8 +18,6 @@ type Piece = {
   itemId: MaterialId;
   phase: Phase;
   age: number;
-  lx: number;
-  lz: number;
   vx: number;
   vy: number;
   vz: number;
@@ -114,11 +113,9 @@ export class LootBurst {
       mesh.castShadow = true;
       this.root.add(mesh);
 
-      const angle = (i / n) * Math.PI * 2 + Math.random() * 0.45;
-      const dist = 10 + Math.random() * 14;
-      const lx = originX + Math.cos(angle) * dist;
-      const lz = originZ + Math.sin(angle) * dist;
-      const speed = 55 + Math.random() * 35;
+      // Burst outward — settle wherever physics lands (no second snap).
+      const angle = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+      const speed = 48 + Math.random() * 28;
 
       mesh.position.set(originX, originY, originZ);
 
@@ -127,17 +124,15 @@ export class LootBurst {
         itemId,
         phase: "pop",
         age: 0,
-        lx,
-        lz,
         vx: Math.cos(angle) * speed,
-        vy: 140 + Math.random() * 80,
+        vy: 130 + Math.random() * 70,
         vz: Math.sin(angle) * speed,
         spin: (Math.random() - 0.5) * 8,
         restDelay: REST_SEC + Math.random() * 0.25,
         zipT: 0,
-        zipFromX: lx,
+        zipFromX: originX,
         zipFromY: GROUND_Y,
-        zipFromZ: lz,
+        zipFromZ: originZ,
       });
     });
     this.pendingComplete = true;
@@ -159,16 +154,21 @@ export class LootBurst {
 
       if (p.phase === "pop") {
         p.vy -= GRAVITY * dt;
+        const drag = Math.exp(-AIR_DRAG * dt);
+        p.vx *= drag;
+        p.vz *= drag;
         p.mesh.position.x += p.vx * dt;
         p.mesh.position.y += p.vy * dt;
         p.mesh.position.z += p.vz * dt;
         p.mesh.rotation.y += p.spin * dt;
         p.mesh.rotation.z += p.spin * 0.4 * dt;
 
-        const landed = p.mesh.position.y <= GROUND_Y && p.vy <= 0;
-        const timedOut = p.age >= POP_SEC + 0.35;
-        if (landed || timedOut) {
-          p.mesh.position.set(p.lx, GROUND_Y, p.lz);
+        // Land in place — never teleport to a different XY.
+        if (p.mesh.position.y <= GROUND_Y && p.vy <= 0) {
+          p.mesh.position.y = GROUND_Y;
+          p.vx = 0;
+          p.vy = 0;
+          p.vz = 0;
           p.phase = "rest";
           p.age = 0;
           p.mesh.scale.set(

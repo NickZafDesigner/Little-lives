@@ -28,9 +28,8 @@ import {
   type AmbientChoice,
 } from "../data/ambientNpcs";
 import {
+  BAG_GIFTS,
   DIALOGUE_TONES,
-  FLOWER_GIFT_BASE,
-  FLOWER_GIFT_PREFERENCE,
   NPCS,
   RELATIONSHIP_CLOSE,
   RELATIONSHIP_CRUSH,
@@ -1803,6 +1802,15 @@ export function createWorldScreen(
         Audio.sfx("chime");
         confetti.burst("soft");
         state.showToast(`+${count} Wildflower${count > 1 ? "s" : ""}`, 2200);
+        if (state.setStoryFlag("first_flower_pick")) {
+          delayed(400, () => {
+            thoughtBubble?.showText(
+              "Maybe I can give these to someone so I can make friends!",
+              5600,
+            );
+            Audio.sfx("chime");
+          });
+        }
       };
       if (!lootBurst) {
         finish();
@@ -2070,6 +2078,15 @@ export function createWorldScreen(
           confetti.burst("soft");
           state.showToast("+2 Wildflowers — a little park bouquet.", 2600);
           quests.emit("picked_flowers");
+          if (state.setStoryFlag("first_flower_pick")) {
+            delayed(400, () => {
+              thoughtBubble?.showText(
+                "Maybe I can give these to someone so I can make friends!",
+                5600,
+              );
+              Audio.sfx("chime");
+            });
+          }
         });
         return;
       }
@@ -2859,17 +2876,18 @@ export function createWorldScreen(
       const locked = minScore !== undefined && rel.score < minScore;
       const socialBlock = socialBlockedReason(state.needs, state.isWet);
       const tired = a.id === "hangout" && socialBlock !== null;
-      if (a.id === "gift_flower") {
-        const flowers = state.materialCount("flower");
-        const bonus = FLOWER_GIFT_PREFERENCE[npcId] ?? 0;
+      if (a.id === "gift_bag") {
+        const owned = BAG_GIFTS.filter(
+          (g) => state.materialCount(g.itemId) > 0,
+        );
         options.push({
           id: a.id,
           label: a.label,
           sub:
-            flowers < 1
-              ? "Need wildflowers"
-              : `+${FLOWER_GIFT_BASE + bonus} friendship`,
-          disabled: flowers < 1,
+            owned.length === 0
+              ? "Pick flowers, apples, or fish first"
+              : owned.map((g) => materialById[g.itemId]?.name ?? g.itemId).join(" · "),
+          disabled: owned.length === 0,
         });
         continue;
       }
@@ -3378,13 +3396,106 @@ export function createWorldScreen(
             return;
           }
         }
-        if (action.id === "gift_flower") {
-          if (state.materialCount("flower") < 1) {
+        if (action.id === "gift_bag") {
+          const owned = BAG_GIFTS.filter(
+            (g) => state.materialCount(g.itemId) > 0,
+          );
+          if (!owned.length) {
             Audio.sfx("deny");
-            state.showToast("You need wildflowers first.");
+            state.showToast("Nothing giftable in your bag yet.");
             return;
           }
-          state.removeMaterial("flower", 1);
+          holdNpcStill(npcId);
+          const giftOptions: MenuOption[] = owned.map((g) => {
+            const bonus = g.preference?.[npcId] ?? 0;
+            return {
+              id: `gift_item_${g.itemId}`,
+              label: g.label,
+              sub: `${state.materialCount(g.itemId)} in bag · +${g.delta + bonus} friendship`,
+            };
+          });
+          giftOptions.push({
+            id: "gift_cancel",
+            label: "Never mind",
+            sub: "Keep chatting",
+          });
+          menu.show(
+            def.name,
+            "Pick a gift from your bag",
+            giftOptions,
+            x,
+            y,
+            (giftId) => {
+              if (giftId === "gift_cancel") {
+                openNpcMenu(target, x, y);
+                return;
+              }
+              if (!giftId.startsWith("gift_item_")) return;
+              const itemId = giftId.slice("gift_item_".length) as MaterialId;
+              const gift = BAG_GIFTS.find((g) => g.itemId === itemId);
+              if (!gift || !state.removeMaterial(itemId, 1)) {
+                Audio.sfx("deny");
+                state.showToast("You don't have that anymore.");
+                return;
+              }
+              holdNpcStill(npcId);
+              Audio.sfx("talk");
+              state.startBusy(gift.label, 900);
+              delayed(900, () => {
+                const { mult, toast } = socialOutcomeMultiplier(
+                  state.playerTraits,
+                  state.needs.hygiene,
+                  moodFromNeeds(state.needs),
+                  "friendly",
+                  state.isWet,
+                );
+                const bonus = gift.preference?.[npcId] ?? 0;
+                const result = state.adjustRelationship(
+                  npcId,
+                  Math.round((gift.delta + bonus) * mult),
+                  RELATIONSHIP_FRIEND,
+                );
+                state.needs = applyNeedDeltas(state.needs, {
+                  social: 18,
+                });
+                if (
+                  result.becameFriend ||
+                  result.becameClose ||
+                  result.becameBestie
+                ) {
+                  noteFriendshipGain(npcId, result, def.name);
+                } else {
+                  Audio.sfx("chime");
+                  const matName = materialById[itemId]?.name ?? "gift";
+                  const lines =
+                    itemId === "flower"
+                      ? [
+                          "Wildflowers! You remembered how much I love these.",
+                          "A little bouquet just for me? You're sweet.",
+                          "These brighten the whole day. Thank you!",
+                        ]
+                      : itemId === "apple"
+                        ? [
+                            "A crisp apple - perfect snack. Thanks!",
+                            "Ooh, fresh fruit! You're a peach.",
+                          ]
+                        : [
+                            `Fresh ${matName.toLowerCase()}? You spoil me!`,
+                            "A thoughtful gift - thank you.",
+                          ];
+                  state.showDialogue(
+                    npcId,
+                    def.name,
+                    lines[Math.floor(Math.random() * lines.length)]!,
+                  );
+                }
+                if (toast) state.showToast(toast);
+                aspirations.refresh();
+              });
+            },
+            { id: npcId },
+          );
+          return;
         }
         const cost = "cost" in action ? action.cost : undefined;
         if (cost !== undefined) {
@@ -3406,13 +3517,9 @@ export function createWorldScreen(
             action.id === "joke" && hasTrait(state.playerTraits, "Goofy")
               ? 1.25
               : 1;
-          const flowerBonus =
-            action.id === "gift_flower"
-              ? FLOWER_GIFT_PREFERENCE[npcId] ?? 0
-              : 0;
           const result = state.adjustRelationship(
             npcId,
-            Math.round((action.delta + flowerBonus) * mult * goofyBoost),
+            Math.round(action.delta * mult * goofyBoost),
             RELATIONSHIP_FRIEND,
           );
           state.needs = applyNeedDeltas(state.needs, {
@@ -3432,12 +3539,6 @@ export function createWorldScreen(
                 ? hasTrait(state.playerTraits, "Goofy")
                   ? ["I'm crying - that was ridiculous!", "Goofy genius!"]
                   : ["Ha! That one got me.", "Okay, that was actually funny."]
-                : action.id === "gift_flower"
-                  ? [
-                      "Wildflowers! You remembered how much I love these.",
-                      "A little bouquet just for me? You're sweet.",
-                      "These brighten the whole day. Thank you!",
-                    ]
                   : action.id === "gift"
                     ? ["Aww, you shouldn't have!", "This is so sweet of you."]
                     : action.id === "hangout"
@@ -4541,6 +4642,27 @@ export function createWorldScreen(
         state,
         () => quests.getTracker(),
         () => aspirations.getTracker(),
+        (toolId) => {
+          if (toolId !== "axe") return;
+          if (!state.setStoryFlag("first_axe_buy")) return;
+          hud.closeShop();
+          delayed(450, () => {
+            thoughtBubble?.showText(
+              "I got an axe! now I can chop some wood and maybe even collect some apples!",
+              6200,
+            );
+            Audio.sfx("chime");
+            const forest = LOTS.find((l) => l.id === "forest");
+            if (forest) {
+              hintArrow?.showAt(
+                (forest.tx + forest.tw / 2) * TILE,
+                (forest.ty + 2) * TILE,
+                "Whisperwood",
+                8000,
+              );
+            }
+          });
+        },
       );
       dialogue = new DialogueBox(ui);
       dialogue.setPlayerLook(state.playerLook);

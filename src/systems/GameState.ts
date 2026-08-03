@@ -331,6 +331,8 @@ export class GameState {
   porchDrops: PorchDrop[] = [];
   /** Roommate id → dayIndex when last sent on a harvest errand. */
   roommateErrandDay: Record<string, number> = {};
+  /** One-shot story beats (axe purchase, first flower, …). */
+  storyFlags: Record<string, boolean> = {};
   /** First-visit toasts for forest / mine. */
   visitedGatherLots: Partial<Record<"forest" | "mine", boolean>> = {};
 
@@ -452,6 +454,17 @@ export class GameState {
     if (i < 0) return null;
     const [drop] = this.porchDrops.splice(i, 1);
     return drop ?? null;
+  }
+
+  hasStoryFlag(id: string): boolean {
+    return !!this.storyFlags[id];
+  }
+
+  /** Returns true the first time this flag is set. */
+  setStoryFlag(id: string): boolean {
+    if (this.storyFlags[id]) return false;
+    this.storyFlags[id] = true;
+    return true;
   }
 
   constructor() {
@@ -690,6 +703,7 @@ export class GameState {
       flowerDepleted: { ...this.flowerDepleted },
       roommates: [...this.roommates],
       porchDrops: this.porchDrops.map((d) => ({ ...d })),
+      storyFlags: { ...this.storyFlags },
       player: {
         x: this.playerX,
         y: this.playerY,
@@ -794,6 +808,7 @@ export class GameState {
     );
     this.porchDrops = (data.porchDrops ?? []).map((d) => ({ ...d }));
     this.roommateErrandDay = {};
+    this.storyFlags = { ...(data.storyFlags ?? {}) };
     this.playerName = data.player.name;
     const fallback = defaultPlayerProfile();
     this.playerLook = data.player.look

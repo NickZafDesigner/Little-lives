@@ -1,7 +1,7 @@
 import type { SaveData } from "../data/types";
 
 const SAVE_KEY = "little-lives-save-v1";
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 export function hasSave(): boolean {
   return localStorage.getItem(SAVE_KEY) !== null;
@@ -15,6 +15,7 @@ export function loadSave(): SaveData | null {
     // Older versions: new fields default in GameState.loadFrom
     if (
       data.version !== SAVE_VERSION &&
+      data.version !== 8 &&
       data.version !== 7 &&
       data.version !== 6 &&
       data.version !== 5

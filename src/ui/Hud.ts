@@ -78,6 +78,7 @@ export class Hud {
     state: GameState,
     getTracker: () => QuestTrackerInfo | null = () => null,
     getAspiration: () => AspirationTrackerInfo | null = () => null,
+    onBuyTool?: (id: import("../data/items").ToolId) => void,
   ) {
     this.state = state;
     this.getTracker = getTracker;
@@ -92,10 +93,15 @@ export class Hud {
     this.el.append(this.panel, this.floatHost);
     parent.appendChild(this.el);
     this.statusModal = new PlayerStatusModal(parent, state);
-    this.shopModal = new ShopModal(parent, state, () => {
-      this.lastStructureKey = "";
-      this.update();
-    });
+    this.shopModal = new ShopModal(
+      parent,
+      state,
+      () => {
+        this.lastStructureKey = "";
+        this.update();
+      },
+      onBuyTool,
+    );
 
     this.el.addEventListener("click", (e) => {
       const t = e.target as HTMLElement | null;

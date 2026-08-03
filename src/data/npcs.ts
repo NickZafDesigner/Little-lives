@@ -1,5 +1,6 @@
 import { Palette } from "../game/palette";
 import type { DialogueTone, NpcDef, NpcId } from "./types";
+import type { MaterialId } from "./items";
 
 export const NPCS: NpcDef[] = [
   {
@@ -84,6 +85,33 @@ export const FLOWER_GIFT_PREFERENCE: Partial<Record<NpcId, number>> = {
   sage: 3,
 };
 
+/** Bag items players can gift to villagers. */
+export const BAG_GIFTS: Array<{
+  itemId: MaterialId;
+  label: string;
+  delta: number;
+  preference?: Partial<Record<NpcId, number>>;
+}> = [
+  {
+    itemId: "flower",
+    label: "Give Flowers",
+    delta: FLOWER_GIFT_BASE,
+    preference: FLOWER_GIFT_PREFERENCE,
+  },
+  {
+    itemId: "apple",
+    label: "Give Apple",
+    delta: 14,
+    preference: { mabel: 5, jun: 4, pip: 3 },
+  },
+  {
+    itemId: "fish",
+    label: "Give Fish",
+    delta: 16,
+    preference: { reed: 4, pip: 3, vera: 2 },
+  },
+];
+
 /** How you choose to speak - shown before other social actions. */
 export const DIALOGUE_TONES: Array<{
   id: DialogueTone;
@@ -140,8 +168,8 @@ export const SOCIAL_ACTIONS = [
     durationMs: 1000,
   },
   {
-    id: "gift_flower",
-    label: "Give Flowers",
+    id: "gift_bag",
+    label: "Gift from bag",
     delta: FLOWER_GIFT_BASE,
     needSocial: 18,
     durationMs: 900,
