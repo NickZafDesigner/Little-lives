@@ -598,6 +598,10 @@ export function createWorldScreen(
     }
   };
 
+  /** True once the player has opened Reed's menu (or hired him). */
+  const hasMetReed = () =>
+    !!state.relationships.reed?.met || state.isHired("workshop_crafter");
+
   const talkToAmbient = (id: string) => {
     const def = ambientNpcById[id];
     if (!def) return;
@@ -611,14 +615,17 @@ export function createWorldScreen(
         text,
       })),
     );
-    const reedAsk: AmbientChoice = {
-      id: "__ask_reed",
-      label: "Where's Reed?",
-      playerLine: "Do you know where I can find Reed?",
-      npcLines: [reedDirectionLine(def.id)],
-      anim: "pop",
-    };
-    presentAmbientChoices(id, [...beat.choices, reedAsk]);
+    const choices = [...beat.choices];
+    if (!hasMetReed()) {
+      choices.push({
+        id: "__ask_reed",
+        label: "Where's Reed?",
+        playerLine: "Do you know where I can find Reed?",
+        npcLines: [reedDirectionLine(def.id)],
+        anim: "pop",
+      });
+    }
+    presentAmbientChoices(id, choices);
   };
 
   const facePlayerToward = (x: number, z: number) => {
@@ -3751,7 +3758,7 @@ export function createWorldScreen(
         label: "Browse tools",
         sub: "Axes, pickaxes, shovels & rods",
       });
-    } else {
+    } else if (!hasMetReed()) {
       options.push({
         id: "ask_reed",
         label: "Where's Reed?",

@@ -1,5 +1,5 @@
 import type { Dir, LotId } from "../data/types";
-import { LOTS } from "./lots";
+import { LOT_DOOR_TX, LOTS } from "./lots";
 
 /**
  * Internal partition walls. Coordinates are relative to the lot origin
@@ -66,7 +66,7 @@ const NEIGHBOR: LotInterior = {
     { defId: "bookshelf", rx: 8, ry: 1, uid: "n_shelf", rot: "down" },
     { defId: "plant", rx: 10, ry: 1, uid: "n_plant" },
     { defId: "wall_art", rx: 10, ry: 2, uid: "n_art" },
-    { defId: "welcome_mat", rx: 5, ry: 5, uid: "n_mat" },
+    { defId: "welcome_mat", rx: 5, ry: 8, uid: "n_mat" },
     { defId: "sofa", rx: 2, ry: 5, uid: "n_sofa", rot: "down" },
     { defId: "side_table", rx: 4, ry: 5, uid: "n_side" },
     { defId: "radio", rx: 4, ry: 5, uid: "n_radio", parentUid: "n_side" },
@@ -88,17 +88,18 @@ const CAFE: LotInterior = {
   walls: [{ rx: 7, ry: 1, length: 8, axis: "y", doors: [3, 4] }],
   furniture: [
     // —— Service ——
-    { defId: "welcome_mat", rx: 6, ry: 4, uid: "c_mat" },
+    { defId: "welcome_mat", rx: 6, ry: 8, uid: "c_mat" },
     { defId: "kitchen_counter", rx: 3, ry: 1, uid: "c_prep", rot: "down" },
     { defId: "microwave", rx: 3, ry: 1, uid: "c_micro", parentUid: "c_prep" },
     { defId: "spice_rack", rx: 5, ry: 1, uid: "c_spice" },
     { defId: "wall_art", rx: 6, ry: 1, uid: "c_art_n" },
     { defId: "counter", rx: 1, ry: 2, uid: "c_counter", rot: "right" },
     { defId: "coffee_machine", rx: 1, ry: 2, uid: "c_coffee", parentUid: "c_counter" },
-    { defId: "smoothie_blender", rx: 2, ry: 2, uid: "c_blender", parentUid: "c_counter" },
+    // Counter is rot-right (1×2 south), so second appliance sits on (1,3) not (2,2).
+    { defId: "smoothie_blender", rx: 1, ry: 3, uid: "c_blender", parentUid: "c_counter" },
     { defId: "counter", rx: 1, ry: 4, uid: "c_counter2", rot: "right" },
     { defId: "kettle", rx: 1, ry: 4, uid: "c_kettle", parentUid: "c_counter2" },
-    { defId: "toaster", rx: 2, ry: 4, uid: "c_toaster", parentUid: "c_counter2" },
+    { defId: "toaster", rx: 1, ry: 5, uid: "c_toaster", parentUid: "c_counter2" },
     { defId: "kitchen_cart", rx: 4, ry: 3, uid: "c_cart" },
     { defId: "radio", rx: 4, ry: 3, uid: "c_radio", parentUid: "c_cart" },
     { defId: "mini_fridge", rx: 1, ry: 6, uid: "c_fridge", rot: "right" },
@@ -133,7 +134,7 @@ const CAFE: LotInterior = {
 const SHELTER: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 12, axis: "x", doors: [5, 6] }],
   furniture: [
-    { defId: "welcome_mat", rx: 6, ry: 5, uid: "s_mat" },
+    { defId: "welcome_mat", rx: 6, ry: 8, uid: "s_mat" },
     { defId: "shelter_desk", rx: 2, ry: 1, uid: "s_desk", rot: "down" },
     { defId: "side_table", rx: 4, ry: 1, uid: "s_desk_side" },
     { defId: "radio", rx: 4, ry: 1, uid: "s_radio", parentUid: "s_desk_side" },
@@ -167,7 +168,7 @@ const SHELTER: LotInterior = {
 const MARKET: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
   furniture: [
-    { defId: "welcome_mat", rx: 5, ry: 5, uid: "m_mat" },
+    { defId: "welcome_mat", rx: 6, ry: 8, uid: "m_mat" },
     { defId: "jam_shelf", rx: 1, ry: 1, uid: "m_jam", rot: "down" },
     { defId: "counter", rx: 3, ry: 1, uid: "m_counter", rot: "down" },
     { defId: "radio", rx: 3, ry: 1, uid: "m_radio", parentUid: "m_counter" },
@@ -204,7 +205,7 @@ const MARKET: LotInterior = {
 const LIBRARY: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
   furniture: [
-    { defId: "welcome_mat", rx: 5, ry: 5, uid: "l_mat" },
+    { defId: "welcome_mat", rx: 6, ry: 8, uid: "l_mat" },
     // Front desk + continuous north stacks.
     { defId: "reading_lamp", rx: 1, ry: 1, uid: "l_lamp_desk" },
     { defId: "library_desk", rx: 2, ry: 1, uid: "l_desk", rot: "down" },
@@ -246,7 +247,7 @@ const LIBRARY: LotInterior = {
 const CLINIC: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 12, axis: "x", doors: [5, 6] }],
   furniture: [
-    { defId: "welcome_mat", rx: 6, ry: 5, uid: "k_mat" },
+    { defId: "welcome_mat", rx: 6, ry: 8, uid: "k_mat" },
     { defId: "clinic_desk", rx: 2, ry: 1, uid: "k_desk", rot: "down" },
     { defId: "side_table", rx: 4, ry: 1, uid: "k_desk_side" },
     { defId: "lantern", rx: 4, ry: 1, uid: "k_desk_lamp", parentUid: "k_desk_side" },
@@ -271,7 +272,8 @@ const CLINIC: LotInterior = {
     { defId: "healing_plant", rx: 11, ry: 6, uid: "k_heal" },
     { defId: "plant", rx: 12, ry: 8, uid: "k_plant" },
     { defId: "fern", rx: 12, ry: 6, uid: "k_fern" },
-    { defId: "footstool", rx: 6, ry: 8, uid: "k_stool" },
+    // Keep door tile (6,8) free for the welcome mat.
+    { defId: "footstool", rx: 5, ry: 7, uid: "k_stool" },
   ],
 };
 
@@ -279,7 +281,7 @@ const CLINIC: LotInterior = {
 const WORKSHOP: LotInterior = {
   walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
   furniture: [
-    { defId: "welcome_mat", rx: 5, ry: 5, uid: "w_mat" },
+    { defId: "welcome_mat", rx: 6, ry: 8, uid: "w_mat" },
     { defId: "workbench", rx: 2, ry: 1, uid: "w_bench", rot: "down" },
     { defId: "tool_rack", rx: 4, ry: 1, uid: "w_tools", rot: "down" },
     { defId: "tool_rack", rx: 5, ry: 1, uid: "w_tools2", rot: "down" },
@@ -302,7 +304,8 @@ const WORKSHOP: LotInterior = {
     { defId: "tool_rack", rx: 10, ry: 8, uid: "w_tools_s", rot: "up" },
     { defId: "wood_shelf", rx: 1, ry: 8, uid: "w_scraps_s", rot: "up" },
     { defId: "footstool", rx: 4, ry: 8, uid: "w_stool" },
-    { defId: "plant", rx: 6, ry: 8, uid: "w_plant" },
+    // Keep door tile (6,8) free for the welcome mat.
+    { defId: "plant", rx: 7, ry: 8, uid: "w_plant" },
     { defId: "fern", rx: 8, ry: 8, uid: "w_fern" },
     { defId: "party_lights", rx: 7, ry: 5, uid: "w_lights" },
   ],
@@ -358,13 +361,22 @@ export function interiorFurniture(lotId: LotId): Array<{
   const lot = LOTS.find((l) => l.id === lotId);
   const interior = LOT_INTERIORS[lotId];
   if (!lot || !interior) return [];
-  return interior.furniture.map((f) => ({
-    uid: f.uid,
-    defId: f.defId,
-    tx: lot.tx + f.rx,
-    ty: lot.ty + f.ry,
-    lotId,
-    rot: f.rot,
-    ...(f.parentUid ? { parentUid: f.parentUid } : {}),
-  }));
+  // Always seat welcome mats on the interior tile just inside the south door.
+  const doorRx = LOT_DOOR_TX[lotId];
+  const matRy = lot.th - 2;
+  return interior.furniture.map((f) => {
+    const onDoorMat =
+      f.defId === "welcome_mat" && doorRx !== undefined
+        ? { rx: doorRx, ry: matRy }
+        : { rx: f.rx, ry: f.ry };
+    return {
+      uid: f.uid,
+      defId: f.defId,
+      tx: lot.tx + onDoorMat.rx,
+      ty: lot.ty + onDoorMat.ry,
+      lotId,
+      rot: f.rot,
+      ...(f.parentUid ? { parentUid: f.parentUid } : {}),
+    };
+  });
 }
