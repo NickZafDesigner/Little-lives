@@ -27,9 +27,11 @@ import {
   type MaterialId,
 } from "../data/items";
 import { hasTrait } from "../systems/traits";
+import { NPCS, RELATIONSHIP_MAX } from "../data/npcs";
+import { tierFromScore, tierLabel } from "../systems/relationshipTiers";
 import type { InventoryThumbId } from "../mesh/inventoryItems";
 
-type StatusTab = "status" | "bag" | "jobs" | "tasks" | "pets" | "guide";
+type StatusTab = "status" | "bag" | "friends" | "jobs" | "tasks" | "pets" | "guide";
 
 const PET_NEED_IDS: PetNeedId[] = ["hunger", "energy", "fun", "bond"];
 const PET_NEED_LABELS: Record<PetNeedId, string> = {
@@ -170,6 +172,7 @@ export class PlayerStatusModal {
         <nav class="ll-status-tabs" role="tablist">
           <button type="button" class="ll-status-tab${this.tab === "status" ? " is-active" : ""}" data-tab="status" role="tab" aria-selected="${this.tab === "status"}">Status</button>
           <button type="button" class="ll-status-tab${this.tab === "bag" ? " is-active" : ""}" data-tab="bag" role="tab" aria-selected="${this.tab === "bag"}">Bag</button>
+          <button type="button" class="ll-status-tab${this.tab === "friends" ? " is-active" : ""}" data-tab="friends" role="tab" aria-selected="${this.tab === "friends"}">Friends</button>
           <button type="button" class="ll-status-tab${this.tab === "jobs" ? " is-active" : ""}" data-tab="jobs" role="tab" aria-selected="${this.tab === "jobs"}">Jobs</button>
           <button type="button" class="ll-status-tab${this.tab === "tasks" ? " is-active" : ""}" data-tab="tasks" role="tab" aria-selected="${this.tab === "tasks"}">Tasks</button>
           <button type="button" class="ll-status-tab${this.tab === "pets" ? " is-active" : ""}" data-tab="pets" role="tab" aria-selected="${this.tab === "pets"}">Pets</button>
@@ -201,6 +204,7 @@ export class PlayerStatusModal {
     const body = this.el.querySelector("[data-status-body]")!;
     if (this.tab === "status") body.innerHTML = this.renderStatus(mood, cozy);
     else if (this.tab === "bag") body.innerHTML = renderInventoryBody(s);
+    else if (this.tab === "friends") body.innerHTML = this.renderFriends();
     else if (this.tab === "jobs") body.innerHTML = this.renderJobs();
     else if (this.tab === "tasks") body.innerHTML = this.renderTasks();
     else if (this.tab === "pets") body.innerHTML = this.renderPets();
@@ -449,6 +453,40 @@ export class PlayerStatusModal {
     `;
   }
 
+  private renderFriends(): string {
+    const s = this.state;
+    const rows = NPCS.map((npc) => {
+      const rel = s.relationships[npc.id] ?? { score: 0, met: false };
+      const score = Math.max(0, Math.min(RELATIONSHIP_MAX, rel.score));
+      const tier = tierFromScore(
+        rel.score,
+        rel.met,
+        s.flirtCounts[npc.id] ?? 0,
+      );
+      const roommate = s.isRoommate(npc.id);
+      const pct = Math.round((score / RELATIONSHIP_MAX) * 100);
+      return `
+        <li class="ll-status-friend${roommate ? " is-roommate" : ""}">
+          <div class="ll-status-friend-top">
+            <strong>${escapeHtml(npc.name)}</strong>
+            <span>${escapeHtml(tierLabel(tier))}${roommate ? " · Roommate" : ""}</span>
+          </div>
+          <div class="ll-status-friend-bar" aria-hidden="true">
+            <i style="width:${pct}%"></i>
+          </div>
+          <div class="ll-status-friend-meta">
+            <span>${score} / ${RELATIONSHIP_MAX}</span>
+            <span>${escapeHtml(npc.traits.join(" · "))}</span>
+          </div>
+        </li>`;
+    }).join("");
+
+    return `
+      <p class="ll-status-bag-lead">Gift wildflowers, chat, and hang out to grow friendships. At ${RELATIONSHIP_MAX}, ask them to move in.</p>
+      <ul class="ll-status-friends">${rows}</ul>
+    `;
+  }
+
   private renderGuide(): string {
     return `
       <p class="ll-status-guide-lead">Controls and a few tips for getting around town.</p>
@@ -465,6 +503,13 @@ export class PlayerStatusModal {
         <li><kbd>R</kbd> <span>Rotate furniture in build mode</span></li>
         <li><kbd>Q</kbd> <span>Save your game</span></li>
         <li><kbd>Esc</kbd> <span>Close menus / pause to title</span></li>
+      </ul>
+      <h3 class="ll-status-section">Friends &amp; flowers</h3>
+      <ul class="ll-status-tips">
+        <li>Pick wildflowers around town, then gift them to villagers for a big friendship boost.</li>
+        <li>Check the Friends tab to see every relationship score and roommate.</li>
+        <li>Deeper chats unlock as friendship grows. At 100, ask someone to move in.</li>
+        <li>Roommates wander your house — chat anytime, or send them out to harvest. Collect their haul from the porch.</li>
       </ul>
       <h3 class="ll-status-section">Tips</h3>
       <ul class="ll-status-tips">

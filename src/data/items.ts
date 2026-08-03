@@ -11,7 +11,8 @@ export type MaterialId =
   | "ore"
   | "clay"
   | "fish"
-  | "apple";
+  | "apple"
+  | "flower";
 
 export type HarvestKind = "tree" | "rock" | "ore" | "dig";
 
@@ -136,8 +137,14 @@ export const MATERIALS: MaterialDef[] = [
     id: "apple",
     name: "Apple",
     sellPrice: 3,
-    description: "Crisp fruit from Whisperwood apple trees. Eat from the bag.",
+    description: "Crisp fruit from apple trees around town. Eat from the bag.",
     hungerRelief: 14,
+  },
+  {
+    id: "flower",
+    name: "Wildflower",
+    sellPrice: 2,
+    description: "A cheerful bloom. Perfect as a gift for villagers.",
   },
 ];
 
@@ -394,7 +401,7 @@ function buildHarvestNodes(
     return false;
   };
 
-  // Keep timber light — Whisperwood is a grove, town grass is rare accents.
+  // Timber + apple trees fill Whisperwood and sprinkle across town grass.
   for (let ty = 2; ty < mapH - 2; ty++) {
     for (let tx = 2; tx < mapW - 2; tx++) {
       // Beach / water band
@@ -409,22 +416,24 @@ function buildHarvestNodes(
       if (lot && SKIP_LOTS.has(lot.id)) continue;
 
       const inForest = lotId === "forest";
-      // Forest: a walkable grove. Town: a few accents only (oaks carry the skyline).
-      const spacing = inForest ? 3 : 10;
+      // Forest: denser grove. Town: regular accents along open grass.
+      const spacing = inForest ? 2 : 5;
       if (nearOccupied(tx, ty, spacing - 1)) continue;
 
       const hash = (tx * 73856093) ^ (ty * 19349663) ^ (tx * ty + 17);
       if (inForest) {
-        if ((tx + ty) % 3 !== 0) continue;
-        if (hash % 3 === 0) continue;
+        if ((tx + ty) % 2 !== 0) continue;
+        if (hash % 5 === 0) continue;
       } else {
-        if (tx % 12 !== 5 || ty % 12 !== 4) continue;
-        if (hash % 3 !== 0) continue;
+        if (tx % 7 !== 3 || ty % 7 !== 2) continue;
+        if (hash % 2 !== 0) continue;
       }
 
-      // Whisperwood: mix in apple trees (~2/5 of placements).
-      const defId =
-        inForest && Math.abs(hash) % 5 < 2 ? "harvest_apple" : "harvest_tree";
+      // Apples in the grove (~2/5) and dotted around town (~1/4).
+      const appleChance = inForest
+        ? Math.abs(hash) % 5 < 2
+        : Math.abs(hash) % 4 === 0;
+      const defId = appleChance ? "harvest_apple" : "harvest_tree";
       add(defId, tx, ty, lotId);
     }
   }

@@ -72,6 +72,17 @@ export const RELATIONSHIP_GOOD = 20;
 export const RELATIONSHIP_FRIEND = 40;
 export const RELATIONSHIP_CLOSE = 70;
 export const RELATIONSHIP_CRUSH = 75;
+/** True max score — unlocks asking a villager to move in. */
+export const RELATIONSHIP_MAX = 100;
+
+/** Extra friendship when gifting a wildflower (base + preference). */
+export const FLOWER_GIFT_BASE = 22;
+export const FLOWER_GIFT_PREFERENCE: Partial<Record<NpcId, number>> = {
+  pip: 8,
+  mabel: 6,
+  jun: 3,
+  sage: 3,
+};
 
 /** How you choose to speak - shown before other social actions. */
 export const DIALOGUE_TONES: Array<{
@@ -127,6 +138,13 @@ export const SOCIAL_ACTIONS = [
     needSocial: 15,
     needFun: 8,
     durationMs: 1000,
+  },
+  {
+    id: "gift_flower",
+    label: "Give Flowers",
+    delta: FLOWER_GIFT_BASE,
+    needSocial: 18,
+    durationMs: 900,
   },
   {
     id: "gift",

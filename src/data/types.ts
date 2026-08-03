@@ -207,6 +207,14 @@ export interface InventorySave {
   materials: Record<string, number>;
 }
 
+export interface PorchDrop {
+  uid: string;
+  itemId: string;
+  count: number;
+  x: number;
+  z: number;
+}
+
 export interface SaveData {
   version: number;
   money: number;
@@ -235,6 +243,12 @@ export interface SaveData {
   inventory?: InventorySave;
   /** Harvest node uid → dayIndex when depleted (respawns over following days). */
   harvestDepleted?: Record<string, number>;
+  /** Flower tile key "tx,ty" → dayIndex when picked. */
+  flowerDepleted?: Record<string, number>;
+  /** Villagers who have moved into the player's home. */
+  roommates?: string[];
+  /** Gathered goods left on the home porch for pickup. */
+  porchDrops?: PorchDrop[];
   player: {
     x: number;
     y: number;

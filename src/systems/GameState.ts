@@ -19,14 +19,16 @@ import {
 } from "../data/items";
 import { STARTING_MONEY } from "../data/jobs";
 import { FULL_NEEDS } from "../data/needs";
-import { NPCS, RELATIONSHIP_CLOSE, RELATIONSHIP_FRIEND } from "../data/npcs";
+import { NPCS, RELATIONSHIP_CLOSE, RELATIONSHIP_FRIEND, RELATIONSHIP_MAX } from "../data/npcs";
 import { FULL_PET_NEEDS, petById, pickShelterPets } from "../data/pets";
 import { emptyQuestProgress, type QuestProgress } from "../data/quests";
 import type {
   GameMode,
   NeedsState,
+  NpcId,
   PetNeedsState,
   PlacedFurniture,
+  PorchDrop,
   RelationshipState,
   SaveData,
 } from "../data/types";
@@ -321,6 +323,14 @@ export class GameState {
   harvestNodes: HarvestNodeInstance[] = seedHarvestNodes();
   /** uid → dayIndex when depleted; respawns after staggered multi-day delay. */
   harvestDepleted: Record<string, number> = {};
+  /** Flower tile "tx,ty" → dayIndex when picked (respawns next day). */
+  flowerDepleted: Record<string, number> = {};
+  /** Villagers living at the player's home. */
+  roommates: NpcId[] = [];
+  /** Goods left on the porch for the player to collect. */
+  porchDrops: PorchDrop[] = [];
+  /** Roommate id → dayIndex when last sent on a harvest errand. */
+  roommateErrandDay: Record<string, number> = {};
   /** First-visit toasts for forest / mine. */
   visitedGatherLots: Partial<Record<"forest" | "mine", boolean>> = {};
 
@@ -387,6 +397,61 @@ export class GameState {
 
   depleteHarvest(uid: string) {
     this.harvestDepleted[uid] = this.dayIndex;
+  }
+
+  flowerKey(tx: number, ty: number): string {
+    return `${tx},${ty}`;
+  }
+
+  isFlowerDepleted(tx: number, ty: number): boolean {
+    const day = this.flowerDepleted[this.flowerKey(tx, ty)];
+    if (day === undefined) return false;
+    return this.dayIndex < day + 1;
+  }
+
+  depleteFlower(tx: number, ty: number) {
+    this.flowerDepleted[this.flowerKey(tx, ty)] = this.dayIndex;
+  }
+
+  isRoommate(id: string): boolean {
+    return this.roommates.includes(id as NpcId);
+  }
+
+  addRoommate(id: NpcId): boolean {
+    if (this.isRoommate(id)) return false;
+    this.roommates.push(id);
+    return true;
+  }
+
+  removeRoommate(id: NpcId): boolean {
+    const before = this.roommates.length;
+    this.roommates = this.roommates.filter((r) => r !== id);
+    return this.roommates.length < before;
+  }
+
+  canSendRoommateErrand(id: string): boolean {
+    if (!this.isRoommate(id)) return false;
+    return this.roommateErrandDay[id] !== this.dayIndex;
+  }
+
+  markRoommateErrand(id: string) {
+    this.roommateErrandDay[id] = this.dayIndex;
+  }
+
+  addPorchDrop(drop: Omit<PorchDrop, "uid">): PorchDrop {
+    const full: PorchDrop = {
+      ...drop,
+      uid: `porch_${this.dayIndex}_${this.porchDrops.length}_${Math.floor(Math.random() * 9999)}`,
+    };
+    this.porchDrops.push(full);
+    return full;
+  }
+
+  takePorchDrop(uid: string): PorchDrop | null {
+    const i = this.porchDrops.findIndex((d) => d.uid === uid);
+    if (i < 0) return null;
+    const [drop] = this.porchDrops.splice(i, 1);
+    return drop ?? null;
   }
 
   constructor() {
@@ -496,6 +561,7 @@ export class GameState {
     after: number;
     becameFriend: boolean;
     becameClose: boolean;
+    becameBestie: boolean;
   } {
     const rel = this.relationships[npcId];
     if (!rel) {
@@ -504,6 +570,7 @@ export class GameState {
         after: 0,
         becameFriend: false,
         becameClose: false,
+        becameBestie: false,
       };
     }
     const before = rel.score;
@@ -515,6 +582,7 @@ export class GameState {
       becameFriend: before < friendThreshold && rel.score >= friendThreshold,
       becameClose:
         before < RELATIONSHIP_CLOSE && rel.score >= RELATIONSHIP_CLOSE,
+      becameBestie: before < RELATIONSHIP_MAX && rel.score >= RELATIONSHIP_MAX,
     };
   }
 
@@ -619,6 +687,9 @@ export class GameState {
         materials: { ...this.inventory.materials } as Record<string, number>,
       },
       harvestDepleted: { ...this.harvestDepleted },
+      flowerDepleted: { ...this.flowerDepleted },
+      roommates: [...this.roommates],
+      porchDrops: this.porchDrops.map((d) => ({ ...d })),
       player: {
         x: this.playerX,
         y: this.playerY,
@@ -717,6 +788,12 @@ export class GameState {
       }
     }
     this.harvestDepleted = { ...(data.harvestDepleted ?? {}) };
+    this.flowerDepleted = { ...(data.flowerDepleted ?? {}) };
+    this.roommates = (data.roommates ?? []).filter((id): id is NpcId =>
+      NPCS.some((n) => n.id === id),
+    );
+    this.porchDrops = (data.porchDrops ?? []).map((d) => ({ ...d }));
+    this.roommateErrandDay = {};
     this.playerName = data.player.name;
     const fallback = defaultPlayerProfile();
     this.playerLook = data.player.look

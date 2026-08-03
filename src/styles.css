@@ -5347,6 +5347,67 @@ input:focus-visible {
   gap: 0.4rem;
 }
 
+.ll-status-friends {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.ll-status-friend {
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: rgba(255, 248, 235, 0.72);
+  border: 1px solid rgba(80, 50, 30, 0.1);
+}
+
+.ll-status-friend.is-roommate {
+  border-color: rgba(78, 155, 58, 0.45);
+  background: rgba(196, 230, 170, 0.35);
+}
+
+.ll-status-friend-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--ll-ink);
+}
+
+.ll-status-friend-top span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ll-ink-soft);
+}
+
+.ll-status-friend-bar {
+  margin: 0.35rem 0 0.25rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: rgba(80, 50, 30, 0.12);
+  overflow: hidden;
+}
+
+.ll-status-friend-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #76c153, #4e9b3a);
+}
+
+.ll-status-friend-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--ll-ink-soft);
+}
+
 .ll-status-keys li {
   display: flex;
   flex-wrap: wrap;

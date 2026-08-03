@@ -131,6 +131,16 @@ function makeApple(): THREE.Group {
   return g;
 }
 
+function makeFlower(): THREE.Group {
+  const g = new THREE.Group();
+  addBox(g, matFlat(Palette.leaf), 0, 4, 0, 1.2, 8, 1.2);
+  addBlob(g, matSmooth(Palette.rose), 0, 9, 0, 3.2, 1, 0.7, 1);
+  addBlob(g, matSmooth(Palette.sunflower), 0, 9, 0, 1.4);
+  addBlob(g, matSmooth(Palette.roseDark), 2.2, 8.2, 0.8, 1.6, 1, 0.65, 1);
+  addBlob(g, matSmooth(Palette.lavender), -2, 8.4, -0.6, 1.5, 1, 0.65, 1);
+  return g;
+}
+
 const toolMakers: Record<ToolId, () => THREE.Group> = {
   axe: makeAxe,
   pickaxe: makePickaxe,
@@ -146,6 +156,7 @@ const materialMakers: Record<MaterialId, () => THREE.Group> = {
   clay: makeClay,
   fish: makeFish,
   apple: makeApple,
+  flower: makeFlower,
 };
 
 export type InventoryThumbId = `tool:${ToolId}` | `mat:${MaterialId}`;

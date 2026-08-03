@@ -4,6 +4,7 @@ import {
   RELATIONSHIP_CLOSE,
   RELATIONSHIP_CRUSH,
   RELATIONSHIP_FRIEND,
+  RELATIONSHIP_MAX,
 } from "../data/npcs";
 
 export type RelationshipTier =
@@ -11,13 +12,15 @@ export type RelationshipTier =
   | "acquaintance"
   | "friend"
   | "close"
-  | "crush";
+  | "crush"
+  | "bestie";
 
 export function tierFromScore(
   score: number,
   met: boolean,
   flirtCount: number,
 ): RelationshipTier {
+  if (score >= RELATIONSHIP_MAX) return "bestie";
   if (!met && score <= 0) return "stranger";
   if (
     score >= RELATIONSHIP_CLOSE &&
@@ -34,6 +37,8 @@ export function tierFromScore(
 
 export function tierLabel(tier: RelationshipTier): string {
   switch (tier) {
+    case "bestie":
+      return "Best friend";
     case "crush":
       return "Crush";
     case "close":
@@ -154,6 +159,19 @@ export function crushUnlockLine(npcId: ChatNpcId): string {
     theo: "I -  ahem. Your company is… distracting. In a good way.",
     sage: "My pulse just did something unprofessional. Ignore that.",
     reed: "Huh. Usually I notice wood grain first. Not today.",
+  };
+  return lines[npcId];
+}
+
+export function bestieUnlockLine(npcId: ChatNpcId): string {
+  const lines: Record<ChatNpcId, string> = {
+    mabel: "You're family now. Truly. My spare key is yours if you ever need a warm kitchen.",
+    jun: "Best-friend status unlocked. Your usual is on the house - forever, basically.",
+    pip: "Park pals for life. Want to plant a whole meadow together someday?",
+    vera: "Fine. Best friends get the real ledger. Don't make me regret trusting you.",
+    theo: "I save the quietest corner of the library for you. That's… everything.",
+    sage: "You've become someone I lean on. That's rare. Hold onto it.",
+    reed: "Best friends get first pick of the scrap maple - and a spot on the workbench.",
   };
   return lines[npcId];
 }

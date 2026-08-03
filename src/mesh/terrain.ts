@@ -103,9 +103,19 @@ function grassCloudTint(tx: number, ty: number): number {
 }
 
 /** Build merged terrain mesh + decorative props for the town. */
-export function buildTerrain(map: TownMapData): THREE.Group {
+export interface FlowerHandle {
+  tx: number;
+  ty: number;
+  root: THREE.Object3D;
+}
+
+export function buildTerrain(map: TownMapData): {
+  group: THREE.Group;
+  flowers: FlowerHandle[];
+} {
   const root = new THREE.Group();
   root.name = "terrain";
+  const flowers: FlowerHandle[] = [];
 
   const geoCache = new Map<string, THREE.BufferGeometry>();
   const box = (w: number, h: number, d: number) => {
@@ -323,8 +333,10 @@ export function buildTerrain(map: TownMapData): THREE.Group {
           flower.position.set(cx, height - 0.5, cz);
           flower.rotation.y = noise(tx, ty) * Math.PI * 2;
           flower.scale.setScalar(0.85 + noise(ty, tx) * 0.3);
+          flower.userData.flowerTile = `${tx},${ty}`;
           addOutline(flower, 1.05);
           root.add(flower);
+          flowers.push({ tx, ty, root: flower });
         }
       }
       if (code === Tile.bush) {
@@ -408,7 +420,7 @@ export function buildTerrain(map: TownMapData): THREE.Group {
     for (const g of geos) g.dispose();
   }
 
-  return root;
+  return { group: root, flowers };
 }
 
 function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry | null {

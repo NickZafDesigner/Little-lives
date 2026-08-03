@@ -7,7 +7,7 @@ import { Palette } from "../game/palette";
 import { TILE, GAME_WIDTH, GAME_HEIGHT, CAM_OFFSET_X, CAM_OFFSET_Z } from "../game/constants";
 import type { LotId } from "../data/types";
 import { MAP_H, MAP_W, type TownMapData } from "../world/townMap";
-import { buildTerrain } from "../mesh/terrain";
+import { buildTerrain, type FlowerHandle } from "../mesh/terrain";
 import {
   buildBuildings,
   playerInsideBuilding,
@@ -61,6 +61,7 @@ export class TownRenderer {
     | ((dt: number, playerX: number, playerZ: number) => void)
     | null = null;
   private signs: SignHandle[] = [];
+  private flowerHandles: FlowerHandle[] = [];
   private follow = new THREE.Vector3();
   private followTarget = new THREE.Vector3();
   /**
@@ -223,7 +224,8 @@ export class TownRenderer {
   buildWorld(map: TownMapData) {
     if (this.worldBuilt) return;
     const terrain = buildTerrain(map);
-    this.scene.add(terrain);
+    this.scene.add(terrain.group);
+    this.flowerHandles = terrain.flowers;
     const built = buildBuildings();
     // No inverted-hull outlines on buildings - they turn every wall/window
     // box into a dark border. Silhouette comes from toon lighting + roof mass.
@@ -239,6 +241,10 @@ export class TownRenderer {
 
   getSigns(): SignHandle[] {
     return this.signs;
+  }
+
+  getFlowerHandles(): FlowerHandle[] {
+    return this.flowerHandles;
   }
 
   setFollow(x: number, z: number) {

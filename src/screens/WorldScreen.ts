@@ -29,10 +29,13 @@ import {
 } from "../data/ambientNpcs";
 import {
   DIALOGUE_TONES,
+  FLOWER_GIFT_BASE,
+  FLOWER_GIFT_PREFERENCE,
   NPCS,
   RELATIONSHIP_CLOSE,
   RELATIONSHIP_CRUSH,
   RELATIONSHIP_FRIEND,
+  RELATIONSHIP_MAX,
   SOCIAL_ACTIONS,
   TONE_RECEPTIVENESS,
 } from "../data/npcs";
@@ -58,6 +61,7 @@ import {
   materialById,
   rollHarvestYields,
   toolById,
+  type MaterialId,
   type ToolId,
 } from "../data/items";
 import type {
@@ -90,6 +94,7 @@ import { QuestSystem } from "../systems/QuestSystem";
 import {
   closeFriendUnlockLine,
   crushUnlockLine,
+  bestieUnlockLine,
   EXCLUSIVE_HANGOUTS,
   tierFromScore,
   tierLabel,
@@ -154,6 +159,8 @@ import { InteractionMenu, type MenuOption } from "../ui/InteractionMenu";
 import { muteButtonHtml, wireMute } from "../ui/mute";
 import { Audio } from "../audio/AudioManager";
 import { WetTrail, WET_TRAIL_INDOOR_Y, WET_TRAIL_OUTDOOR_Y } from "../fx/WetTrail";
+import { LootBurst } from "../fx/LootBurst";
+import { createInventoryItemMesh } from "../mesh/inventoryItems";
 
 interface NpcRuntime {
   id: string;
@@ -165,7 +172,7 @@ interface NpcRuntime {
   ambient?: boolean;
 }
 
-type TargetKind = "furniture" | "npc" | "pet" | "sign" | "harvest";
+type TargetKind = "furniture" | "npc" | "pet" | "sign" | "harvest" | "flower" | "porch";
 
 interface Target {
   kind: TargetKind;
@@ -210,6 +217,7 @@ export function createWorldScreen(
   let pet: PetHandle | null = null;
   let furnitureMeshes = new Map<string, THREE.Group>();
   let harvestHandles = new Map<string, HarvestMeshHandle>();
+  let porchMeshes = new Map<string, THREE.Group>();
   let lastHarvestDay = -1;
   /** Live shrink/tip while harvesting a node (trees especially). */
   let harvestAnim: {
@@ -280,6 +288,7 @@ export function createWorldScreen(
   /** Tight face zoom after a bladder accident. */
   let wetFaceUntil = 0;
   let wetTrail: WetTrail | null = null;
+  let lootBurst: LootBurst | null = null;
   let keyLatch = new Set<string>();
   let onPointerMove: ((e: PointerEvent) => void) | null = null;
   let onWheel: ((e: WheelEvent) => void) | null = null;
@@ -643,6 +652,61 @@ export function createWorldScreen(
     }
   };
 
+  const syncFlowerVisuals = () => {
+    for (const handle of app.renderer.getFlowerHandles()) {
+      handle.root.visible = !state.isFlowerDepleted(handle.tx, handle.ty);
+    }
+  };
+
+  const clearPorchMeshes = () => {
+    for (const mesh of porchMeshes.values()) {
+      app.renderer.remove(mesh);
+    }
+    porchMeshes.clear();
+  };
+
+  const spawnPorchMesh = (uid: string, itemId: MaterialId, x: number, z: number) => {
+    const existing = porchMeshes.get(uid);
+    if (existing) {
+      app.renderer.remove(existing);
+      porchMeshes.delete(uid);
+    }
+    const mesh = createInventoryItemMesh(`mat:${itemId}`);
+    mesh.scale.setScalar(0.7);
+    mesh.position.set(x, 2.4, z);
+    mesh.userData.porchUid = uid;
+    mesh.castShadow = true;
+    app.renderer.add(mesh);
+    porchMeshes.set(uid, mesh);
+  };
+
+  const syncPorchVisuals = () => {
+    const keep = new Set(state.porchDrops.map((d) => d.uid));
+    for (const [uid, mesh] of porchMeshes) {
+      if (!keep.has(uid)) {
+        app.renderer.remove(mesh);
+        porchMeshes.delete(uid);
+      }
+    }
+    for (const drop of state.porchDrops) {
+      if (!porchMeshes.has(drop.uid)) {
+        spawnPorchMesh(drop.uid, drop.itemId as MaterialId, drop.x, drop.z);
+      }
+    }
+  };
+
+  const porchSpawnPoint = (index: number): { x: number; z: number } => {
+    const door = lotDoorWorld("home");
+    const baseX = door?.x ?? 8 * TILE;
+    const baseZ = door?.z ?? 15 * TILE;
+    const col = index % 4;
+    const row = Math.floor(index / 4);
+    return {
+      x: baseX + (col - 1.5) * 10,
+      z: baseZ + 18 + row * 10,
+    };
+  };
+
   const updateHarvestAnim = () => {
     if (!harvestAnim) return;
     const handle = harvestHandles.get(harvestAnim.uid);
@@ -842,6 +906,33 @@ export function createWorldScreen(
         z: (node.ty + fp / 2) * TILE,
       });
     }
+    for (const handle of app.renderer.getFlowerHandles()) {
+      if (state.isFlowerDepleted(handle.tx, handle.ty)) continue;
+      out.push({
+        kind: "flower",
+        id: `${handle.tx},${handle.ty}`,
+        label: "Wildflower",
+        tiles: [{ x: handle.tx, y: handle.ty }],
+        x: handle.tx * TILE + TILE / 2,
+        z: handle.ty * TILE + TILE / 2,
+      });
+    }
+    for (const drop of state.porchDrops) {
+      const mat = materialById[drop.itemId as MaterialId];
+      out.push({
+        kind: "porch",
+        id: drop.uid,
+        label: mat?.name ?? "Delivery",
+        tiles: [
+          {
+            x: Math.floor(drop.x / TILE),
+            y: Math.floor(drop.z / TILE),
+          },
+        ],
+        x: drop.x,
+        z: drop.z,
+      });
+    }
     // Indoor ↔ outdoor: only tip / interact with things in the same space.
     // Walking past a house must not autofocus sofas, beds, or people inside.
     const playerLot = app.renderer.buildingLotAt(playerX, playerZ);
@@ -880,6 +971,10 @@ export function createWorldScreen(
     for (const handle of harvestHandles.values()) {
       if (handle.root.visible) out.push(handle.root);
     }
+    for (const handle of app.renderer.getFlowerHandles()) {
+      if (handle.root.visible) out.push(handle.root);
+    }
+    for (const mesh of porchMeshes.values()) out.push(mesh);
     for (const npc of npcs) out.push(npc.actor.root);
     if (pet) out.push(pet.root);
     for (const sign of app.renderer.getSigns()) out.push(sign.root);
@@ -899,6 +994,18 @@ export function createWorldScreen(
         return (
           targets.find((t) => t.kind === "harvest" && t.id === harvestUid) ??
           null
+        );
+      }
+      const flowerTile = cur.userData.flowerTile as string | undefined;
+      if (flowerTile) {
+        return (
+          targets.find((t) => t.kind === "flower" && t.id === flowerTile) ?? null
+        );
+      }
+      const porchUid = cur.userData.porchUid as string | undefined;
+      if (porchUid) {
+        return (
+          targets.find((t) => t.kind === "porch" && t.id === porchUid) ?? null
         );
       }
       const npcId = cur.userData.npcId as string | undefined;
@@ -953,6 +1060,8 @@ export function createWorldScreen(
       const node = state.harvestNodes.find((n) => n.uid === t.id);
       return harvestFootprint(node?.defId ?? "") >= 2 ? 56 : 36;
     }
+    if (t.kind === "flower") return 22;
+    if (t.kind === "porch") return 18;
     return 28;
   };
 
@@ -961,6 +1070,8 @@ export function createWorldScreen(
     if (t.kind === "npc") return "Talk";
     if (t.kind === "pet") return "Cuddle";
     if (t.kind === "sign") return "Read";
+    if (t.kind === "flower") return "Pick";
+    if (t.kind === "porch") return "Collect";
     if (t.kind === "harvest") {
       const node = state.harvestNodes.find((n) => n.uid === t.id);
       const def = node ? harvestNodeById[node.defId] : null;
@@ -1412,6 +1523,7 @@ export function createWorldScreen(
     result: {
       becameFriend: boolean;
       becameClose: boolean;
+      becameBestie?: boolean;
     },
     defName: string,
   ) => {
@@ -1429,6 +1541,14 @@ export function createWorldScreen(
         npcId as NpcId,
         defName,
         closeFriendUnlockLine(npcId as ChatNpcId),
+      );
+    } else if (result.becameBestie) {
+      Audio.sfx("success");
+      confetti.burst("big");
+      state.showDialogue(
+        npcId as NpcId,
+        defName,
+        bestieUnlockLine(npcId as ChatNpcId),
       );
     }
     aspirations.refresh();
@@ -1523,6 +1643,14 @@ export function createWorldScreen(
       beginHarvest(target);
       return;
     }
+    if (target.kind === "flower") {
+      beginFlowerPick(target);
+      return;
+    }
+    if (target.kind === "porch") {
+      beginPorchPickup(target);
+      return;
+    }
     const furn = state.furniture.find((f) => f.uid === target.id);
     if (furn) openFurnitureMenu(furn, screen.x, screen.y);
   };
@@ -1592,20 +1720,142 @@ export function createWorldScreen(
       if (state.isHarvestDepleted(node.uid)) return;
       const yields = rollHarvestYields(def);
       const parts: string[] = [];
+      const remaining = new Map<MaterialId, number>();
       for (const y of yields) {
-        state.addMaterial(y.itemId, y.count);
         const mat = materialById[y.itemId];
         parts.push(`+${y.count} ${mat?.name ?? y.itemId}`);
+        remaining.set(y.itemId, (remaining.get(y.itemId) ?? 0) + y.count);
       }
       state.depleteHarvest(node.uid);
       state.needs = applyNeedDeltas(state.needs, { energy: -4 });
       rebuildCollision();
       syncHarvestVisuals();
       Audio.sfx("success");
-      state.showToast(
-        parts.length ? parts.join(" · ") : "Nothing this time.",
-        2600,
-      );
+
+      const fp = harvestFootprint(node.defId);
+      const cx = (node.tx + fp / 2) * TILE;
+      const cz = (node.ty + fp / 2) * TILE;
+      const originY = def.kind === "tree" ? 36 : 14;
+
+      const finishLoot = () => {
+        for (const [itemId, count] of remaining) {
+          if (count > 0) state.addMaterial(itemId, count);
+        }
+        remaining.clear();
+        player.playReaction("jump");
+        Audio.sfx("chime");
+        confetti.burst(def.kind === "tree" ? "big" : "soft");
+        state.showToast(
+          parts.length ? parts.join(" · ") : "Nothing this time.",
+          2800,
+        );
+      };
+
+      if (!lootBurst || !yields.length) {
+        finishLoot();
+        return;
+      }
+
+      confetti.burst("soft");
+      lootBurst.spawn(cx, originY, cz, yields, {
+        onPieceCollect: (itemId) => {
+          const left = remaining.get(itemId) ?? 0;
+          if (left <= 0) return;
+          remaining.set(itemId, left - 1);
+          state.addMaterial(itemId, 1);
+          Audio.sfx("coin");
+        },
+        onComplete: finishLoot,
+      });
+    });
+  };
+
+  const beginFlowerPick = (target: Target) => {
+    const [txS, tyS] = target.id.split(",");
+    const tx = Number(txS);
+    const ty = Number(tyS);
+    if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
+    if (state.isFlowerDepleted(tx, ty)) return;
+    Audio.sfx("interact");
+    const cx = tx * TILE + TILE / 2;
+    const cz = ty * TILE + TILE / 2;
+    const dx = cx - playerX;
+    const dz = cz - playerZ;
+    if (Math.abs(dx) > Math.abs(dz)) playerDir = dx > 0 ? "right" : "left";
+    else playerDir = dz > 0 ? "down" : "up";
+    player.setFacing(playerDir);
+    player.setWalking(false);
+    const duration = 900;
+    state.startBusy("Picking", duration);
+    delayed(duration, () => {
+      if (state.isFlowerDepleted(tx, ty)) return;
+      const count = 1 + (Math.random() < 0.35 ? 1 : 0);
+      state.depleteFlower(tx, ty);
+      syncFlowerVisuals();
+      Audio.sfx("success");
+      quests.emit("picked_flowers");
+      const yields = [{ itemId: "flower" as MaterialId, count }];
+      const remaining = { n: count };
+      const finish = () => {
+        if (remaining.n > 0) state.addMaterial("flower", remaining.n);
+        remaining.n = 0;
+        player.playReaction("jump");
+        Audio.sfx("chime");
+        confetti.burst("soft");
+        state.showToast(`+${count} Wildflower${count > 1 ? "s" : ""}`, 2200);
+      };
+      if (!lootBurst) {
+        finish();
+        return;
+      }
+      lootBurst.spawn(cx, 10, cz, yields, {
+        onPieceCollect: () => {
+          if (remaining.n <= 0) return;
+          remaining.n -= 1;
+          state.addMaterial("flower", 1);
+          Audio.sfx("coin");
+        },
+        onComplete: finish,
+      });
+    });
+  };
+
+  const beginPorchPickup = (target: Target) => {
+    const drop = state.porchDrops.find((d) => d.uid === target.id);
+    if (!drop) return;
+    Audio.sfx("interact");
+    state.startBusy("Collecting", 600);
+    delayed(600, () => {
+      const taken = state.takePorchDrop(target.id);
+      if (!taken) return;
+      syncPorchVisuals();
+      const itemId = taken.itemId as MaterialId;
+      const count = taken.count;
+      const remaining = { n: count };
+      const finish = () => {
+        if (remaining.n > 0) state.addMaterial(itemId, remaining.n);
+        remaining.n = 0;
+        Audio.sfx("chime");
+        confetti.burst("soft");
+        const mat = materialById[itemId];
+        state.showToast(
+          `+${count} ${mat?.name ?? itemId}`,
+          2200,
+        );
+      };
+      if (!lootBurst) {
+        finish();
+        return;
+      }
+      lootBurst.spawn(taken.x, 8, taken.z, [{ itemId, count }], {
+        onPieceCollect: () => {
+          if (remaining.n <= 0) return;
+          remaining.n -= 1;
+          state.addMaterial(itemId, 1);
+          Audio.sfx("coin");
+        },
+        onComplete: finish,
+      });
     });
   };
 
@@ -1815,8 +2065,10 @@ export function createWorldScreen(
         Audio.sfx("interact");
         state.startBusy("Picking wildflowers", 1100);
         delayed(1100, () => {
+          state.addMaterial("flower", 2);
           Audio.sfx("success");
-          state.showToast("A little bouquet of park flowers - perfect.");
+          confetti.burst("soft");
+          state.showToast("+2 Wildflowers — a little park bouquet.", 2600);
           quests.emit("picked_flowers");
         });
         return;
@@ -2607,6 +2859,20 @@ export function createWorldScreen(
       const locked = minScore !== undefined && rel.score < minScore;
       const socialBlock = socialBlockedReason(state.needs, state.isWet);
       const tired = a.id === "hangout" && socialBlock !== null;
+      if (a.id === "gift_flower") {
+        const flowers = state.materialCount("flower");
+        const bonus = FLOWER_GIFT_PREFERENCE[npcId] ?? 0;
+        options.push({
+          id: a.id,
+          label: a.label,
+          sub:
+            flowers < 1
+              ? "Need wildflowers"
+              : `+${FLOWER_GIFT_BASE + bonus} friendship`,
+          disabled: flowers < 1,
+        });
+        continue;
+      }
       options.push({
         id: a.id,
         label: a.label,
@@ -2627,13 +2893,36 @@ export function createWorldScreen(
       rel.met,
       state.flirtCounts[npcId] ?? 0,
     );
-    if (tier === "close" || tier === "crush") {
+    if (tier === "close" || tier === "crush" || tier === "bestie") {
       const exclusive = EXCLUSIVE_HANGOUTS[npcId];
       options.push({
         id: exclusive.id,
         label: exclusive.label,
         sub: socialBlock ?? exclusive.sub,
         disabled: socialBlock !== null,
+      });
+    }
+
+    if (state.isRoommate(npcId)) {
+      const canErrand = state.canSendRoommateErrand(npcId);
+      options.push({
+        id: "roommate_errand",
+        label: "Go harvest for me",
+        sub: canErrand
+          ? "Leave a haul by the porch"
+          : "Already gathered today",
+        disabled: !canErrand,
+      });
+      options.push({
+        id: "roommate_move_out",
+        label: "Ask to move out",
+        sub: "Back to their own place",
+      });
+    } else if (rel.score >= RELATIONSHIP_MAX) {
+      options.push({
+        id: "roommate_move_in",
+        label: "Ask to move in",
+        sub: "Live with you at home",
       });
     }
 
@@ -2647,6 +2936,71 @@ export function createWorldScreen(
       (id) => {
         if (id === "chat") {
           startChat(npcId, def.name);
+          return;
+        }
+        if (id === "roommate_move_in") {
+          holdNpcStill(npcId);
+          Audio.sfx("talk");
+          state.startBusy("Asking…", 1000);
+          delayed(1000, () => {
+            state.addRoommate(npcId);
+            Audio.sfx("success");
+            confetti.burst("big");
+            state.showDialogue(
+              npcId,
+              def.name,
+              "I'd love to! I'll settle in at your place - chat anytime, and send me out gathering when you need a haul.",
+            );
+            state.showToast(`${def.name} moved in with you!`, 3200);
+            player.playReaction("jump");
+          });
+          return;
+        }
+        if (id === "roommate_move_out") {
+          holdNpcStill(npcId);
+          Audio.sfx("talk");
+          state.startBusy("Talking it over", 900);
+          delayed(900, () => {
+            state.removeRoommate(npcId);
+            Audio.sfx("chime");
+            state.showDialogue(
+              npcId,
+              def.name,
+              "Of course. I'll head back to my usual spot - still friends, always.",
+            );
+            state.showToast(`${def.name} moved back out.`, 2800);
+          });
+          return;
+        }
+        if (id === "roommate_errand") {
+          if (!state.canSendRoommateErrand(npcId)) {
+            Audio.sfx("deny");
+            state.showToast("They already gathered for you today.");
+            return;
+          }
+          holdNpcStill(npcId);
+          Audio.sfx("talk");
+          state.markRoommateErrand(npcId);
+          state.startBusy(`${def.name} is gathering…`, 3200);
+          delayed(3200, () => {
+            const pool: MaterialId[] = ["wood", "apple", "flower", "clay"];
+            const drops = 2 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < drops; i++) {
+              const itemId = pool[Math.floor(Math.random() * pool.length)]!;
+              const count = 1 + Math.floor(Math.random() * 2);
+              const pos = porchSpawnPoint(state.porchDrops.length);
+              state.addPorchDrop({ itemId, count, x: pos.x, z: pos.z });
+            }
+            syncPorchVisuals();
+            Audio.sfx("success");
+            confetti.burst("soft");
+            state.showDialogue(
+              npcId,
+              def.name,
+              "All done! I left everything by your porch - go scoop it up whenever.",
+            );
+            state.showToast(`${def.name} left a haul on your porch!`, 3200);
+          });
           return;
         }
         if (id === "food_chat") {
@@ -2961,7 +3315,11 @@ export function createWorldScreen(
             if (becameCrush) {
               Audio.sfx("success");
               state.showDialogue(npcId, def.name, crushUnlockLine(npcId));
-            } else if (result.becameFriend || result.becameClose) {
+            } else if (
+              result.becameFriend ||
+              result.becameClose ||
+              result.becameBestie
+            ) {
               noteFriendshipGain(npcId, result, def.name);
             } else {
               Audio.sfx(raw < 0 ? "deny" : "chime");
@@ -3020,6 +3378,14 @@ export function createWorldScreen(
             return;
           }
         }
+        if (action.id === "gift_flower") {
+          if (state.materialCount("flower") < 1) {
+            Audio.sfx("deny");
+            state.showToast("You need wildflowers first.");
+            return;
+          }
+          state.removeMaterial("flower", 1);
+        }
         const cost = "cost" in action ? action.cost : undefined;
         if (cost !== undefined) {
           if (state.money < cost) return;
@@ -3040,16 +3406,24 @@ export function createWorldScreen(
             action.id === "joke" && hasTrait(state.playerTraits, "Goofy")
               ? 1.25
               : 1;
+          const flowerBonus =
+            action.id === "gift_flower"
+              ? FLOWER_GIFT_PREFERENCE[npcId] ?? 0
+              : 0;
           const result = state.adjustRelationship(
             npcId,
-            Math.round(action.delta * mult * goofyBoost),
+            Math.round((action.delta + flowerBonus) * mult * goofyBoost),
             RELATIONSHIP_FRIEND,
           );
           state.needs = applyNeedDeltas(state.needs, {
             social: action.needSocial,
             fun: "needFun" in action ? action.needFun : 0,
           });
-          if (result.becameFriend || result.becameClose) {
+          if (
+            result.becameFriend ||
+            result.becameClose ||
+            result.becameBestie
+          ) {
             noteFriendshipGain(npcId, result, def.name);
           } else {
             Audio.sfx("chime");
@@ -3058,14 +3432,20 @@ export function createWorldScreen(
                 ? hasTrait(state.playerTraits, "Goofy")
                   ? ["I'm crying - that was ridiculous!", "Goofy genius!"]
                   : ["Ha! That one got me.", "Okay, that was actually funny."]
-                : action.id === "gift"
-                  ? ["Aww, you shouldn't have!", "This is so sweet of you."]
-                  : action.id === "hangout"
-                    ? [
-                        "This was lovely. Same time tomorrow?",
-                        "I needed that. Thanks for hanging out!",
-                      ]
-                    : ["Lovely to see you!", "Hey hey! What's new?"];
+                : action.id === "gift_flower"
+                  ? [
+                      "Wildflowers! You remembered how much I love these.",
+                      "A little bouquet just for me? You're sweet.",
+                      "These brighten the whole day. Thank you!",
+                    ]
+                  : action.id === "gift"
+                    ? ["Aww, you shouldn't have!", "This is so sweet of you."]
+                    : action.id === "hangout"
+                      ? [
+                          "This was lovely. Same time tomorrow?",
+                          "I needed that. Thanks for hanging out!",
+                        ]
+                      : ["Lovely to see you!", "Hey hey! What's new?"];
             const line = lines[Math.floor(Math.random() * lines.length)]!;
             state.showDialogue(npcId, def.name, line);
           }
@@ -4097,6 +4477,8 @@ export function createWorldScreen(
         harvestHandles.clear();
         for (const h of built.handles) harvestHandles.set(h.uid, h);
         syncHarvestVisuals();
+        syncFlowerVisuals();
+        syncPorchVisuals();
       }
       for (const key of state.walls) {
         const [tx, ty] = key.split(",").map(Number);
@@ -4112,7 +4494,14 @@ export function createWorldScreen(
         ...NPCS.map((def) => {
           const actor = createNpcActor(def.color);
           actor.root.userData.npcId = def.id;
-          const stand = snapNpcStand(def.spawnTx, def.spawnTy);
+          const homeLot = LOTS.find((l) => l.id === "home")!;
+          const spawnTx = state.isRoommate(def.id)
+            ? homeLot.tx + 2 + Math.floor(Math.random() * (homeLot.tw - 4))
+            : def.spawnTx;
+          const spawnTy = state.isRoommate(def.id)
+            ? homeLot.ty + 2 + Math.floor(Math.random() * (homeLot.th - 4))
+            : def.spawnTy;
+          const stand = snapNpcStand(spawnTx, spawnTy);
           const x = stand.x * TILE + TILE / 2;
           const z = stand.y * TILE + TILE / 2;
           actor.setPosition(x, z);
@@ -4177,6 +4566,11 @@ export function createWorldScreen(
           }
           return WET_TRAIL_OUTDOOR_Y;
         },
+      );
+      lootBurst = new LootBurst(
+        (o) => app.renderer.add(o),
+        (o) => app.renderer.remove(o),
+        () => ({ x: playerX, y: 14, z: playerZ }),
       );
       workMini = new WorkMinigame(ui);
       playMini = new PlayMinigame(ui);
@@ -4330,6 +4724,9 @@ export function createWorldScreen(
       payCelebration?.destroy();
       wetTrail?.dispose();
       wetTrail = null;
+      lootBurst?.dispose();
+      lootBurst = null;
+      clearPorchMeshes();
       hoveredNpcId = null;
       interactTip?.hide();
       menu?.destroy();
@@ -4577,6 +4974,7 @@ export function createWorldScreen(
       state.playerX = playerX;
       state.playerY = playerZ;
       wetTrail?.update(dt, playerX, playerZ, state.isWet);
+      lootBurst?.update(dt);
 
       // NPCs
       const now = performance.now();
@@ -4605,12 +5003,14 @@ export function createWorldScreen(
         if (npc.path.length === 0) {
           npc.waitUntil = now + 1400 + Math.random() * 2200;
           const def = NPCS.find((n) => n.id === npc.id)!;
-          // Evenings: linger at the park; nights: head home; work hours: home lot
-          let lotId = def.homeLot;
-          if (isEvening(state.dayTime) && Math.random() < 0.55) {
-            lotId = "park";
-          } else if (isNight(state.dayTime)) {
-            lotId = def.homeLot;
+          // Roommates linger at the player's home; others keep their schedule.
+          let lotId = state.isRoommate(npc.id) ? "home" : def.homeLot;
+          if (!state.isRoommate(npc.id)) {
+            if (isEvening(state.dayTime) && Math.random() < 0.55) {
+              lotId = "park";
+            } else if (isNight(state.dayTime)) {
+              lotId = def.homeLot;
+            }
           }
           const lot = LOTS.find((l) => l.id === lotId)!;
           const goal = {
@@ -4727,6 +5127,7 @@ export function createWorldScreen(
         lastHarvestDay = state.dayIndex;
         rebuildCollision();
         syncHarvestVisuals();
+        syncFlowerVisuals();
       }
       syncInteractTip();
 
