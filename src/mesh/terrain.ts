@@ -6,6 +6,8 @@ import { matSmooth, matFlat } from "./materials";
 import {
   grassTexture,
   pathTexture,
+  parkPathTexture,
+  sandTexture,
   woodFloorTexture,
   waterTexture,
 } from "./terrainTextures";
@@ -31,6 +33,10 @@ const TILE_COLORS: Record<number, number> = {
   [Tile.marketFloor]: Palette.market,
   [Tile.libraryFloor]: Palette.library,
   [Tile.clinicFloor]: Palette.clinic,
+  [Tile.workshopFloor]: Palette.workshop,
+  [Tile.pierDeck]: Palette.pier,
+  [Tile.rock]: Palette.rock,
+  [Tile.dirt]: Palette.dirt,
 };
 
 const INTERIOR_FLOOR = new Set<number>([
@@ -43,6 +49,7 @@ const INTERIOR_FLOOR = new Set<number>([
   Tile.marketFloor,
   Tile.libraryFloor,
   Tile.clinicFloor,
+  Tile.workshopFloor,
 ]);
 
 function shadeFloor(color: number): number {
@@ -191,6 +198,7 @@ export function buildTerrain(map: TownMapData): THREE.Group {
         Tile.marketFloor,
         Tile.libraryFloor,
         Tile.clinicFloor,
+        Tile.workshopFloor,
       ] as const;
       if ((INTERIOR as readonly number[]).includes(code) && (tx + ty) % 2 === 0) {
         color = shadeFloor(color);
@@ -245,9 +253,19 @@ export function buildTerrain(map: TownMapData): THREE.Group {
         const n = noise(tx * 1.7, ty * 2.3);
         if (code === Tile.grass && n > 0.62) color = Palette.grassLight;
         if (code === Tile.grassVar && n < 0.35) color = Palette.grassDark;
-      } else if (code === Tile.path || code === Tile.parkPath) {
+      } else if (code === Tile.path || code === Tile.parkPath || code === Tile.pierDeck) {
         height = 2.0;
         y = height / 2 - 1;
+      } else if (code === Tile.rock) {
+        height = 2.15;
+        y = height / 2 - 1;
+        const n = noise(tx * 2.1, ty * 1.9);
+        if (n > 0.55) color = Palette.rockDark;
+      } else if (code === Tile.dirt) {
+        height = 2.05;
+        y = height / 2 - 1;
+        const n = noise(tx * 1.4, ty * 1.8);
+        if (n > 0.6) color = Palette.dirtDark;
       } else if (code === Tile.sand) {
         height = 1.8;
         y = height / 2 - 1;
@@ -263,7 +281,9 @@ export function buildTerrain(map: TownMapData): THREE.Group {
 
       const isGrass =
         code === Tile.grass || code === Tile.grassVar || code === Tile.flower;
-      const isPath = code === Tile.path || code === Tile.parkPath;
+      const isPath = code === Tile.path;
+      const isParkPath = code === Tile.parkPath || code === Tile.pierDeck;
+      const isSand = code === Tile.sand;
       const isWood =
         code === Tile.floor ||
         code === Tile.floorAlt ||
@@ -271,14 +291,19 @@ export function buildTerrain(map: TownMapData): THREE.Group {
         code === Tile.shelterFloor ||
         code === Tile.marketFloor ||
         code === Tile.libraryFloor ||
-        code === Tile.clinicFloor;
+        code === Tile.clinicFloor ||
+        code === Tile.workshopFloor;
       const tex = isGrass
         ? grassTexture()
         : isPath
           ? pathTexture()
-          : isWood
-            ? woodFloorTexture()
-            : undefined;
+          : isParkPath
+            ? parkPathTexture()
+            : isSand
+              ? sandTexture()
+              : isWood
+                ? woodFloorTexture()
+                : undefined;
       // Grass: multiply texture by large-scale cloud-shadow tint (batched buckets).
       const grassColor = isGrass ? grassCloudTint(tx, ty) : color;
       const tileMat =
@@ -286,7 +311,9 @@ export function buildTerrain(map: TownMapData): THREE.Group {
         code === Tile.grassVar ||
         code === Tile.flower ||
         code === Tile.sand
-          ? matSmooth(tex ? grassColor : color, { map: tex })
+          ? matSmooth(tex ? (isGrass ? grassColor : 0xffffff) : color, {
+              map: tex,
+            })
           : matFlat(tex ? 0xffffff : color, { map: tex });
       addBox(tileMat, cx, y, cz, size, height, size);
 

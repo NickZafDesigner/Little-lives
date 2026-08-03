@@ -4,7 +4,8 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { Palette } from "../game/palette";
-import { TILE, GAME_WIDTH, GAME_HEIGHT } from "../game/constants";
+import { TILE, GAME_WIDTH, GAME_HEIGHT, CAM_OFFSET_X, CAM_OFFSET_Z } from "../game/constants";
+import type { LotId } from "../data/types";
 import { MAP_H, MAP_W, type TownMapData } from "../world/townMap";
 import { buildTerrain } from "../mesh/terrain";
 import {
@@ -80,10 +81,10 @@ export class TownRenderer {
   /** True while the follow target is inside a building footprint. */
   private indoors = false;
   /** Thought / dialogue close-up (below FRUSTUM_MIN). Soft enough to avoid hard cuts. */
-  static readonly FRUSTUM_FOCUS = 260;
+  static readonly FRUSTUM_FOCUS = 175;
   /** Extra-tight face close-up (bladder accident / embarrassment). */
-  static readonly FRUSTUM_FACE = 150;
-  static readonly FACE_FRAME_Y = 0.55;
+  static readonly FRUSTUM_FACE = 115;
+  static readonly FACE_FRAME_Y = 0.58;
   /**
    * Focus framing: shift the ortho window so the follow point sits lower-center,
    * leaving headroom above for thought bubbles. Values are fractions of half-frustum.
@@ -93,7 +94,7 @@ export class TownRenderer {
   private frameShiftY = 0;
   private frameShiftXTarget = 0;
   private frameShiftYTarget = 0;
-  static readonly FOCUS_FRAME_Y = 0.38;
+  static readonly FOCUS_FRAME_Y = 0.44;
   static readonly FOCUS_FRAME_X = 0;
   private viewWidth = GAME_WIDTH;
   private viewHeight = GAME_HEIGHT;
@@ -110,7 +111,7 @@ export class TownRenderer {
   private clock = 0;
   private worldBuilt = false;
   // Low oblique - high Y made roofs read as flat lids on wide lots.
-  private camOffset = new THREE.Vector3(165, 185, 285);
+  private camOffset = new THREE.Vector3(CAM_OFFSET_X, 185, CAM_OFFSET_Z);
   /** Locked orientation - lookAt is NOT called while the camera moves. */
   private camQuat = new THREE.Quaternion();
   private composer: EffectComposer;
@@ -277,6 +278,15 @@ export class TownRenderer {
   /** True while the camera baseline is the indoor close follow. */
   isIndoors(): boolean {
     return this.indoors;
+  }
+
+  /**
+   * Building lot under a world point, or null outdoors (park / streets).
+   * Uses the same inset footprint as roof cutaway / indoor zoom.
+   */
+  buildingLotAt(wx: number, wz: number): LotId | null {
+    if (this.buildings.length === 0) return null;
+    return playerInsideBuilding(wx, wz, this.buildings);
   }
 
   /**

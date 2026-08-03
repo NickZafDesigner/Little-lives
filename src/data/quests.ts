@@ -31,7 +31,16 @@ export type QuestEvent =
   | "theo_ask_returns"
   | "shelved_books"
   | "sage_ask_supplies"
-  | "delivered_supplies";
+  | "delivered_supplies"
+  | "met_reed"
+  | "talked_reed_job"
+  | "workshop_shift_complete"
+  | "visited_pier"
+  | "caught_fish"
+  | "reed_ask_delivery"
+  | "delivered_planks"
+  | "pip_ask_pier"
+  | "pier_cleanup";
 
 export interface QuestStepDef {
   id: string;
@@ -272,6 +281,59 @@ export const QUESTS: QuestDef[] = [
     rewards: { money: 40 },
   },
   {
+    id: "east_workshop",
+    title: "East Workshop",
+    journalLine:
+      "Reed's Workshop opened on the far east lane - sawdust and steady pay.",
+    requires: ["heart_of_town"],
+    steps: [
+      {
+        id: "meet",
+        event: "met_reed",
+        objectiveLabel: "Meet Reed at the workshop",
+      },
+      {
+        id: "hire",
+        event: "talked_reed_job",
+        objectiveLabel: "Ask Reed about workshop work",
+      },
+    ],
+  },
+  {
+    id: "craft_paycheck",
+    title: "Craft Paycheck",
+    journalLine: "Time to earn my keep among the boards and clamps.",
+    requires: ["east_workshop"],
+    steps: [
+      {
+        id: "shift",
+        event: "workshop_shift_complete",
+        objectiveLabel: "Finish a workshop shift",
+      },
+    ],
+    rewards: { money: 25 },
+  },
+  {
+    id: "pier_day",
+    title: "Sunny Pier",
+    journalLine:
+      "There's a pier south of town. I should cast a line before the day gets away.",
+    requires: ["craft_paycheck"],
+    steps: [
+      {
+        id: "visit",
+        event: "visited_pier",
+        objectiveLabel: "Visit the Sunny Pier",
+      },
+      {
+        id: "fish",
+        event: "caught_fish",
+        objectiveLabel: "Catch a fish at the pier",
+      },
+    ],
+    rewards: { money: 30 },
+  },
+  {
     id: "mabel_cookies",
     title: "Mabel's Flowers",
     journalLine: "Mabel wants wildflowers from the park for her baking table.",
@@ -401,6 +463,57 @@ export const QUESTS: QuestDef[] = [
       money: 35,
       friendshipNpcId: "sage",
       friendshipDelta: 15,
+    },
+  },
+  {
+    id: "reed_planks",
+    title: "Plank Run",
+    journalLine: "Reed needs leftover planks walked over to Jun at the café.",
+    side: true,
+    unlockWhen: { hiredJobId: "workshop_crafter" },
+    requires: ["east_workshop"],
+    steps: [
+      {
+        id: "ask",
+        event: "reed_ask_delivery",
+        objectiveLabel: "Talk to Reed about a delivery",
+      },
+      {
+        id: "deliver",
+        event: "delivered_planks",
+        objectiveLabel: "Deliver planks to Jun at the café",
+      },
+    ],
+    rewards: {
+      money: 32,
+      friendshipNpcId: "reed",
+      friendshipDelta: 14,
+    },
+  },
+  {
+    id: "pip_pier",
+    title: "Pier Sweep",
+    journalLine: "Pip says the pier gets messy after windy days.",
+    side: true,
+    unlockWhen: { hiredAtCafe: true },
+    requires: ["pier_day"],
+    steps: [
+      {
+        id: "ask",
+        event: "pip_ask_pier",
+        objectiveLabel: "Talk to Pip about the pier",
+      },
+      {
+        id: "clean",
+        event: "pier_cleanup",
+        objectiveLabel: "Clear pier litter (0/2)",
+        count: 2,
+      },
+    ],
+    rewards: {
+      money: 24,
+      friendshipNpcId: "pip",
+      friendshipDelta: 12,
     },
   },
 ];

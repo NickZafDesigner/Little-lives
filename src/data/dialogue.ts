@@ -140,6 +140,24 @@ const LINES: Record<ChatNpcId, ToneLines> = {
       "I treat patients, not tempers. Soften up.",
     ],
   },
+  reed: {
+    friendly: [
+      "Hey. Got a minute? Grain's running true today.",
+      "Good to see you. Mind the sawdust.",
+    ],
+    polite: [
+      "Afternoon. Workshop's open if you need a hand.",
+      "Appreciate the manners - rare near power tools.",
+    ],
+    flirty: [
+      "Smooth talk won't square a joint… but try anyway.",
+      "Careful - charm like that distracts from measuring twice.",
+    ],
+    rude: [
+      "Tone down. Clamps don't care about attitude.",
+      "Save the bark for the scrap pile.",
+    ],
+  },
 };
 
 /** Branching chats - player choices build (or bruise) the relationship. */
@@ -981,6 +999,105 @@ export const CHAT_SCRIPTS: Record<ChatNpcId, ChatScript> = {
       },
     },
   },
+  reed: {
+    npcId: "reed",
+    start: "hello",
+    nodes: {
+      hello: {
+        id: "hello",
+        npcLines: [
+          "Hey. Measure twice - chat once.",
+          "What brings you to the sawdust side of town?",
+        ],
+        choices: [
+          {
+            id: "curious",
+            label: "Just exploring",
+            playerLine: "Just exploring the east lane. Nice shop.",
+            affinity: 7,
+            next: "shop",
+          },
+          {
+            id: "work",
+            label: "Looking for work",
+            playerLine: "Looking for honest work with my hands.",
+            affinity: 8,
+            next: "hire_chat",
+          },
+          {
+            id: "leave",
+            label: "Passing through",
+            playerLine: "Passing through - didn't mean to interrupt.",
+            affinity: 4,
+            next: null,
+          },
+        ],
+      },
+      shop: {
+        id: "shop",
+        npcLines: [
+          "Built half the benches in this town. The other half need fixing.",
+          "If you ever want steady hours, I hire careful people.",
+        ],
+        choices: [
+          {
+            id: "impressed",
+            label: "That's impressive",
+            playerLine: "That's impressive. Town's lucky to have you.",
+            affinity: 9,
+            next: "trust",
+          },
+          {
+            id: "help",
+            label: "I can help",
+            playerLine: "I can help - careful is my middle name… almost.",
+            affinity: 10,
+            next: "trust",
+          },
+        ],
+      },
+      hire_chat: {
+        id: "hire_chat",
+        npcLines: [
+          "Honest work? You've come to the right bench.",
+          "Ask me about a job when you're ready - I don't rush.",
+        ],
+        choices: [
+          {
+            id: "thanks",
+            label: "Thanks, Reed",
+            playerLine: "Thanks, Reed. I'll ask properly in a minute.",
+            affinity: 8,
+            next: "trust",
+          },
+        ],
+      },
+      trust: {
+        id: "trust",
+        npcLines: [
+          "You're alright. Don't step on the chalk lines.",
+          "Come back even when you're not working. Friends welcome.",
+        ],
+        choices: [
+          {
+            id: "nod",
+            label: "Will do",
+            playerLine: "Will do. Chalk lines are sacred.",
+            affinity: 8,
+            next: null,
+          },
+          {
+            id: "friend",
+            label: "We're friends",
+            playerLine: "We're friends. Sawdust and all.",
+            affinity: 11,
+            next: null,
+            minScore: 20,
+          },
+        ],
+      },
+    },
+  },
 };
 
 export function toneReply(npcId: ChatNpcId, tone: DialogueTone): string {
@@ -996,6 +1113,7 @@ export function friendUnlockLine(npcId: ChatNpcId): string {
     vera: "Alright, you're on the friends-and-family list.",
     theo: "I… consider you a friend. That's rare.",
     sage: "I'm glad we connected. Take care of yourself - and visit.",
+    reed: "Friends don't charge shop rate. You're in.",
   };
   return lines[npcId];
 }
@@ -1012,6 +1130,7 @@ export function favouriteFoodNpcLine(
     vera: `${food} sells. Bring coin if you want the good batch.`,
     theo: `There's a slim volume on the history of ${food}. Riveting, actually.`,
     sage: `${food} in moderation. Doctor's gentle advice.`,
+    reed: `${food} after a long sanding session? Now you're speaking my language.`,
   };
   return lines[npcId];
 }

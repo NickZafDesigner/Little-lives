@@ -62,8 +62,8 @@ const HOME: LotInterior = {
     // No starter sofa - the wake-up intro / make_it_home quest asks you to buy one.
     // Living - TV back against west wall, screen into the room.
     { defId: "tv", rx: 1, ry: 7, uid: "start_tv", rot: "right" },
-    // Kitchen - fridge against east wall; counter for small appliances; table freestanding.
-    { defId: "fridge", rx: 12, ry: 5, uid: "start_fridge", rot: "left" },
+    // Kitchen - fridge flush on the hallway wall, front toward the camera.
+    { defId: "fridge", rx: 11, ry: 5, uid: "start_fridge", rot: "down" },
     { defId: "kitchen_counter", rx: 12, ry: 7, uid: "start_counter", rot: "left" },
     { defId: "table", rx: 9, ry: 7, uid: "start_table" },
   ],
@@ -133,6 +133,17 @@ const CLINIC: LotInterior = {
   ],
 };
 
+/** Workshop (12×10): workbench north, craft floor south. */
+const WORKSHOP: LotInterior = {
+  walls: [{ rx: 1, ry: 4, length: 10, axis: "x", doors: [4, 5] }],
+  furniture: [
+    { defId: "workbench", rx: 2, ry: 1, uid: "w_bench", rot: "down" },
+    { defId: "tool_rack", rx: 8, ry: 1, uid: "w_tools", rot: "down" },
+    { defId: "table", rx: 2, ry: 6, uid: "w_table" },
+    { defId: "plant", rx: 10, ry: 8, uid: "w_plant" },
+  ],
+};
+
 export const LOT_INTERIORS: Partial<Record<LotId, LotInterior>> = {
   home: HOME,
   neighbor: NEIGHBOR,
@@ -141,6 +152,7 @@ export const LOT_INTERIORS: Partial<Record<LotId, LotInterior>> = {
   market: MARKET,
   library: LIBRARY,
   clinic: CLINIC,
+  workshop: WORKSHOP,
 };
 
 /** Absolute tile cells occupied by structural internal walls (no doorways). */

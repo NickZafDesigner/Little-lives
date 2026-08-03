@@ -51,6 +51,13 @@ export const Palette = {
   market: 0xffe082,
   library: 0xd7ccc8,
   clinic: 0xb2dfdb,
+  workshop: 0xd7ccc8,
+  pier: 0xc8a878,
+  rock: 0x8a8680,
+  rockDark: 0x6e6a64,
+  dirt: 0xb8945e,
+  dirtDark: 0x9a7a48,
+  ore: 0xc9a227,
 
   // Neutrals
   cream: 0xfff6e5,

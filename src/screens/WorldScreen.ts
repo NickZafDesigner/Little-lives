@@ -52,6 +52,13 @@ import {
   WORK_START,
   type QuestEvent,
 } from "../data/quests";
+import {
+  harvestNodeById,
+  materialById,
+  rollHarvestYields,
+  toolById,
+  type ToolId,
+} from "../data/items";
 import type {
   DialogueTone,
   Dir,
@@ -112,6 +119,14 @@ import {
   surfaceHeightFor,
   type PetHandle,
 } from "../mesh/furniture";
+import {
+  updateWallFlushFurnitureFade,
+  wallFlushObscuresPlayer,
+} from "../mesh/buildings";
+import {
+  buildHarvestMeshes,
+  type HarvestMeshHandle,
+} from "../mesh/harvest";
 import { BuildFeedback, createPaintFloorMesh, rotateDir } from "../build/BuildFeedback";
 import { signById } from "../mesh/signs";
 import { Hud } from "../ui/Hud";
@@ -120,9 +135,10 @@ import { NpcNameTags } from "../ui/NpcNameTags";
 import { BuildingNameTags } from "../ui/BuildingNameTags";
 import { ThoughtBubble } from "../ui/ThoughtBubble";
 import { HintArrow } from "../ui/HintArrow";
+import { InteractTip } from "../ui/InteractTip";
 import { TimeMontage } from "../ui/TimeMontage";
 import { WorkMinigame, gradeScore, type MiniGrade } from "../ui/WorkMinigame";
-import { PlayMinigame, type PlayMiniGrade } from "../ui/PlayMinigame";
+import { PlayMinigame, type PlayMiniGrade, type PlayMiniKind } from "../ui/PlayMinigame";
 import { TvViewer, TV_FULL_WATCH_MS } from "../ui/TvViewer";
 import { TV_SHOWS, type TvShowId } from "../data/tvShows";
 import { ConfettiBurst } from "../ui/ConfettiBurst";
@@ -148,7 +164,7 @@ interface NpcRuntime {
   ambient?: boolean;
 }
 
-type TargetKind = "furniture" | "npc" | "pet" | "sign";
+type TargetKind = "furniture" | "npc" | "pet" | "sign" | "harvest";
 
 interface Target {
   kind: TargetKind;
@@ -192,6 +208,8 @@ export function createWorldScreen(
   let npcs: NpcRuntime[] = [];
   let pet: PetHandle | null = null;
   let furnitureMeshes = new Map<string, THREE.Group>();
+  let harvestHandles = new Map<string, HarvestMeshHandle>();
+  let lastHarvestDay = -1;
   let wallMeshes = new Map<string, THREE.Mesh>();
   let floorMeshes = new Map<string, THREE.Mesh>();
   let uidCounter = 1000;
@@ -201,6 +219,7 @@ export function createWorldScreen(
   let buildingTags!: BuildingNameTags;
   let thoughtBubble!: ThoughtBubble;
   let hintArrow!: HintArrow;
+  let interactTip!: InteractTip;
   let timeMontage!: TimeMontage;
   let workMini!: WorkMinigame;
   let playMini!: PlayMinigame;
@@ -582,6 +601,21 @@ export function createWorldScreen(
         }
       }
     }
+    // Depleted harvest nodes become walkable until they respawn next day.
+    for (const node of state.harvestNodes) {
+      if (!inBounds(node.tx, node.ty)) continue;
+      if (state.isHarvestDepleted(node.uid)) {
+        collision[node.ty][node.tx] = false;
+      }
+    }
+  };
+
+  const syncHarvestVisuals = () => {
+    for (const node of state.harvestNodes) {
+      const handle = harvestHandles.get(node.uid);
+      if (!handle) continue;
+      handle.root.visible = !state.isHarvestDepleted(node.uid);
+    }
   };
 
   /**
@@ -688,7 +722,7 @@ export function createWorldScreen(
     const out: Target[] = [];
     for (const f of state.furniture) {
       const def = furnitureById[f.defId];
-      if (!def) continue;
+      if (!def || def.interactions.length === 0) continue;
       const rot = f.rot ?? "down";
       const { tw, th } = furnitureFootprint(f.defId, rot);
       const tiles: GridPos[] = [];
@@ -741,7 +775,25 @@ export function createWorldScreen(
         z: sign.worldZ,
       });
     }
-    return out;
+    for (const node of state.harvestNodes) {
+      if (state.isHarvestDepleted(node.uid)) continue;
+      const def = harvestNodeById[node.defId];
+      if (!def) continue;
+      out.push({
+        kind: "harvest",
+        id: node.uid,
+        label: def.label,
+        tiles: [{ x: node.tx, y: node.ty }],
+        x: node.tx * TILE + TILE / 2,
+        z: node.ty * TILE + TILE / 2,
+      });
+    }
+    // Indoor ↔ outdoor: only tip / interact with things in the same space.
+    // Walking past a house must not autofocus sofas, beds, or people inside.
+    const playerLot = app.renderer.buildingLotAt(playerX, playerZ);
+    return out.filter(
+      (t) => app.renderer.buildingLotAt(t.x, t.z) === playerLot,
+    );
   };
 
   /**
@@ -771,6 +823,9 @@ export function createWorldScreen(
   const pickables = (): THREE.Object3D[] => {
     const out: THREE.Object3D[] = [];
     for (const mesh of furnitureMeshes.values()) out.push(mesh);
+    for (const handle of harvestHandles.values()) {
+      if (handle.root.visible) out.push(handle.root);
+    }
     for (const npc of npcs) out.push(npc.actor.root);
     if (pet) out.push(pet.root);
     for (const sign of app.renderer.getSigns()) out.push(sign.root);
@@ -784,6 +839,13 @@ export function createWorldScreen(
       const uid = cur.userData.uid as string | undefined;
       if (uid) {
         return targets.find((t) => t.kind === "furniture" && t.id === uid) ?? null;
+      }
+      const harvestUid = cur.userData.harvestUid as string | undefined;
+      if (harvestUid) {
+        return (
+          targets.find((t) => t.kind === "harvest" && t.id === harvestUid) ??
+          null
+        );
       }
       const npcId = cur.userData.npcId as string | undefined;
       if (npcId) {
@@ -825,6 +887,106 @@ export function createWorldScreen(
       }
     }
     return best;
+  };
+
+  /** Walk-to-interact range (~4 tiles from footprint edge). */
+  const INTERACT_RANGE = 4 * TILE;
+
+  const tipHeightFor = (t: Target): number => {
+    if (t.kind === "npc" || t.kind === "pet") return 40;
+    if (t.kind === "sign") return 48;
+    if (t.kind === "harvest") return 36;
+    return 28;
+  };
+
+  /** Primary verb shown on the proximity tip (Talk / Watch TV / Brew Coffee…). */
+  const actionLabelFor = (t: Target): string => {
+    if (t.kind === "npc") return "Talk";
+    if (t.kind === "pet") return "Cuddle";
+    if (t.kind === "sign") return "Read";
+    if (t.kind === "harvest") {
+      const node = state.harvestNodes.find((n) => n.uid === t.id);
+      const def = node ? harvestNodeById[node.defId] : null;
+      return def?.verb ?? "Gather";
+    }
+
+    const furn = state.furniture.find((f) => f.uid === t.id);
+    if (!furn) return "Use";
+    const def = furnitureById[furn.defId];
+    if (!def) return "Use";
+
+    // Mid-shift: tip the active task station with its task label.
+    if (state.jobActive && state.activeJobId) {
+      const active = jobById[state.activeJobId];
+      const task = active?.tasks[state.jobTasksDone];
+      if (active && task && furn.uid === task.furnitureUid) {
+        return task.label;
+      }
+    }
+
+    const job = JOBS.find(
+      (j) => j.lotId === furn.lotId && j.stationDefId === furn.defId,
+    );
+    if (job) {
+      if (state.hiredJobs.includes(job.id)) return "Work";
+      return "Ask about work";
+    }
+
+    if (furn.defId === "shelter_desk") return "See pets";
+
+    const first = def.interactions[0];
+    if (!first) return "Use";
+    if (first.id === "sleep") return "Sleep";
+    if (first.id === "watch") return "Watch";
+    return first.label;
+  };
+
+  const syncInteractTip = () => {
+    if (
+      state.mode !== "live" ||
+      uiBusy() ||
+      hud?.isAnyModalOpen() ||
+      state.isBusy()
+    ) {
+      interactTip?.hide();
+      return;
+    }
+    const t = nearestTarget(INTERACT_RANGE);
+    if (!t) {
+      interactTip?.hide();
+      return;
+    }
+    interactTip?.showAt(
+      t.x,
+      t.z,
+      t.label,
+      actionLabelFor(t),
+      tipHeightFor(t),
+    );
+  };
+
+  const tryInteractNearby = () => {
+    if (
+      introActive ||
+      timeMontage?.isPlaying() ||
+      workMini?.isOpen() ||
+      playMini?.isOpen() ||
+      tvViewer?.isOpen() ||
+      dialogue?.isOpen() ||
+      menu?.isOpen() ||
+      hud?.isAnyModalOpen() ||
+      state.mode !== "live" ||
+      state.isBusy()
+    ) {
+      return false;
+    }
+    const t = nearestTarget(INTERACT_RANGE);
+    if (t) {
+      approach(t);
+      return true;
+    }
+    state.showToast("Nothing to use nearby.");
+    return false;
   };
 
   const approachTiles = (target: Target): GridPos[] => {
@@ -949,10 +1111,22 @@ export function createWorldScreen(
     const tx = Math.floor(playerX / TILE);
     const ty = Math.floor(playerZ / TILE);
     const lot = playerLotId();
+    if (lot === "pier") quests.emit("visited_pier");
+    if (lot === "forest" && !state.visitedGatherLots.forest) {
+      state.visitedGatherLots.forest = true;
+      state.showToast("Whisperwood — bring an axe (and a shovel).", 3200);
+    }
+    if (lot === "mine" && !state.visitedGatherLots.mine) {
+      state.visitedGatherLots.mine = true;
+      state.showToast("Rocky Quarries — a pickaxe earns its keep here.", 3200);
+    }
     const ground = map.ground[ty]?.[tx];
     const onPathOutsideHome =
       lot !== "home" &&
-      (ground === Tile.path || ground === Tile.parkPath);
+      (ground === Tile.path ||
+        ground === Tile.parkPath ||
+        ground === Tile.pierDeck ||
+        ground === Tile.dirt);
     const atCafe = lot === "cafe";
 
     if (!guidanceReady) {
@@ -1288,8 +1462,52 @@ export function createWorldScreen(
       openSignMenu(target, screen.x, screen.y);
       return;
     }
+    if (target.kind === "harvest") {
+      beginHarvest(target);
+      return;
+    }
     const furn = state.furniture.find((f) => f.uid === target.id);
     if (furn) openFurnitureMenu(furn, screen.x, screen.y);
+  };
+
+  const beginHarvest = (target: Target) => {
+    const node = state.harvestNodes.find((n) => n.uid === target.id);
+    if (!node || state.isHarvestDepleted(node.uid)) return;
+    const def = harvestNodeById[node.defId];
+    if (!def) return;
+    const toolId = def.toolId as ToolId;
+    if (!state.hasTool(toolId)) {
+      const tool = toolById[toolId];
+      Audio.sfx("deny");
+      state.showToast(
+        tool
+          ? `Need a ${tool.name} — buy one from Reed.`
+          : "You need the right tool.",
+      );
+      return;
+    }
+    Audio.sfx("interact");
+    const duration = 1800;
+    state.startBusy(def.verb, duration);
+    delayed(duration, () => {
+      if (state.isHarvestDepleted(node.uid)) return;
+      const yields = rollHarvestYields(def);
+      const parts: string[] = [];
+      for (const y of yields) {
+        state.addMaterial(y.itemId, y.count);
+        const mat = materialById[y.itemId];
+        parts.push(`+${y.count} ${mat?.name ?? y.itemId}`);
+      }
+      state.depleteHarvest(node.uid);
+      state.needs = applyNeedDeltas(state.needs, { energy: -4 });
+      rebuildCollision();
+      syncHarvestVisuals();
+      Audio.sfx("success");
+      state.showToast(
+        parts.length ? parts.join(" · ") : "Nothing this time.",
+        2600,
+      );
+    });
   };
 
   const openSignMenu = (target: Target, x: number, y: number) => {
@@ -1418,6 +1636,18 @@ export function createWorldScreen(
           sub: `Bag ${have}/2`,
         });
       }
+      if (
+        furn.lotId === "pier" &&
+        quests.isActive("pip_pier") &&
+        quests.currentStepId("pip_pier") === "clean"
+      ) {
+        const have = quests.stepProgress("pip_pier", "clean");
+        options.push({
+          id: "clear_pier_litter",
+          label: "Clear pier litter",
+          sub: `Bag ${have}/2`,
+        });
+      }
     }
 
     // Weekly town beat at matching lot furniture
@@ -1429,7 +1659,9 @@ export function createWorldScreen(
       (furn.defId === "park_bench" ||
         furn.defId === "counter" ||
         furn.defId === "library_desk" ||
-        furn.defId === "clinic_desk")
+        furn.defId === "clinic_desk" ||
+        furn.defId === "fishing_spot" ||
+        furn.defId === "workbench")
     ) {
       options.push({
         id: "weekly_beat",
@@ -1505,11 +1737,37 @@ export function createWorldScreen(
         });
         return;
       }
+      if (id === "clear_pier_litter") {
+        Audio.sfx("interact");
+        state.startBusy("Clearing pier litter", 1000);
+        delayed(1000, () => {
+          Audio.sfx("chime");
+          quests.emit("pier_cleanup");
+          const have = quests.stepProgress("pip_pier", "clean");
+          if (have >= 2) {
+            state.showToast("Pier's tidy - Pip will be thrilled!");
+          } else {
+            state.showToast(`Pier litter bagged (${have}/2). One more!`);
+          }
+        });
+        return;
+      }
 
       const interaction = def.interactions.find((i) => i.id === id);
       if (!interaction) return;
 
-      if (interaction.id === "swing" || interaction.id === "slide") {
+      const playKinds: Record<string, PlayMiniKind> = {
+        swing: "swing",
+        slide: "slide",
+        fish: "fish",
+        tune: "tune",
+        dance: "tune",
+        play_arcade: "arcade",
+        play_piano: "tune",
+        bounce: "bounce",
+      };
+      const playKind = playKinds[interaction.id];
+      if (playKind) {
         if (nightBlocksLeisure()) {
           Audio.sfx("deny");
           state.showToast("Too late - go home and sleep.");
@@ -1518,7 +1776,7 @@ export function createWorldScreen(
         if (playMini.isOpen() || workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) {
           return;
         }
-        beginPlayActivity(interaction.id);
+        beginPlayActivity(playKind, interaction.label);
         return;
       }
 
@@ -1616,6 +1874,7 @@ export function createWorldScreen(
     if (jobId === "market_clerk") return "market_shift_complete";
     if (jobId === "library_aide") return "library_shift_complete";
     if (jobId === "clinic_aide") return "clinic_shift_complete";
+    if (jobId === "workshop_crafter") return "workshop_shift_complete";
     return "shift_complete";
   };
 
@@ -1741,10 +2000,23 @@ export function createWorldScreen(
     else if (grade === "ok") confetti.burst("soft");
   };
 
-  const beginPlayActivity = (kind: "swing" | "slide") => {
+  const beginPlayActivity = (kind: PlayMiniKind, labelOverride?: string) => {
     if (playMini.isOpen() || workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) return;
+    if (kind === "fish" && !state.hasTool("fishing_rod")) {
+      Audio.sfx("deny");
+      state.showToast("Need a Fishing Rod — buy one from Reed.");
+      return;
+    }
     Audio.sfx("interact");
-    const label = kind === "swing" ? "Ride the Swings" : "Down the Slide";
+    const labels: Record<PlayMiniKind, string> = {
+      swing: "Ride the Swings",
+      slide: "Down the Slide",
+      fish: "Cast a Line",
+      tune: "Tune In",
+      arcade: "Play a Round",
+      bounce: "Bounce!",
+    };
+    const label = labelOverride ?? labels[kind];
     playMini.play(
       kind,
       label,
@@ -1752,14 +2024,42 @@ export function createWorldScreen(
         const fun = grade === "perfect" ? 40 : grade === "ok" ? 24 : 10;
         const energy = grade === "perfect" ? -6 : grade === "ok" ? -8 : -10;
         state.needs = applyNeedDeltas(state.needs, { fun, energy });
+        if (kind === "fish" && grade !== "miss") {
+          quests.emit("visited_pier");
+          quests.emit("caught_fish");
+          const count = grade === "perfect" ? 2 : 1;
+          state.addMaterial("fish", count);
+        }
         const toast =
           grade === "perfect"
             ? kind === "swing"
               ? "Highest swing!"
-              : "Perfect whoosh!"
+              : kind === "slide"
+                ? "Perfect whoosh!"
+                : kind === "fish"
+                  ? "Biggest catch! Fish in bag."
+                  : kind === "tune"
+                    ? "Music gold!"
+                    : kind === "bounce"
+                      ? "Sky-high bounce!"
+                      : "High score!"
             : grade === "ok"
-              ? "Whee!"
-              : "Oof - dusty knees.";
+              ? kind === "fish"
+                ? "Fish stashed in bag!"
+                : kind === "tune"
+                  ? "Catchy!"
+                  : kind === "arcade"
+                    ? "Continue?"
+                    : kind === "bounce"
+                      ? "Boing!"
+                      : "Whee!"
+              : kind === "fish"
+                ? "Got away…"
+                : kind === "tune"
+                  ? "Static…"
+                  : kind === "arcade"
+                    ? "Game over."
+                    : "Oof - dusty knees.";
         state.showToast(toast, 2400);
         aspirations.refresh();
       },
@@ -2011,6 +2311,7 @@ export function createWorldScreen(
     if (def.id === "vera") quests.emit("met_vera");
     if (def.id === "theo") quests.emit("met_theo");
     if (def.id === "sage") quests.emit("met_sage");
+    if (def.id === "reed") quests.emit("met_reed");
 
     const options: MenuOption[] = [];
 
@@ -2041,6 +2342,21 @@ export function createWorldScreen(
           sub: "Hours: 9 AM - 5 PM",
         });
       }
+    }
+
+    if (def.id === "reed") {
+      options.push({
+        id: "browse_tools",
+        label: "Browse tools",
+        sub: "Axes, pickaxes, shovels & rods",
+      });
+    }
+    if (def.id === "vera") {
+      options.push({
+        id: "sell_materials",
+        label: "Sell materials",
+        sub: "Wood, stone, ore, fish…",
+      });
     }
 
     if (def.id === "mabel" && quests.isActive("mabel_cookies")) {
@@ -2117,6 +2433,39 @@ export function createWorldScreen(
           id: "sage_deliver",
           label: "Deliver supplies",
           sub: "From Vera's Market",
+        });
+      }
+    }
+
+    if (def.id === "reed" && quests.isActive("reed_planks")) {
+      const step = quests.currentStepId("reed_planks");
+      if (step === "ask") {
+        options.push({
+          id: "reed_ask",
+          label: "Offer to help",
+          sub: "Maybe a delivery…",
+        });
+      }
+    }
+
+    if (def.id === "jun" && quests.isActive("reed_planks")) {
+      const step = quests.currentStepId("reed_planks");
+      if (step === "deliver") {
+        options.push({
+          id: "jun_planks",
+          label: "Deliver Reed's planks",
+          sub: "From the workshop",
+        });
+      }
+    }
+
+    if (def.id === "pip" && quests.isActive("pip_pier")) {
+      const step = quests.currentStepId("pip_pier");
+      if (step === "ask") {
+        options.push({
+          id: "pip_pier_ask",
+          label: "Offer to help",
+          sub: "Pier could use a tidy-up",
         });
       }
     }
@@ -2239,6 +2588,8 @@ export function createWorldScreen(
                 "Very well. Start tomorrow. Aide hours are 9 to 5.",
               clinic_aide:
                 "I'd welcome the help. Come tomorrow - shifts run 9 to 5.",
+              workshop_crafter:
+                "You're hired. Start tomorrow - measure twice, clock in 9 to 5.",
             };
             state.showDialogue(
               npcId,
@@ -2283,6 +2634,7 @@ export function createWorldScreen(
             if (hireJob.id === "market_clerk") quests.emit("talked_vera_job");
             if (hireJob.id === "library_aide") quests.emit("talked_theo_job");
             if (hireJob.id === "clinic_aide") quests.emit("talked_sage_job");
+            if (hireJob.id === "workshop_crafter") quests.emit("talked_reed_job");
             quests.emit("asked_about_job");
           });
           return;
@@ -2294,6 +2646,16 @@ export function createWorldScreen(
             def.name,
             "Clock in at the station when we're open - 9 to 5!",
           );
+          return;
+        }
+        if (id === "browse_tools") {
+          Audio.sfx("ui");
+          hud.openShop("buy_tools", "Reed's Tools");
+          return;
+        }
+        if (id === "sell_materials") {
+          Audio.sfx("ui");
+          hud.openShop("sell_materials", "Vera's Buyback");
           return;
         }
         if (id === "mabel_ask") {
@@ -2403,6 +2765,42 @@ export function createWorldScreen(
               "Perfect timing. The clinic thanks you.",
             );
             quests.emit("delivered_supplies");
+          });
+          return;
+        }
+        if (id === "reed_ask") {
+          Audio.sfx("talk");
+          delayed(800, () => {
+            state.showDialogue(
+              "reed",
+              "Reed",
+              "Leftover planks for Jun's café patio. Don't splinter anyone.",
+            );
+            quests.emit("reed_ask_delivery");
+          });
+          return;
+        }
+        if (id === "jun_planks") {
+          Audio.sfx("talk");
+          delayed(800, () => {
+            state.showDialogue(
+              "jun",
+              "Jun",
+              "Reed's planks! Perfect - patio's going to look sharp.",
+            );
+            quests.emit("delivered_planks");
+          });
+          return;
+        }
+        if (id === "pip_pier_ask") {
+          Audio.sfx("talk");
+          delayed(800, () => {
+            state.showDialogue(
+              "pip",
+              "Pip",
+              "Windy day trash on the pier - two bags and we're golden!",
+            );
+            quests.emit("pip_ask_pier");
           });
           return;
         }
@@ -3574,6 +3972,13 @@ export function createWorldScreen(
       app.renderer.add(player.root);
 
       for (const f of state.furniture) spawnFurniture(f);
+      {
+        const built = buildHarvestMeshes(state.harvestNodes);
+        app.renderer.add(built.group);
+        harvestHandles.clear();
+        for (const h of built.handles) harvestHandles.set(h.uid, h);
+        syncHarvestVisuals();
+      }
       for (const key of state.walls) {
         const [tx, ty] = key.split(",").map(Number);
         addWall(tx, ty);
@@ -3638,6 +4043,7 @@ export function createWorldScreen(
       buildingTags = new BuildingNameTags(ui);
       thoughtBubble = new ThoughtBubble(ui);
       hintArrow = new HintArrow(ui);
+      interactTip = new InteractTip(ui);
       timeMontage = new TimeMontage(ui);
       confetti = new ConfettiBurst(ui);
       payCelebration = new PayCelebration(ui);
@@ -3647,7 +4053,7 @@ export function createWorldScreen(
         (x, z) => {
           const lot = lotAtTile(Math.floor(x / TILE), Math.floor(z / TILE));
           // Building lots have a floor plinth (top ≈ y=2); parks are outdoor turf.
-          if (lot && lot.id !== "park" && lot.id !== "playpark") {
+          if (lot && lot.id !== "park" && lot.id !== "playpark" && lot.id !== "pier" && lot.id !== "forest" && lot.id !== "mine") {
             return WET_TRAIL_INDOOR_Y;
           }
           return WET_TRAIL_OUTDOOR_Y;
@@ -3796,6 +4202,7 @@ export function createWorldScreen(
       buildingTags?.destroy();
       thoughtBubble?.destroy();
       hintArrow?.destroy();
+      interactTip?.destroy();
       timeMontage?.destroy();
       workMini?.destroy();
       playMini?.destroy();
@@ -3805,6 +4212,7 @@ export function createWorldScreen(
       wetTrail?.dispose();
       wetTrail = null;
       hoveredNpcId = null;
+      interactTip?.hide();
       menu?.destroy();
       catalog?.destroy();
 
@@ -3874,21 +4282,21 @@ export function createWorldScreen(
 
       app.renderer.setDayTime(state.dayTime);
 
-      // Hotkeys
+      // Hotkeys - Space advances wake thoughts, else E / Space walk-to-interact.
       if (
-        !introActive &&
-        !timeMontage?.isPlaying() &&
-        !workMini?.isOpen() &&
-        !playMini?.isOpen() &&
-        !tvViewer?.isOpen() &&
-        justPressed("KeyE") &&
-        !dialogue.isOpen()
+        introActive &&
+        introPhase === "think" &&
+        (justPressed("Space") || justPressed("Enter"))
       ) {
-        const t = nearestTarget(40);
-        if (t) approach(t);
-        else state.showToast("Nothing to use nearby.");
-      }
-      if (
+        advanceWakeThought();
+      } else if (
+        !dialogue?.isOpen() &&
+        !menu?.isOpen() &&
+        (justPressed("KeyE") || justPressed("Space")) &&
+        tryInteractNearby()
+      ) {
+        // Handled.
+      } else if (
         !introActive &&
         !timeMontage?.isPlaying() &&
         !workMini?.isOpen() &&
@@ -3900,6 +4308,19 @@ export function createWorldScreen(
         toggleBuild();
       }
       if (!introActive && justPressed("KeyQ") && !dialogue.isOpen()) saveGame();
+      if (
+        !introActive &&
+        justPressed("KeyI") &&
+        state.mode === "live" &&
+        !dialogue.isOpen() &&
+        !menu.isOpen() &&
+        !timeMontage?.isPlaying() &&
+        !workMini?.isOpen() &&
+        !playMini?.isOpen() &&
+        !tvViewer?.isOpen()
+      ) {
+        hud.toggleInventory();
+      }
       if (!introActive && justPressed("Tab") && state.mode === "build") catalog.toggle();
       if (
         !introActive &&
@@ -3925,17 +4346,14 @@ export function createWorldScreen(
           state.showToast("Pick up furniture or a catalog item to rotate");
         }
       }
-      // Wake thoughts: click / Space / Enter to advance (dialogue handles its own keys).
-      if (
-        introActive &&
-        introPhase === "think" &&
-        (justPressed("Space") || justPressed("Enter"))
-      ) {
-        advanceWakeThought();
-      }
+      // Wake thoughts: click also advances (Space / Enter handled above).
       // Space / Enter / Esc for dialogue are handled inside DialogueBox
       if (!introActive && justPressed("Escape") && !dialogue.isOpen()) {
-        if (hud.isStatusOpen()) {
+        if (hud.isShopOpen()) {
+          hud.closeShop();
+        } else if (hud.isInventoryOpen()) {
+          hud.closeInventory();
+        } else if (hud.isStatusOpen()) {
           hud.closeStatus();
         } else if (menu.isOpen()) {
           menu.close();
@@ -3967,7 +4385,8 @@ export function createWorldScreen(
         state.mode === "live" &&
         !state.isBusy() &&
         !menu.isOpen() &&
-        !dialogue.isOpen()
+        !dialogue.isOpen() &&
+        !hud.isAnyModalOpen()
       ) {
         let vx = 0;
         let vz = 0;
@@ -4184,6 +4603,35 @@ export function createWorldScreen(
       }
 
       app.renderer.update(dt, playerX, playerZ);
+      if (state.dayIndex !== lastHarvestDay) {
+        lastHarvestDay = state.dayIndex;
+        rebuildCollision();
+        syncHarvestVisuals();
+      }
+      syncInteractTip();
+
+      {
+        // Wall-flush props (fridge on the hallway wall, etc.) sit on the
+        // camera-near face - ghost them with their wall when you're behind.
+        const indoors = !!app.renderer.buildingLotAt(playerX, playerZ);
+        for (const f of state.furniture) {
+          if (f.parentUid) continue;
+          const def = furnitureById[f.defId];
+          if (!def?.wallFlush) continue;
+          const mesh = furnitureMeshes.get(f.uid);
+          if (!mesh) continue;
+          const want =
+            indoors &&
+            wallFlushObscuresPlayer(
+              mesh.position.x,
+              mesh.position.z,
+              f.rot ?? "down",
+              playerX,
+              playerZ,
+            );
+          updateWallFlushFurnitureFade(mesh, dt, want);
+        }
+      }
 
       {
         const indoors = app.renderer.isIndoors();
@@ -4225,6 +4673,13 @@ export function createWorldScreen(
           rect.height,
         );
         hintArrow?.update(
+          (x, y, z) => app.renderer.projectToScreen(x, y, z, rect),
+          rect.width,
+          rect.height,
+          playerX,
+          playerZ,
+        );
+        interactTip?.update(
           (x, y, z) => app.renderer.projectToScreen(x, y, z, rect),
           rect.width,
           rect.height,

@@ -388,7 +388,7 @@ export class PlayerStatusModal {
       </ul>
       <h3 class="ll-status-section">Useful keys</h3>
       <ul class="ll-status-keys">
-        <li><kbd>E</kbd> <span>Interact with nearby people, pets &amp; objects</span></li>
+        <li><kbd>E</kbd> / <kbd>Space</kbd> <span>Walk to &amp; use a nearby person, pet, or object (tip shows the action)</span></li>
         <li><kbd>B</kbd> <span>Build &amp; decorate at home</span></li>
         <li><kbd>Tab</kbd> <span>Reopen the build catalog</span></li>
         <li><kbd>R</kbd> <span>Rotate furniture in build mode</span></li>

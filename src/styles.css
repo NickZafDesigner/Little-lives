@@ -212,7 +212,9 @@ body {
 
 /* Mute sits under modals - hide while build/status overlays are open */
 #ui-root:has(.ll-build-modal:not([hidden])) > .ll-mute,
-#ui-root:has(.ll-status-modal:not([hidden])) > .ll-mute {
+#ui-root:has(.ll-status-modal:not([hidden])) > .ll-mute,
+#ui-root:has(.ll-inv-modal:not([hidden])) > .ll-mute,
+#ui-root:has(.ll-shop-modal:not([hidden])) > .ll-mute {
   opacity: 0;
   pointer-events: none;
 }
@@ -2432,14 +2434,14 @@ input:focus-visible {
 
 .ll-cycle-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem 0.7rem;
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
   margin-bottom: 0.85rem;
 }
 
 .ll-cycle {
   display: grid;
-  grid-template-columns: 3.6rem minmax(0, 1fr);
+  grid-template-columns: 4.5rem minmax(0, 1fr);
   align-items: center;
   gap: 0.35rem;
   background: #fffaf0;
@@ -2599,6 +2601,8 @@ input:focus-visible {
 .ll-world-ui .ll-dialogue-wrap,
 .ll-world-ui .ll-build-modal,
 .ll-world-ui .ll-status-modal,
+.ll-world-ui .ll-inv-modal,
+.ll-world-ui .ll-shop-modal,
 .ll-world-ui .ll-build-chip {
   pointer-events: auto;
 }
@@ -2714,6 +2718,24 @@ input:focus-visible {
   z-index: 5;
 }
 
+.ll-stat.ll-stat-bag {
+  border: none;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ll-stat.ll-stat-bag.is-open {
+  background: rgba(255, 248, 230, 0.95);
+  color: var(--ll-ink);
+}
+
+.ll-stat.ll-stat-bag.is-disabled,
+.ll-stat.ll-stat-bag:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .ll-stat {
   position: relative;
   display: inline-flex;
@@ -2809,7 +2831,7 @@ input:focus-visible {
 .ll-hud-objectives {
   top: 8px;
   left: 12px;
-  width: 212px;
+  width: min(460px, 52vw);
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
@@ -3127,6 +3149,9 @@ input:focus-visible {
   line-height: 1.2;
   color: var(--ll-ink);
   padding-left: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ll-objective span[data-objective-text] {
@@ -3135,6 +3160,9 @@ input:focus-visible {
   font-weight: 600;
   color: var(--ll-ink-soft);
   padding-left: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ll-objective-bar {
@@ -3494,13 +3522,6 @@ input:focus-visible {
   flex-direction: column;
   align-items: center;
   gap: 0.2rem;
-  transform: rotate(var(--hint-rot, 0deg));
-  transform-origin: center center;
-}
-
-.ll-hint-arrow.is-edge .ll-hint-arrow-label {
-  /* Keep label upright while the chevron aims off-screen */
-  transform: rotate(calc(-1 * var(--hint-rot, 0deg)));
 }
 
 .ll-hint-arrow-label {
@@ -3520,12 +3541,24 @@ input:focus-visible {
 
 .ll-hint-arrow-chev {
   display: block;
-  width: 0;
-  height: 0;
-  border-left: 11px solid transparent;
-  border-right: 11px solid transparent;
-  border-top: 14px solid var(--ll-blush);
+  line-height: 0;
+  /* Rotation lives here; bounce keyframes must compose with --hint-rot */
+  transform: rotate(var(--hint-rot, 0deg));
+  transform-origin: center 30%;
   filter: drop-shadow(0 2px 0 rgba(58, 40, 24, 0.35));
+}
+
+.ll-hint-arrow-chev svg {
+  display: block;
+  overflow: visible;
+}
+
+.ll-hint-arrow-chev path {
+  fill: none;
+  stroke: var(--ll-blush);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 @keyframes ll-hint-in {
@@ -3549,12 +3582,13 @@ input:focus-visible {
 @keyframes ll-hint-chev {
   0%,
   100% {
-    transform: translateY(0);
+    transform: rotate(var(--hint-rot, 0deg)) translateY(0);
     filter: drop-shadow(0 2px 0 rgba(58, 40, 24, 0.35)) brightness(1);
   }
   50% {
-    transform: translateY(7px);
-    filter: drop-shadow(0 2px 0 rgba(58, 40, 24, 0.35)) brightness(1.3);
+    /* Bob along the tip axis so the pulse always nudges toward the goal */
+    transform: rotate(var(--hint-rot, 0deg)) translateY(6px);
+    filter: drop-shadow(0 2px 0 rgba(58, 40, 24, 0.35)) brightness(1.25);
   }
 }
 
@@ -3619,6 +3653,90 @@ input:focus-visible {
   pointer-events: none;
   overflow: hidden;
   z-index: 15;
+}
+
+.ll-interact-tips {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 18;
+}
+
+.ll-interact-tip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.35rem 0.28rem 0.65rem;
+  border-radius: var(--ll-r-pill);
+  background: linear-gradient(180deg, #fff8e8, var(--ll-parchment));
+  border: 2.5px solid var(--ll-wood-deep);
+  box-shadow:
+    inset 0 0 0 1.5px var(--ll-wood-light),
+    var(--ll-sh-sm);
+  color: var(--ll-ink);
+  font-family: var(--ll-font-display);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  will-change: transform, opacity;
+}
+
+.ll-interact-tip.is-in {
+  animation: ll-interact-tip-in 0.2s ease-out both;
+}
+
+.ll-interact-tip.is-out {
+  animation: ll-interact-tip-out 0.16s ease-in both;
+}
+
+@keyframes ll-interact-tip-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -85%) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
+}
+
+@keyframes ll-interact-tip-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -90%) scale(0.94);
+  }
+}
+
+.ll-interact-tip-name {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ll-interact-tip-action {
+  display: inline-grid;
+  place-items: center;
+  max-width: 9rem;
+  height: 1.4rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 2px solid var(--ll-blush-deep);
+  background: linear-gradient(180deg, #ffd9a0, var(--ll-blush));
+  box-shadow: inset 0 -2px 0 var(--ll-blush-deep);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #3a2818;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ll-nametag {
@@ -4742,6 +4860,194 @@ input:focus-visible {
   min-height: 0;
 }
 
+/* ---------- Inventory / shop modals ---------- */
+
+.ll-inv-modal,
+.ll-shop-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  animation: ll-menu-fade 0.16s ease-out;
+}
+
+.ll-inv-modal[hidden],
+.ll-shop-modal[hidden] {
+  display: none;
+}
+
+.ll-inv-modal-scrim,
+.ll-shop-modal-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(42, 28, 20, 0.45);
+}
+
+.ll-inv-modal-card,
+.ll-shop-modal-card {
+  position: relative;
+  z-index: 1;
+  width: min(520px, 90vw);
+  max-height: min(640px, 90vh);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #fff6e0, var(--ll-parchment));
+  border: 4px solid var(--ll-wood-deep);
+  border-radius: var(--ll-r-lg);
+  box-shadow:
+    inset 0 0 0 3px var(--ll-wood-light),
+    var(--ll-sh-lg);
+  animation: ll-menu-card-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.05) both;
+  overflow: hidden;
+}
+
+.ll-inv-modal-head,
+.ll-shop-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem 0.7rem;
+  border-bottom: 1px solid var(--ll-line);
+}
+
+.ll-inv-modal-title,
+.ll-shop-modal-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.ll-inv-modal-sub,
+.ll-shop-modal-sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: var(--ll-muted, #9c8574);
+  font-weight: 650;
+}
+
+.ll-inv-modal-body {
+  padding: 0.75rem 1rem 1.1rem;
+  overflow: auto;
+  min-height: 0;
+}
+
+.ll-inv-section h3 {
+  margin: 0.55rem 0 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ll-muted, #9c8574);
+}
+
+.ll-inv-section:first-child h3 {
+  margin-top: 0;
+}
+
+.ll-inv-list,
+.ll-shop-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ll-shop-list {
+  padding: 0.75rem 1rem;
+  overflow: auto;
+  min-height: 0;
+}
+
+.ll-inv-row,
+.ll-shop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.65rem;
+  background: var(--ll-sunk);
+  border-radius: var(--ll-r-sm);
+}
+
+.ll-inv-row.is-locked {
+  opacity: 0.55;
+}
+
+.ll-inv-row-main,
+.ll-shop-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.ll-inv-row-main strong,
+.ll-shop-row-main strong {
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.ll-inv-row-main span,
+.ll-shop-row-main span {
+  font-size: 0.74rem;
+  color: var(--ll-muted, #9c8574);
+  font-weight: 600;
+}
+
+.ll-inv-row em {
+  flex-shrink: 0;
+  font-style: normal;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--ll-ink-soft);
+}
+
+.ll-inv-empty {
+  padding: 0.7rem 0.65rem;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--ll-muted, #9c8574);
+}
+
+.ll-shop-btn {
+  flex-shrink: 0;
+  border: 2px solid var(--ll-wood-deep);
+  border-radius: var(--ll-r-sm);
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  background: linear-gradient(180deg, #fff6e0, var(--ll-parchment));
+  color: var(--ll-ink);
+  cursor: pointer;
+}
+
+.ll-shop-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f8b478, var(--ll-blush));
+  color: #fff;
+}
+
+.ll-shop-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ll-shop-btn-primary {
+  width: 100%;
+  padding: 0.55rem 0.9rem;
+  background: linear-gradient(180deg, #f8b478, var(--ll-blush));
+  color: #fff;
+}
+
+.ll-shop-foot {
+  padding: 0.65rem 1rem 1rem;
+  border-top: 1px solid var(--ll-line);
+}
+
 .ll-status-stats {
   display: flex;
   flex-wrap: wrap;
@@ -5082,11 +5388,7 @@ input:focus-visible {
     gap: 1.05rem;
   }
   .ll-cycle-grid {
-    grid-template-columns: 1fr;
-    gap: 0.45rem;
-  }
-  .ll-cycle {
-    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: 0.4rem;
   }
   .ll-outfit-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5116,7 +5418,7 @@ input:focus-visible {
 
   .ll-hud-objectives {
     left: 8px;
-    width: min(200px, 52vw);
+    width: min(340px, 78vw);
   }
 
   .ll-hud-left {
@@ -6030,6 +6332,49 @@ input:focus-visible {
   z-index: 1;
 }
 .ll-play-slide-label {
+  font-family: var(--ll-font-display);
+  font-size: clamp(0.9rem, 2.6vw, 1.05rem);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: #2a7fa8;
+}
+
+.ll-play-fish {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.ll-play-fish-water {
+  position: relative;
+  width: 100%;
+  height: 44px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #7ec8e3 0%, #38a3cf 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35);
+  overflow: hidden;
+}
+.ll-play-fish-zone {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  border-radius: 12px;
+  background: rgba(78, 155, 58, 0.55);
+  border: 2px solid rgba(255, 255, 255, 0.55);
+}
+.ll-play-fish-bobber {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6e5, #e07a5f 55%, #bf5c45);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+}
+.ll-play-fish-label {
   font-family: var(--ll-font-display);
   font-size: clamp(0.9rem, 2.6vw, 1.05rem);
   font-weight: 800;

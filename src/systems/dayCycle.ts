@@ -69,7 +69,8 @@ export type WeeklyBeatId =
   | "park_picnic"
   | "market_special"
   | "library_hour"
-  | "clinic_wellness";
+  | "clinic_wellness"
+  | "pier_sunset";
 
 export interface WeeklyBeat {
   id: WeeklyBeatId;
@@ -77,7 +78,7 @@ export interface WeeklyBeat {
   title: string;
   place: string;
   /** Lot to interact at. */
-  lotId: "park" | "market" | "library" | "clinic";
+  lotId: "park" | "market" | "library" | "clinic" | "pier";
   blurb: string;
   fun: number;
   social: number;
@@ -93,6 +94,16 @@ export const WEEKLY_BEATS: WeeklyBeat[] = [
     blurb: "Blankets on the grass. Join the picnic!",
     fun: 25,
     social: 18,
+  },
+  {
+    id: "pier_sunset",
+    weekday: 2,
+    title: "Pier Sunset",
+    place: "Sunny Pier",
+    lotId: "pier",
+    blurb: "Tuesday glow over the water - join the pier hangout!",
+    fun: 22,
+    social: 16,
   },
   {
     id: "market_special",

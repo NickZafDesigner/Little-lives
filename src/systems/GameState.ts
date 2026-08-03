@@ -8,6 +8,14 @@ import {
   type PlayerLook,
   type PlayerProfile,
 } from "../data/character";
+import {
+  emptyInventory,
+  seedHarvestNodes,
+  type HarvestNodeInstance,
+  type InventoryState,
+  type MaterialId,
+  type ToolId,
+} from "../data/items";
 import { STARTING_MONEY } from "../data/jobs";
 import { FULL_NEEDS } from "../data/needs";
 import { NPCS, RELATIONSHIP_CLOSE, RELATIONSHIP_FRIEND } from "../data/npcs";
@@ -194,10 +202,48 @@ function beachOutdoorFurniture(): PlacedFurniture[] {
     {
       uid: "b_bench3",
       defId: "park_bench",
-      tx: 72,
+      tx: 68,
       ty: 63,
       lotId: "park",
       rot: "up",
+    },
+  ];
+}
+
+/** Boardwalk fishing spots + seating on the Sunny Pier. */
+function pierOutdoorFurniture(): PlacedFurniture[] {
+  const pier = LOTS.find((l) => l.id === "pier")!;
+  return [
+    {
+      uid: "pier_fish1",
+      defId: "fishing_spot",
+      tx: pier.tx + 2,
+      ty: pier.ty + 3,
+      lotId: "pier",
+      rot: "left",
+    },
+    {
+      uid: "pier_fish2",
+      defId: "fishing_spot",
+      tx: pier.tx + 15,
+      ty: pier.ty + 3,
+      lotId: "pier",
+      rot: "right",
+    },
+    {
+      uid: "pier_bench",
+      defId: "park_bench",
+      tx: pier.tx + 8,
+      ty: pier.ty + 2,
+      lotId: "pier",
+      rot: "up",
+    },
+    {
+      uid: "pier_plant",
+      defId: "plant",
+      tx: pier.tx + 10,
+      ty: pier.ty + 5,
+      lotId: "pier",
     },
   ];
 }
@@ -269,6 +315,13 @@ export class GameState {
   /** Null until the player picks something from the catalog. */
   selectedBuildItem: string | null = null;
   buildTool: "furniture" | "wall" | "floor" | "sell" = "furniture";
+  inventory: InventoryState = emptyInventory();
+  /** Harvest node placements (static seed; depletion tracked separately). */
+  harvestNodes: HarvestNodeInstance[] = seedHarvestNodes();
+  /** uid → dayIndex when depleted; respawns when dayIndex > value. */
+  harvestDepleted: Record<string, number> = {};
+  /** First-visit toasts for forest / mine. */
+  visitedGatherLots: Partial<Record<"forest" | "mine", boolean>> = {};
 
   get hiredAtCafe(): boolean {
     return this.hiredJobs.includes("cafe_barista");
@@ -295,6 +348,44 @@ export class GameState {
     return this.aspirations.unlocks.includes(id);
   }
 
+  hasTool(id: ToolId): boolean {
+    return this.inventory.tools.includes(id);
+  }
+
+  addTool(id: ToolId): boolean {
+    if (this.hasTool(id)) return false;
+    this.inventory.tools.push(id);
+    return true;
+  }
+
+  materialCount(id: MaterialId): number {
+    return this.inventory.materials[id] ?? 0;
+  }
+
+  addMaterial(id: MaterialId, count: number) {
+    if (count <= 0) return;
+    this.inventory.materials[id] = this.materialCount(id) + count;
+  }
+
+  removeMaterial(id: MaterialId, count: number): boolean {
+    const have = this.materialCount(id);
+    if (count <= 0 || have < count) return false;
+    const next = have - count;
+    if (next <= 0) delete this.inventory.materials[id];
+    else this.inventory.materials[id] = next;
+    return true;
+  }
+
+  isHarvestDepleted(uid: string): boolean {
+    const day = this.harvestDepleted[uid];
+    if (day === undefined) return false;
+    return this.dayIndex <= day;
+  }
+
+  depleteHarvest(uid: string) {
+    this.harvestDepleted[uid] = this.dayIndex;
+  }
+
   constructor() {
     for (const npc of NPCS) {
       this.relationships[npc.id] = { score: 0, met: false };
@@ -315,9 +406,11 @@ export class GameState {
       ...interiorFurniture("market"),
       ...interiorFurniture("library"),
       ...interiorFurniture("clinic"),
+      ...interiorFurniture("workshop"),
       ...parkOutdoorFurniture(),
       ...playparkOutdoorFurniture(),
       ...beachOutdoorFurniture(),
+      ...pierOutdoorFurniture(),
     ];
   }
 
@@ -328,6 +421,7 @@ export class GameState {
       ...parkOutdoorFurniture(),
       ...playparkOutdoorFurniture(),
       ...beachOutdoorFurniture(),
+      ...pierOutdoorFurniture(),
     ]) {
       const existing = byUid.get(piece.uid);
       if (existing) {
@@ -356,6 +450,7 @@ export class GameState {
       "market",
       "library",
       "clinic",
+      "workshop",
     ] as const) {
       for (const piece of interiorFurniture(lotId)) {
         const existing = byUid.get(piece.uid);
@@ -516,6 +611,11 @@ export class GameState {
       lastShiftDay: this.lastShiftDay,
       lastPetCareDay: this.lastPetCareDay,
       petCareStreak: this.petCareStreak,
+      inventory: {
+        tools: [...this.inventory.tools],
+        materials: { ...this.inventory.materials } as Record<string, number>,
+      },
+      harvestDepleted: { ...this.harvestDepleted },
       player: {
         x: this.playerX,
         y: this.playerY,
@@ -597,6 +697,23 @@ export class GameState {
     this.lastPetCareDay = data.lastPetCareDay ?? -1;
     this.petCareStreak = data.petCareStreak ?? 0;
     this.isWet = data.isWet ?? false;
+    this.inventory = emptyInventory();
+    if (data.inventory) {
+      this.inventory.tools = (data.inventory.tools ?? []).filter(
+        (id): id is ToolId =>
+          id === "axe" ||
+          id === "pickaxe" ||
+          id === "shovel" ||
+          id === "fishing_rod",
+      );
+      const mats = data.inventory.materials ?? {};
+      for (const [k, v] of Object.entries(mats)) {
+        if (typeof v === "number" && v > 0) {
+          this.inventory.materials[k as MaterialId] = v;
+        }
+      }
+    }
+    this.harvestDepleted = { ...(data.harvestDepleted ?? {}) };
     this.playerName = data.player.name;
     const fallback = defaultPlayerProfile();
     this.playerLook = data.player.look
@@ -622,6 +739,11 @@ export class GameState {
       data.floors.map((f) => [this.wallKey(f.tx, f.ty), f.variant]),
     );
     this.relationships = structuredClone(data.relationships);
+    for (const npc of NPCS) {
+      if (!this.relationships[npc.id]) {
+        this.relationships[npc.id] = { score: 0, met: false };
+      }
+    }
     this.adoptedPet = data.adoptedPet
       ? {
           defId: data.adoptedPet.defId,

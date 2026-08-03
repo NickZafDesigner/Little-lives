@@ -5,6 +5,7 @@ import { furnitureById } from "../data/furniture";
 import { AssetLibrary } from "../render/AssetLibrary";
 import { applyTints } from "../render/tint";
 import { addOutline } from "../render/outline";
+import { buildProceduralFurniture } from "./proceduralFurniture";
 
 export const FURNITURE_DIRS: Dir[] = ["down", "right", "up", "left"];
 
@@ -92,7 +93,10 @@ export function furnitureWorldPos(
 }
 
 export function createFurnitureMesh(defId: string): THREE.Group {
-  const root = AssetLibrary.cloneFurniture(defId);
+  // Prefer authored GLB; fall back to procedural silhouette, then table.
+  const root = AssetLibrary.hasFurniture(defId)
+    ? AssetLibrary.cloneFurniture(defId)
+    : (buildProceduralFurniture(defId) ?? AssetLibrary.cloneFurniture(defId));
   root.name = `furn_${defId}`;
   const def = furnitureById[defId];
   if (def) {

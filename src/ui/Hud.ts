@@ -16,6 +16,8 @@ import { lotAtTile } from "../world/lots";
 import { TILE } from "../game/constants";
 import { drawPortrait } from "./portraits";
 import { PlayerStatusModal } from "./PlayerStatusModal";
+import { InventoryModal } from "./InventoryModal";
+import { ShopModal, type ShopMode } from "./ShopModal";
 
 const BOOST_PULSE_MS = 1000;
 const FLOAT_LIFE_MS = 2500;
@@ -58,6 +60,8 @@ export class Hud {
   private lastObjectiveKey = "";
   private pulseUntil = 0;
   private statusModal: PlayerStatusModal;
+  private inventoryModal: InventoryModal;
+  private shopModal: ShopModal;
   private lastPortraitKey = "";
   private prevNeeds: NeedsState | null = null;
   private boostUntil = 0;
@@ -90,12 +94,29 @@ export class Hud {
     this.el.append(this.panel, this.floatHost);
     parent.appendChild(this.el);
     this.statusModal = new PlayerStatusModal(parent, state);
+    this.inventoryModal = new InventoryModal(parent, state);
+    this.shopModal = new ShopModal(parent, state, () => {
+      this.lastStructureKey = "";
+      this.update();
+    });
 
     this.el.addEventListener("click", (e) => {
       const t = e.target as HTMLElement | null;
       if (!t) return;
+      if (t.closest("[data-hud-bag]")) {
+        e.stopPropagation();
+        if (this.state.mode !== "live") return;
+        this.statusModal.close();
+        this.shopModal.close();
+        this.inventoryModal.toggle();
+        this.lastStructureKey = "";
+        this.update();
+        return;
+      }
       if (t.closest("[data-hud-avatar]")) {
         e.stopPropagation();
+        this.inventoryModal.close();
+        this.shopModal.close();
         this.statusModal.toggle();
         this.lastStructureKey = "";
         this.update();
@@ -133,6 +154,8 @@ export class Hud {
 
   containsHudCluster(clientX: number, clientY: number): boolean {
     if (this.statusModal.containsPoint(clientX, clientY)) return true;
+    if (this.inventoryModal.containsPoint(clientX, clientY)) return true;
+    if (this.shopModal.containsPoint(clientX, clientY)) return true;
     const clusters = this.panel.querySelectorAll(
       ".ll-hud-top, .ll-hud-objectives > *, .ll-hud-left > *",
     );
@@ -154,8 +177,49 @@ export class Hud {
     return this.statusModal.isOpen();
   }
 
+  isInventoryOpen(): boolean {
+    return this.inventoryModal.isOpen();
+  }
+
+  isShopOpen(): boolean {
+    return this.shopModal.isOpen();
+  }
+
+  isAnyModalOpen(): boolean {
+    return (
+      this.statusModal.isOpen() ||
+      this.inventoryModal.isOpen() ||
+      this.shopModal.isOpen()
+    );
+  }
+
   closeStatus() {
     this.statusModal.close();
+  }
+
+  closeInventory() {
+    this.inventoryModal.close();
+  }
+
+  closeShop() {
+    this.shopModal.close();
+  }
+
+  toggleInventory() {
+    if (this.state.mode !== "live") return;
+    this.statusModal.close();
+    this.shopModal.close();
+    this.inventoryModal.toggle();
+    this.lastStructureKey = "";
+    this.update();
+  }
+
+  openShop(mode: ShopMode, title: string) {
+    this.statusModal.close();
+    this.inventoryModal.close();
+    this.shopModal.open(mode, title);
+    this.lastStructureKey = "";
+    this.update();
   }
 
   update() {
@@ -224,6 +288,8 @@ export class Hud {
     // Urgency is patched onto the avatar so need recovery doesn't wipe floats.
     const structureKey = [
       this.statusModal.isOpen() ? "1" : "0",
+      this.inventoryModal.isOpen() ? "1" : "0",
+      this.shopModal.isOpen() ? "1" : "0",
       s.mode,
       s.playerName,
       s.adoptedPet ? "pet" : "",
@@ -405,7 +471,7 @@ export class Hud {
 
     const objectiveHtml = shown
       ? (() => {
-          const kindLabel = shown.kind === "goal" ? "Lifestyle" : shown.side ? "Side quest" : "Objective";
+          const kindLabel = shown.kind === "goal" ? "Lifestyle" : shown.side ? "Side quest" : "Main goal";
           const tip =
             shown.kind === "quest"
               ? "Open Tasks · see this objective"
@@ -454,6 +520,7 @@ export class Hud {
         : `<svg viewBox="0 0 16 16" width="11" height="11"><circle cx="8" cy="5.2" r="2.2" fill="none" stroke="currentColor" stroke-width="1.45"/><path d="M3.6 13.2c.6-2.4 2.2-3.6 4.4-3.6s3.8 1.2 4.4 3.6" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/></svg>`;
 
     const statusOpen = this.statusModal.isOpen();
+    const bagOpen = this.inventoryModal.isOpen();
     const urgencyTip =
       urgency === "critical"
         ? "Needs urgent - click for status"
@@ -474,6 +541,20 @@ export class Hud {
           </span>
           <b data-stat-val="money">$${s.money}</b>
         </div>
+        <button
+          type="button"
+          class="ll-stat ll-stat-icon ll-stat-bag${bagOpen ? " is-open" : ""}${s.mode !== "live" ? " is-disabled" : ""}"
+          data-hud-bag
+          data-stat="bag"
+          data-tip="Bag · I"
+          aria-label="Open bag"
+          aria-expanded="${bagOpen ? "true" : "false"}"
+          ${s.mode !== "live" ? "disabled" : ""}
+        >
+          <span class="ll-stat-ico" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="12" height="12"><path d="M4.2 5.2h7.6l.7 8.2H3.5l.7-8.2z" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/><path d="M6 5.2V4.1a2 2 0 0 1 4 0v1.1" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/></svg>
+          </span>
+        </button>
         <div class="ll-stat" data-stat="time" data-tip="${escapeHtml(timeTip)}" aria-label="${escapeHtml(timeTip)}">
           <span class="ll-stat-ico" aria-hidden="true">
             <svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.2V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -653,6 +734,8 @@ export class Hud {
 
   destroy() {
     this.statusModal.destroy();
+    this.inventoryModal.destroy();
+    this.shopModal.destroy();
     this.el.remove();
     this.toastEl.remove();
     this.busyEl.remove();

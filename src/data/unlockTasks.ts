@@ -201,6 +201,72 @@ export const UNLOCK_TASKS: UnlockTaskDef[] = [
     hint: "Join 2 weekly town beats",
     condition: { kind: "weekly_beats", count: 2 },
   },
+  {
+    id: "workshop_shifts_2",
+    title: "Sawdust Starter",
+    hint: "Work 2 shifts at the workshop",
+    condition: { kind: "job_shifts", jobId: "workshop_crafter", count: 2 },
+  },
+  {
+    id: "workshop_shifts_3",
+    title: "Steady Hands",
+    hint: "Work 3 shifts at the workshop",
+    condition: { kind: "job_shifts", jobId: "workshop_crafter", count: 3 },
+  },
+  {
+    id: "workshop_shifts_4",
+    title: "Workshop Regular",
+    hint: "Work 4 shifts at the workshop",
+    condition: { kind: "job_shifts", jobId: "workshop_crafter", count: 4 },
+  },
+  {
+    id: "workshop_promoted",
+    title: "Trusted Crafter",
+    hint: "Get promoted at the workshop",
+    condition: { kind: "job_promoted", jobId: "workshop_crafter" },
+  },
+  {
+    id: "any_shifts_10",
+    title: "Town Workhorse",
+    hint: "Complete 10 work shifts",
+    condition: { kind: "any_shifts", count: 10 },
+  },
+  {
+    id: "quest_pier_day",
+    title: "Pier Day",
+    hint: "Finish the Sunny Pier quest",
+    condition: { kind: "quest_complete", questId: "pier_day" },
+  },
+  {
+    id: "quest_pip_pier",
+    title: "Pier Pal",
+    hint: "Help Pip at the pier",
+    condition: { kind: "quest_complete", questId: "pip_pier" },
+  },
+  {
+    id: "side_quests_3",
+    title: "Busybody",
+    hint: "Finish 3 side quests",
+    condition: { kind: "side_quests", count: 3 },
+  },
+  {
+    id: "side_quests_5",
+    title: "Town Fixture",
+    hint: "Finish 5 side quests",
+    condition: { kind: "side_quests", count: 5 },
+  },
+  {
+    id: "weekly_beats_3",
+    title: "Calendar Keeper",
+    hint: "Join 3 weekly town beats",
+    condition: { kind: "weekly_beats", count: 3 },
+  },
+  {
+    id: "cozy_70",
+    title: "Nest Perfected",
+    hint: "Reach cozy score 70",
+    condition: { kind: "cozy_score", min: 70 },
+  },
 ];
 
 export const unlockTaskById = Object.fromEntries(

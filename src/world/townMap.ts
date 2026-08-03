@@ -1,5 +1,6 @@
 import { LOTS } from "./lots";
 import { allStructuralWallTiles } from "./rooms";
+import { seedHarvestNodes } from "../data/items";
 
 /** Tile codes for the overworld. */
 export const Tile = {
@@ -21,12 +22,16 @@ export const Tile = {
   marketFloor: 15,
   libraryFloor: 16,
   clinicFloor: 17,
+  workshopFloor: 18,
+  pierDeck: 19,
+  rock: 20,
+  dirt: 21,
 } as const;
 
 export type TileCode = (typeof Tile)[keyof typeof Tile];
 
-export const MAP_W = 96;
-export const MAP_H = 68;
+export const MAP_W = 132;
+export const MAP_H = 82;
 
 export interface TownMapData {
   ground: number[][];
@@ -132,17 +137,24 @@ export function createTownMap(): TownMapData {
 
   // Path network around the spread-out lots.
   // Main west spine between home / café and the park.
-  fillRect(ground, 20, 2, 2, 58, Tile.path);
+  fillRect(ground, 20, 2, 2, 72, Tile.path);
   // Northern belt above houses.
-  fillRect(ground, 20, 2, 72, 1, Tile.path);
+  fillRect(ground, 20, 2, 108, 1, Tile.path);
   // Home frontage.
   fillRect(ground, 2, 14, 20, 2, Tile.path);
-  // Far-east lane past market / library.
-  fillRect(ground, 90, 2, 2, 52, Tile.path);
+  // Far-east lane past market / library / workshop / mine.
+  fillRect(ground, 106, 2, 2, 62, Tile.path);
+  fillRect(ground, 112, 2, 2, 40, Tile.path);
   // Mid-east lane between shelter and library gap.
   fillRect(ground, 68, 2, 2, 44, Tile.path);
+  // Workshop approach from mid-east.
+  fillRect(ground, 90, 2, 2, 40, Tile.path);
+  fillRect(ground, 90, 28, 18, 2, Tile.path);
+  // Mine approach from workshop lane.
+  fillRect(ground, 108, 22, 10, 2, Tile.path);
+  fillRect(ground, 120, 22, 2, 8, Tile.path);
   // Neighbor + market frontage.
-  fillRect(ground, 50, 13, 42, 2, Tile.path);
+  fillRect(ground, 50, 13, 58, 2, Tile.path);
   // West lane by café.
   fillRect(ground, 2, 16, 2, 28, Tile.path);
   // South of park / between café & shelter.
@@ -157,8 +169,9 @@ export function createTownMap(): TownMapData {
   fillRect(ground, 20, 46, 2, 16, Tile.path);
   fillRect(ground, 20, 60, 30, 2, Tile.path);
   fillRect(ground, 2, 60, 18, 2, Tile.path);
-  // Beach promenade (walkable sand corridor later painted sand).
-  fillRect(ground, 2, 62, 92, 2, Tile.path);
+  // Beach promenade + pier approach.
+  fillRect(ground, 2, 62, MAP_W - 4, 2, Tile.path);
+  fillRect(ground, 82, 62, 2, 10, Tile.path);
 
   // Door welcome mats
   fillRect(ground, 9, 14, 3, 2, Tile.path); // home
@@ -168,6 +181,15 @@ export function createTownMap(): TownMapData {
   fillRect(ground, 55, 44, 3, 2, Tile.path); // shelter
   fillRect(ground, 79, 44, 3, 2, Tile.path); // library
   fillRect(ground, 33, 60, 3, 2, Tile.path); // clinic
+  fillRect(ground, 101, 28, 3, 2, Tile.path); // workshop
+  fillRect(ground, 119, 30, 3, 2, Tile.path); // mine
+  fillRect(ground, 82, 68, 3, 2, Tile.path); // pier approach
+
+  // Forest dirt trails through Whisperwood.
+  fillRect(ground, 8, 16, 2, 16, Tile.dirt);
+  fillRect(ground, 2, 24, 14, 2, Tile.dirt);
+  fillRect(ground, 2, 16, 6, 1, Tile.path); // from home frontage
+  fillRect(ground, 8, 31, 2, 3, Tile.path); // toward café lane
 
   const home = LOTS.find((l) => l.id === "home")!;
   drawBuildingShell(
@@ -340,36 +362,108 @@ export function createTownMap(): TownMapData {
   );
   clearInterior(collision, clinic.tx, clinic.ty, clinic.tw, clinic.th);
 
-  // South beach strip - sand above deep water, walkable promenade.
-  fillRect(ground, 2, 62, 92, 4, Tile.sand);
-  fillRect(ground, 2, 65, 92, 2, Tile.water);
-  for (let x = 2; x < 94; x++) {
-    collision[65][x] = true;
-    collision[66][x] = true;
+  const workshop = LOTS.find((l) => l.id === "workshop")!;
+  drawBuildingShell(
+    ground,
+    collision,
+    workshop.tx,
+    workshop.ty,
+    workshop.tw,
+    workshop.th,
+    Tile.workshopFloor,
+    workshop.tx + 6,
+    workshop.ty + workshop.th - 1,
+  );
+  fillRect(
+    ground,
+    workshop.tx + 1,
+    workshop.ty + 1,
+    workshop.tw - 2,
+    workshop.th - 2,
+    Tile.workshopFloor,
+  );
+  clearInterior(collision, workshop.tx, workshop.ty, workshop.tw, workshop.th);
+
+  // Whisperwood Forest - dirt clearings; trails painted earlier.
+  const forest = LOTS.find((l) => l.id === "forest")!;
+  for (let y = forest.ty; y < forest.ty + forest.th; y++) {
+    for (let x = forest.tx; x < forest.tx + forest.tw; x++) {
+      const t = ground[y][x];
+      if (t === Tile.path || t === Tile.dirt) continue;
+      // Soft dirt mottling under the canopy.
+      if ((x * 3 + y * 5) % 7 === 0) set(ground, x, y, Tile.dirt);
+    }
   }
-  // Keep a dry walk band on sand (overwrite water collision on y=64).
-  for (let x = 2; x < 94; x++) {
+
+  // Rocky Quarries - rock / dirt floor east of the workshop.
+  const mine = LOTS.find((l) => l.id === "mine")!;
+  fillRect(ground, mine.tx, mine.ty, mine.tw, mine.th, Tile.rock);
+  fillRect(ground, mine.tx + 2, mine.ty + 4, 4, 3, Tile.dirt);
+  fillRect(ground, mine.tx + 7, mine.ty + 9, 5, 3, Tile.dirt);
+  for (let y = mine.ty; y < mine.ty + mine.th; y++) {
+    for (let x = mine.tx; x < mine.tx + mine.tw; x++) {
+      collision[y][x] = false;
+    }
+  }
+  // Keep path tiles walkable into the quarry.
+  fillRect(ground, 120, 22, 2, 8, Tile.path);
+
+  // South beach strip - sand above deep water, walkable promenade.
+  fillRect(ground, 2, 62, MAP_W - 4, 6, Tile.sand);
+  fillRect(ground, 2, 67, MAP_W - 4, 2, Tile.water);
+  for (let x = 2; x < MAP_W - 2; x++) {
+    collision[67][x] = true;
+    collision[68][x] = true;
+  }
+  // Keep a dry walk band on sand.
+  for (let x = 2; x < MAP_W - 2; x++) {
     collision[62][x] = false;
     collision[63][x] = false;
     collision[64][x] = false;
+    collision[65][x] = false;
+    collision[66][x] = false;
   }
   // Soft wave line
-  fillRect(ground, 10, 64, 8, 1, Tile.water);
-  fillRect(ground, 30, 64, 10, 1, Tile.water);
-  fillRect(ground, 55, 64, 12, 1, Tile.water);
-  fillRect(ground, 78, 64, 8, 1, Tile.water);
+  fillRect(ground, 10, 66, 8, 1, Tile.water);
+  fillRect(ground, 30, 66, 10, 1, Tile.water);
+  fillRect(ground, 55, 66, 12, 1, Tile.water);
+  fillRect(ground, 88, 66, 10, 1, Tile.water);
   for (const [x0, w] of [
     [10, 8],
     [30, 10],
     [55, 12],
-    [78, 8],
+    [88, 10],
   ] as Array<[number, number]>) {
-    for (let x = x0; x < x0 + w; x++) collision[64][x] = true;
+    for (let x = x0; x < x0 + w; x++) collision[66][x] = true;
   }
-  // Path down to beach from clinic / west
+
+  // Sunny Pier - boardwalk over the south beach / shallows.
+  const pier = LOTS.find((l) => l.id === "pier")!;
+  fillRect(ground, pier.tx, pier.ty, pier.tw, pier.th, Tile.pierDeck);
+  for (let y = pier.ty; y < pier.ty + pier.th; y++) {
+    for (let x = pier.tx; x < pier.tx + pier.tw; x++) {
+      collision[y][x] = false;
+    }
+  }
+  // Water beside the pier for fishing ambience.
+  fillRect(ground, pier.tx - 2, pier.ty + 2, 2, pier.th - 2, Tile.water);
+  fillRect(ground, pier.tx + pier.tw, pier.ty + 2, 2, pier.th - 2, Tile.water);
+  for (let y = pier.ty + 2; y < pier.ty + pier.th; y++) {
+    collision[y][pier.tx - 2] = true;
+    collision[y][pier.tx - 1] = true;
+    collision[y][pier.tx + pier.tw] = true;
+    collision[y][pier.tx + pier.tw + 1] = true;
+  }
+  // Deeper water south of pier.
+  fillRect(ground, 2, 76, MAP_W - 4, 5, Tile.water);
+  for (let y = 76; y < MAP_H - 1; y++) {
+    for (let x = 2; x < MAP_W - 2; x++) collision[y][x] = true;
+  }
+  // Path down to beach from clinic / west / pier
   fillRect(ground, 33, 60, 2, 3, Tile.path);
   fillRect(ground, 20, 60, 2, 3, Tile.path);
   fillRect(ground, 55, 60, 2, 3, Tile.path);
+  fillRect(ground, 82, 64, 2, 4, Tile.path);
 
   for (const { tx, ty } of allStructuralWallTiles()) {
     if (ty >= 0 && ty < MAP_H && tx >= 0 && tx < MAP_W) {
@@ -385,6 +479,21 @@ export function createTownMap(): TownMapData {
     { tx: shelter.tx + 6, ty: shelter.ty + shelter.th - 1, label: "Shelter" },
     { tx: library.tx + 6, ty: library.ty + library.th - 1, label: "Library" },
     { tx: clinic.tx + 6, ty: clinic.ty + clinic.th - 1, label: "Clinic" },
+    {
+      tx: workshop.tx + 6,
+      ty: workshop.ty + workshop.th - 1,
+      label: "Workshop",
+    },
+    {
+      tx: forest.tx + 8,
+      ty: forest.ty + forest.th - 1,
+      label: "Whisperwood",
+    },
+    {
+      tx: mine.tx + 7,
+      ty: mine.ty + mine.th - 1,
+      label: "Quarries",
+    },
   ];
 
   const isPlantable = (x: number, y: number) => {
@@ -456,6 +565,11 @@ export function createTownMap(): TownMapData {
     [92, 8],
     [92, 20],
     [92, 40],
+    [100, 8],
+    [100, 32],
+    [104, 16],
+    [80, 70],
+    [88, 72],
     [8, 8],
     [14, 8],
   ];
@@ -513,11 +627,15 @@ export function createTownMap(): TownMapData {
     [52, 61],
     [68, 61],
     [82, 61],
+    [98, 30],
+    [104, 30],
+    [96, 16],
     // North belt accents
     [24, 4],
     [36, 4],
     [56, 4],
     [76, 4],
+    [100, 4],
   ];
   for (const [x, y] of bushSpots) {
     if (!isPlantable(x, y)) continue;
@@ -531,7 +649,9 @@ export function createTownMap(): TownMapData {
       t === Tile.grass ||
       t === Tile.grassVar ||
       t === Tile.flower ||
-      t === Tile.sand
+      t === Tile.sand ||
+      t === Tile.dirt ||
+      t === Tile.rock
     );
   };
 
@@ -546,14 +666,19 @@ export function createTownMap(): TownMapData {
     [36, 63],
     [58, 63],
     [80, 63],
+    [100, 64],
     // Scattered town rocks
     [22, 28],
     [46, 32],
     [70, 18],
     [92, 22],
+    [104, 22],
     [8, 56],
     [40, 48],
-    [3, 22],
+    // Mine décor rocks (avoid harvest nodes)
+    [115, 21],
+    [127, 19],
+    [114, 31],
   ];
   const rocks: Array<[number, number]> = [];
   for (const [x, y] of rockCandidates) {
@@ -595,6 +720,8 @@ export function createTownMap(): TownMapData {
     [46, 61],
     [60, 61],
     [74, 61],
+    [98, 29],
+    [104, 29],
   ];
   const fencePosts: Array<[number, number]> = [];
   for (const [x, y] of fenceCandidates) {
@@ -613,16 +740,21 @@ export function createTownMap(): TownMapData {
     // Between home and park
     [21, 8],
     [36, 8],
-    // West lane / café block
-    [4, 22],
-    [4, 30],
-    [16, 30],
+    // West lane / café block (avoid Whisperwood harvest tiles)
     [16, 40],
     // Neighbor & market yards
     [48, 12],
     [64, 12],
     [88, 16],
     [92, 8],
+    [100, 14],
+    [104, 22],
+    // Forest fringe (outside harvest node tiles)
+    [3, 17],
+    [15, 30],
+    // Mine fringe
+    [115, 17],
+    [126, 30],
     // Mid-east / shelter-library
     [48, 34],
     [64, 34],
@@ -639,6 +771,8 @@ export function createTownMap(): TownMapData {
     [48, 4],
     [68, 4],
     [84, 4],
+    [100, 4],
+    [118, 4],
     // Playpark flanks
     [24, 32],
     [42, 32],
@@ -653,7 +787,8 @@ export function createTownMap(): TownMapData {
           t === Tile.grass ||
           t === Tile.grassVar ||
           t === Tile.flower ||
-          t === Tile.bush;
+          t === Tile.bush ||
+          t === Tile.dirt;
         if (!ok) return false;
         if (rocks.some(([rx, ry]) => rx === tx && ry === ty)) return false;
         if (fencePosts.some(([fx, fy]) => fx === tx && fy === ty)) return false;
@@ -696,6 +831,7 @@ export function createTownMap(): TownMapData {
     [50, 14],
     [68, 14],
     [90, 14],
+    [112, 22],
     [2, 44],
     [50, 44],
     [68, 44],
@@ -729,6 +865,18 @@ export function createTownMap(): TownMapData {
     lamps.push([x, y]);
     // Lamps sit on path edges - block the tile so you walk around them.
     collision[y][x] = true;
+  }
+
+  // Harvest nodes block their tile (respawn sync handled in WorldScreen).
+  for (const node of seedHarvestNodes()) {
+    if (
+      node.ty >= 0 &&
+      node.ty < MAP_H &&
+      node.tx >= 0 &&
+      node.tx < MAP_W
+    ) {
+      collision[node.ty][node.tx] = true;
+    }
   }
 
   return { ground, collision, doors, rocks, fencePosts, trees, lamps };

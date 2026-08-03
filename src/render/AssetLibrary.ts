@@ -8,7 +8,7 @@ import type {
 } from "../data/character";
 
 // Bump when re-exporting GLBs so browsers don't keep a stale hair/body kit.
-const ASSET_VER = "20260802ad";
+const ASSET_VER = "20260803a";
 const assetUrl = (path: string) => `/assets/${path}?v=${ASSET_VER}`;
 
 const CHARACTER_PATHS = {
@@ -100,6 +100,21 @@ const FURNITURE_IDS = [
   "party_lights",
   "arcade_cabinet",
   "hammock",
+  "workbench",
+  "tool_rack",
+  "fishing_spot",
+  "craft_table",
+  "pottery_wheel",
+  "wood_shelf",
+  "lantern",
+  "sandcastle_kit",
+  "wind_chimes",
+  "sewing_machine",
+  "trampoline",
+  "bird_bath",
+  "campfire_pit",
+  "piano",
+  "puzzle_table",
 ] as const;
 
 const WORLD_PATHS = {
@@ -205,11 +220,20 @@ class AssetLibraryImpl {
   }
 
   private async loadOne(url: string): Promise<void> {
-    const gltf = await this.loader.loadAsync(url);
-    const root = gltf.scene;
-    const flat = url.includes("/furniture/") || url.includes("/world/");
-    prepareLoaded(root, flat);
-    this.templates.set(url, root);
+    try {
+      const gltf = await this.loader.loadAsync(url);
+      const root = gltf.scene;
+      const flat = url.includes("/furniture/") || url.includes("/world/");
+      prepareLoaded(root, flat);
+      this.templates.set(url, root);
+    } catch (err) {
+      // New catalog ids may ship before their GLB exists - fall back at clone time.
+      if (url.includes("/furniture/")) {
+        console.warn(`Furniture asset missing (table fallback): ${url}`);
+        return;
+      }
+      throw err;
+    }
   }
 
   private getTemplate(url: string): GltfRoot {
@@ -243,6 +267,11 @@ class AssetLibraryImpl {
       ]);
     }
     return unwrapClone(this.getTemplate(url), [defId, "Root"]);
+  }
+
+  /** True when a dedicated furniture GLB was loaded (not table fallback). */
+  hasFurniture(defId: string): boolean {
+    return this.templates.has(assetUrl(`furniture/${defId}.glb`));
   }
 
   /** Named children from the world props pack (Bush, Flower, Rock, …). */

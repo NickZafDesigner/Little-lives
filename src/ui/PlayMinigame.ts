@@ -1,17 +1,32 @@
 /**
- * Playground mini-games: swing pump rhythm + slide chute timing.
+ * Playground mini-games: swing, slide, fishing, radio tune, arcade timing.
  */
 
 import { Audio } from "../audio/AudioManager";
 
-export type PlayMiniKind = "swing" | "slide";
+export type PlayMiniKind =
+  | "swing"
+  | "slide"
+  | "fish"
+  | "tune"
+  | "arcade"
+  | "bounce";
 export type PlayMiniGrade = "perfect" | "ok" | "miss";
 
 const RESULT_HOLD_MS = 950;
 const GRADE_LABEL: Record<PlayMiniGrade, string> = {
   perfect: "PERFECT!",
-  ok: "WHEE!",
+  ok: "NICE!",
   miss: "OOF…",
+};
+
+const KIND_OK: Record<PlayMiniKind, string> = {
+  swing: "WHEE!",
+  slide: "WHEE!",
+  fish: "CATCH!",
+  tune: "GROOVE!",
+  arcade: "COMBO!",
+  bounce: "BOING!",
 };
 
 export class PlayMinigame {
@@ -33,7 +48,7 @@ export class PlayMinigame {
   private bornMs = 0;
   private resolved = false;
 
-  // swing - pendulum pump rhythm
+  // swing / tune - pendulum pump rhythm
   private angle = 0;
   private angVel = 1.85;
   private height = 0.12;
@@ -43,7 +58,7 @@ export class PlayMinigame {
   private cooldownUntil = 0;
   private beatHalf = 0.14;
 
-  // slide - one-shot chute timing
+  // slide / fish / arcade - one-shot chute timing
   private marker = 0;
   private dir = 1;
   private speed = 1.35;
@@ -99,18 +114,36 @@ export class PlayMinigame {
     this.angle = 0;
     this.angVel = 1.7 + Math.random() * 0.25;
     this.height = 0.12;
-    this.pumpsNeeded = 5;
+    this.pumpsNeeded = kind === "tune" ? 4 : kind === "bounce" ? 6 : 5;
     this.pumpsLanded = 0;
     this.pumpScores = [];
     this.cooldownUntil = 0;
-    this.beatHalf = 0.14;
+    this.beatHalf = kind === "tune" ? 0.12 : kind === "bounce" ? 0.13 : 0.14;
     this.marker = Math.random() < 0.5 ? 0.05 : 0.12;
     this.dir = 1;
-    this.speed = 1.25 + Math.random() * 0.25;
+    this.speed =
+      kind === "arcade"
+        ? 1.55 + Math.random() * 0.3
+        : kind === "fish"
+          ? 1.1 + Math.random() * 0.25
+          : 1.25 + Math.random() * 0.25;
     this.zoneCenter = 0.62 + Math.random() * 0.18;
-    this.zoneHalf = 0.075;
+    this.zoneHalf = kind === "arcade" ? 0.065 : 0.075;
     this.slideDone = false;
     this.titleEl.textContent = label;
+    const kicker = this.root.querySelector(".ll-play-mini-kicker");
+    if (kicker) {
+      kicker.textContent =
+        kind === "fish"
+          ? "Fishing"
+          : kind === "tune"
+            ? "Music"
+            : kind === "arcade"
+              ? "Arcade"
+              : kind === "bounce"
+                ? "Trampoline"
+                : "Playtime";
+    }
     this.resultEl.hidden = true;
     this.resultEl.classList.remove("is-perfect", "is-ok", "is-miss");
     this.root.hidden = false;
@@ -143,9 +176,18 @@ export class PlayMinigame {
     this.root.remove();
   }
 
+  private isRhythm() {
+    return this.kind === "swing" || this.kind === "tune" || this.kind === "bounce";
+  }
+
   private buildStage() {
-    if (this.kind === "swing") {
-      this.hintEl.textContent = "Tap on the beat to pump higher · Space / click";
+    if (this.isRhythm()) {
+      this.hintEl.textContent =
+        this.kind === "tune"
+          ? "Tap on the beat to stay in tune · Space / click"
+          : this.kind === "bounce"
+            ? "Tap at the peaks to bounce higher · Space / click"
+            : "Tap on the beat to pump higher · Space / click";
       this.stage.innerHTML = `
         <div class="ll-play-swing">
           <div class="ll-play-swing-meter">
@@ -167,8 +209,24 @@ export class PlayMinigame {
         </div>
       `;
       this.layoutSwing();
+    } else if (this.kind === "fish") {
+      this.hintEl.textContent = "Hook when the bobber dips green · Space / click";
+      this.stage.innerHTML = `
+        <div class="ll-play-fish">
+          <div class="ll-play-fish-water">
+            <span class="ll-play-fish-zone"></span>
+            <span class="ll-play-fish-bobber"></span>
+            <span class="ll-mini-hit-ring" aria-hidden="true"></span>
+          </div>
+          <div class="ll-play-fish-label">BITE!</div>
+        </div>
+      `;
+      this.layoutFish();
     } else {
-      this.hintEl.textContent = "Hit the green whoosh zone · Space / click";
+      this.hintEl.textContent =
+        this.kind === "arcade"
+          ? "Hit the combo zone · Space / click"
+          : "Hit the green whoosh zone · Space / click";
       this.stage.innerHTML = `
         <div class="ll-play-slide">
           <div class="ll-play-slide-chute">
@@ -176,7 +234,7 @@ export class PlayMinigame {
             <span class="ll-play-slide-marker"></span>
             <span class="ll-mini-hit-ring" aria-hidden="true"></span>
           </div>
-          <div class="ll-play-slide-label">WHOOSH</div>
+          <div class="ll-play-slide-label">${this.kind === "arcade" ? "COMBO" : "WHOOSH"}</div>
         </div>
       `;
       this.layoutSlide();
@@ -194,7 +252,6 @@ export class PlayMinigame {
     const fill = this.stage.querySelector(
       ".ll-play-swing-meter i",
     ) as HTMLElement | null;
-    // angle in [-1, 1] mapped across the arc
     const u = (this.angle + 1) / 2;
     if (bob) bob.style.left = `${u * 100}%`;
     const w = this.beatHalf * 100;
@@ -221,6 +278,20 @@ export class PlayMinigame {
       zone.style.width = `${this.zoneHalf * 2 * 100}%`;
     }
     if (marker) marker.style.left = `${this.marker * 100}%`;
+  }
+
+  private layoutFish() {
+    const zone = this.stage.querySelector(
+      ".ll-play-fish-zone",
+    ) as HTMLElement | null;
+    const bobber = this.stage.querySelector(
+      ".ll-play-fish-bobber",
+    ) as HTMLElement | null;
+    if (zone) {
+      zone.style.left = `${(this.zoneCenter - this.zoneHalf) * 100}%`;
+      zone.style.width = `${this.zoneHalf * 2 * 100}%`;
+    }
+    if (bobber) bobber.style.left = `${this.marker * 100}%`;
   }
 
   private pulseHit(perfect: boolean) {
@@ -264,14 +335,13 @@ export class PlayMinigame {
 
   private tap() {
     if (this.resolved) return;
-    if (this.kind === "swing") this.pumpSwing();
+    if (this.isRhythm()) this.pumpSwing();
     else this.hitSlide();
   }
 
   private pumpSwing() {
     const now = performance.now();
     if (now < this.cooldownUntil) return;
-    // Score by how close to peak (|angle| near 1)
     const peakness = Math.abs(this.angle);
     let score = 0;
     if (peakness >= 1 - this.beatHalf * 0.55) score = 1;
@@ -285,13 +355,23 @@ export class PlayMinigame {
     if (score >= 0.9) {
       this.height = Math.min(1, this.height + 0.18);
       this.angVel = Math.min(2.6, this.angVel + 0.12);
-      this.hintEl.textContent = "Whoosh - higher!";
+      this.hintEl.textContent =
+        this.kind === "tune"
+          ? "Right on the beat!"
+          : this.kind === "bounce"
+            ? "Boing - higher!"
+            : "Whoosh - higher!";
       Audio.sfx("mini_perfect");
       this.pulseHit(true);
     } else if (score >= 0.5) {
       this.height = Math.min(1, this.height + 0.1);
       this.angVel = Math.min(2.4, this.angVel + 0.06);
-      this.hintEl.textContent = "Nice pump!";
+      this.hintEl.textContent =
+        this.kind === "tune"
+          ? "Keep the groove!"
+          : this.kind === "bounce"
+            ? "Nice bounce!"
+            : "Nice pump!";
       Audio.sfx("mini_hit");
       this.pulseHit(false);
     } else {
@@ -341,7 +421,7 @@ export class PlayMinigame {
     const dt = Math.min(0.05, (now - this.lastMs) / 1000);
     this.lastMs = now;
 
-    if (this.kind === "swing") {
+    if (this.isRhythm()) {
       this.angle += this.angVel * dt * (0.85 + this.height * 0.5);
       if (this.angle >= 1) {
         this.angle = 1;
@@ -369,7 +449,8 @@ export class PlayMinigame {
         this.marker = 0;
         this.dir = 1;
       }
-      this.layoutSlide();
+      if (this.kind === "fish") this.layoutFish();
+      else this.layoutSlide();
       if (now - this.bornMs > 8000) {
         this.resolve("miss");
         return;
@@ -385,18 +466,42 @@ export class PlayMinigame {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.unbindInput();
-    this.hintEl.textContent =
-      grade === "perfect"
-        ? this.kind === "swing"
-          ? "Highest swing!"
-          : "Perfect whoosh!"
-        : grade === "ok"
-          ? this.kind === "swing"
-            ? "Good height!"
-            : "Whee!"
-          : "Oof - dusty knees.";
+    const hints: Record<PlayMiniKind, Record<PlayMiniGrade, string>> = {
+      swing: {
+        perfect: "Highest swing!",
+        ok: "Good height!",
+        miss: "Oof - dusty knees.",
+      },
+      slide: {
+        perfect: "Perfect whoosh!",
+        ok: "Whee!",
+        miss: "Oof - dusty knees.",
+      },
+      fish: {
+        perfect: "Biggest catch!",
+        ok: "Got one!",
+        miss: "Got away…",
+      },
+      tune: {
+        perfect: "Radio gold!",
+        ok: "Catchy!",
+        miss: "Static…",
+      },
+      arcade: {
+        perfect: "High score!",
+        ok: "Continue?",
+        miss: "Game over.",
+      },
+      bounce: {
+        perfect: "Sky-high bounce!",
+        ok: "Boing!",
+        miss: "Oof - flat landing.",
+      },
+    };
+    this.hintEl.textContent = hints[this.kind][grade];
     this.root.classList.add(`is-${grade}`);
-    this.resultGradeEl.textContent = GRADE_LABEL[grade];
+    this.resultGradeEl.textContent =
+      grade === "ok" ? KIND_OK[this.kind] : GRADE_LABEL[grade];
     this.resultEl.classList.add(`is-${grade}`);
     this.resultEl.hidden = false;
     if (grade === "perfect") Audio.sfx("mini_win");

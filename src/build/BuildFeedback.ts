@@ -12,6 +12,7 @@ import {
 } from "../mesh/furniture";
 import type { TownRenderer } from "../render/TownRenderer";
 import { matFlat } from "../mesh/materials";
+import { woodFloorTexture } from "../mesh/terrainTextures";
 
 export type BuildTool = "furniture" | "wall" | "floor" | "sell";
 
@@ -110,14 +111,13 @@ export function rotateDir(dir: Dir): Dir {
 }
 
 export function createPaintFloorMesh(tx: number, ty: number): THREE.Mesh {
-  // Clearly different from default home floor (Palette.floor / floorAlt).
+  // Dark stained wood + mint stripe so paint floors read apart from default planks.
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(TILE * 0.92, 1.4, TILE * 0.92),
-    matFlat(Palette.woodDeep),
+    matFlat(Palette.woodDeep, { map: woodFloorTexture() }),
   );
   mesh.position.set(tx * TILE + TILE / 2, 1.5, ty * TILE + TILE / 2);
   mesh.receiveShadow = true;
-  // Accent strip so new flooring reads as intentional paint
   const stripe = new THREE.Mesh(
     new THREE.BoxGeometry(TILE * 0.92, 0.2, TILE * 0.18),
     matFlat(Palette.mintDark),

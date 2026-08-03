@@ -61,6 +61,21 @@ export const JOBS: JobDef[] = [
       { id: "kit", label: "Fetch a kit", furnitureUid: "k_desk", mini: "hold" },
     ],
   },
+  {
+    id: "workshop_crafter",
+    name: "Workshop Helper",
+    lotId: "workshop",
+    stationDefId: "workbench",
+    hireNpcId: "reed",
+    pay: 58,
+    closedMessage: "Workshop's closed - clock in from 8:30, shifts 9 to 5.",
+    tasks: [
+      { id: "sand", label: "Sand a board", furnitureUid: "w_bench", mini: "timing" },
+      { id: "sort", label: "Sort the tools", furnitureUid: "w_tools", mini: "sequence" },
+      { id: "wipe", label: "Wipe the worktable", furnitureUid: "w_table", mini: "hold" },
+      { id: "deliver", label: "Finish an order", furnitureUid: "w_bench", mini: "timing" },
+    ],
+  },
 ];
 
 export const jobById = Object.fromEntries(JOBS.map((j) => [j.id, j])) as Record<
@@ -102,6 +117,11 @@ export const JOB_PROMOTIONS: Record<string, JobPromotion> = {
     payBonus: 18,
     bossLine: "Clinic Associate. Patients already ask for you.",
   },
+  workshop_crafter: {
+    title: "Junior Craftsperson",
+    payBonus: 16,
+    bossLine: "Junior Craftsperson. Your joints are true - keep it up.",
+  },
 };
 
 export function jobDisplayName(jobId: string, promoted: boolean): string {
@@ -127,5 +147,6 @@ export function lotNameForJob(jobId: string): string {
   if (job.lotId === "market") return "market";
   if (job.lotId === "library") return "library";
   if (job.lotId === "clinic") return "clinic";
+  if (job.lotId === "workshop") return "workshop";
   return "work";
 }

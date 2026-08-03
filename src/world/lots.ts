@@ -13,7 +13,7 @@ export interface LotBounds {
   color: number;
 }
 
-/** Town footprint on the 96×68 map - lots spread with a south beach strip. */
+/** Town footprint on the 112×82 map - lots spread with a south beach strip. */
 export const LOTS: LotBounds[] = [
   {
     id: "home",
@@ -114,6 +114,50 @@ export const LOTS: LotBounds[] = [
     buildable: false,
     color: 0xb2dfdb,
   },
+  {
+    id: "workshop",
+    name: "Reed's Workshop",
+    tx: 96,
+    ty: 18,
+    tw: 12,
+    th: 10,
+    owned: false,
+    buildable: false,
+    color: 0xd7ccc8,
+  },
+  {
+    id: "pier",
+    name: "Sunny Pier",
+    tx: 74,
+    ty: 68,
+    tw: 18,
+    th: 8,
+    owned: false,
+    buildable: false,
+    color: 0xc8a878,
+  },
+  {
+    id: "forest",
+    name: "Whisperwood Forest",
+    tx: 2,
+    ty: 16,
+    tw: 16,
+    th: 16,
+    owned: false,
+    buildable: false,
+    color: 0x6a9e4a,
+  },
+  {
+    id: "mine",
+    name: "Rocky Quarries",
+    tx: 114,
+    ty: 16,
+    tw: 14,
+    th: 16,
+    owned: false,
+    buildable: false,
+    color: 0x9a9590,
+  },
 ];
 
 export function lotAtTile(tx: number, ty: number): LotBounds | null {
@@ -143,6 +187,10 @@ export const LOT_DOOR_TX: Partial<Record<LotId, number>> = {
   market: 6,
   library: 6,
   clinic: 6,
+  workshop: 6,
+  pier: 9,
+  forest: 8,
+  mine: 7,
 };
 
 /** Matches building door width in `mesh/buildings.ts`. */

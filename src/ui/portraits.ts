@@ -9,6 +9,7 @@ export type PortraitId =
   | "vera"
   | "theo"
   | "sage"
+  | "reed"
   | "player"
   | string;
 
@@ -83,6 +84,9 @@ export function drawPortrait(
       break;
     case "sage":
       drawSage(ctx);
+      break;
+    case "reed":
+      drawReed(ctx);
       break;
     case "player":
       drawPlayer(ctx, look);
@@ -279,6 +283,25 @@ function drawSage(ctx: CanvasRenderingContext2D) {
   fillRect(ctx, 8, 22, 16, 10, shirt);
   fillRect(ctx, 11, 22, 10, 8, hex(Palette.white));
   fillRect(ctx, 15, 24, 2, 6, hex(Palette.mintDark));
+}
+
+function drawReed(ctx: CanvasRenderingContext2D) {
+  const skin = hex(Palette.skin2);
+  const shade = hex(Palette.skin2Shade);
+  const hair = hex(0x5d4037);
+  const shirt = hex(Palette.wood);
+
+  fillRect(ctx, 9, 4, 14, 9, hair);
+  fillRect(ctx, 10, 9, 12, 11, skin);
+  fillRect(ctx, 11, 19, 10, 2, shade);
+  fillRect(ctx, 12, 12, 3, 3, hex(Palette.ink));
+  fillRect(ctx, 17, 12, 3, 3, hex(Palette.ink));
+  px(ctx, 13, 12, "#ffffff");
+  px(ctx, 18, 12, "#ffffff");
+  fillRect(ctx, 13, 17, 6, 1, hex(Palette.inkSoft));
+  fillRect(ctx, 8, 22, 16, 10, shirt);
+  fillRect(ctx, 12, 24, 8, 3, hex(Palette.woodDark));
+  fillRect(ctx, 14, 26, 4, 4, hex(Palette.woodLight));
 }
 
 function drawPlayer(ctx: CanvasRenderingContext2D, look?: PlayerLook) {

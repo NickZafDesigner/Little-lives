@@ -1128,6 +1128,207 @@ function buildFurniture(id) {
       boxM(g, 28, 2, 12, A, 0, 10.5, 0);
       break;
     }
+    case "workbench": {
+      boxM(g, 52, 3.2, 24, P, 0, 18, 0);
+      boxM(g, 48, 4, 2, S, 0, 15, 10);
+      boxM(g, 48, 4, 2, S, 0, 15, -10);
+      for (const [x, z] of [
+        [-22, -9],
+        [22, -9],
+        [-22, 9],
+        [22, 9],
+      ]) {
+        boxM(g, 3.5, 16, 3.5, S, x, 8, z);
+      }
+      boxM(g, 44, 1.6, 18, P, 0, 5, 0);
+      boxM(g, 8, 4, 10, A, 18, 21, 6);
+      boxM(g, 2.5, 2.5, 8, S, 18, 21, 12);
+      break;
+    }
+    case "tool_rack": {
+      boxM(g, 22, 28, 3, P, 0, 18, -4);
+      for (const y of [28, 22, 16, 10]) {
+        boxM(g, 1.4, 1.4, 5, S, -6, y, 0);
+        boxM(g, 1.4, 1.4, 5, S, 6, y, 0);
+      }
+      boxM(g, 2, 12, 2, S, -6, 22, 3);
+      boxM(g, 8, 3, 3, A, -6, 28, 3);
+      boxM(g, 2, 14, 1.2, A, 6, 20, 3);
+      boxM(g, 6, 2.5, 2, S, 6, 12, 3);
+      boxM(g, 10, 2, 2, A, 0, 10, 3);
+      break;
+    }
+    case "fishing_spot": {
+      boxM(g, 8, 6, 8, P, 0, 3, 0);
+      g.add(mesh(new THREE.CylinderGeometry(2.2, 2.6, 22, 10), S, 0, 14, 0));
+      const rod = mesh(new THREE.CylinderGeometry(0.55, 0.7, 36, 6), A, 2, 28, 8);
+      rod.rotation.x = Math.PI / 2.6;
+      rod.rotation.z = -0.25;
+      g.add(rod);
+      boxM(g, 3.5, 3.5, 2.5, S, 1, 22, 2);
+      g.add(mesh(new THREE.CylinderGeometry(1.6, 1.6, 3.2, 8), A, 8, 14, 22));
+      boxM(g, 1.2, 2, 1.2, P, 8, 16.5, 22);
+      break;
+    }
+    case "craft_table": {
+      boxM(g, 50, 2.8, 26, P, 0, 16, 0);
+      for (const [x, z] of [
+        [-20, -10],
+        [20, -10],
+        [-20, 10],
+        [20, 10],
+      ]) {
+        boxM(g, 3, 15, 3, S, x, 7.5, z);
+      }
+      g.add(mesh(new THREE.CylinderGeometry(2.4, 2.8, 4, 10), A, -12, 19, -4));
+      g.add(mesh(new THREE.CylinderGeometry(2.4, 2.8, 4, 10), S, -6, 19, -4));
+      boxM(g, 12, 1.5, 10, A, 10, 18, 2);
+      boxM(g, 10, 1.2, 8, P, 10, 19.2, 2);
+      boxM(g, 8, 1.2, 1.2, S, -4, 18, 6);
+      break;
+    }
+    case "pottery_wheel": {
+      g.add(mesh(new THREE.CylinderGeometry(8, 10, 6, 12), S, 0, 3, 0));
+      g.add(mesh(new THREE.CylinderGeometry(3.5, 4.5, 10, 10), P, 0, 11, 0));
+      g.add(mesh(new THREE.CylinderGeometry(11, 11, 2, 14), P, 0, 17, 0));
+      g.add(mesh(new THREE.CylinderGeometry(4, 5.5, 5, 10), A, 0, 20.5, 0));
+      g.add(mesh(new THREE.CylinderGeometry(2.2, 3.5, 3, 8), A, 0, 24, 0));
+      boxM(g, 8, 2, 6, S, 8, 2, 4);
+      break;
+    }
+    case "wood_shelf": {
+      boxM(g, 48, 2.5, 14, P, 0, 4, 0);
+      boxM(g, 48, 2.5, 14, P, 0, 16, 0);
+      boxM(g, 48, 2.5, 14, P, 0, 28, 0);
+      boxM(g, 3, 28, 12, S, -22, 16, 0);
+      boxM(g, 3, 28, 12, S, 22, 16, 0);
+      boxM(g, 18, 4, 8, A, -8, 7, 0);
+      boxM(g, 14, 3, 7, P, 8, 6.5, 1);
+      boxM(g, 16, 5, 8, A, -6, 20, -1);
+      boxM(g, 12, 3, 6, S, 10, 18.5, 1);
+      break;
+    }
+    case "lantern": {
+      g.add(mesh(new THREE.CylinderGeometry(1.4, 1.8, 10, 8), S, 0, 5, 0));
+      boxM(g, 8, 1.5, 8, P, 0, 11, 0);
+      boxM(g, 7, 8, 7, A, 0, 16, 0);
+      for (const [x, z] of [
+        [-3, -3],
+        [3, -3],
+        [-3, 3],
+        [3, 3],
+      ]) {
+        boxM(g, 1.2, 8, 1.2, S, x, 16, z);
+      }
+      boxM(g, 9, 1.8, 9, P, 0, 21, 0);
+      boxM(g, 6, 2.5, 6, S, 0, 23, 0);
+      boxM(g, 3, 2, 3, S, 0, 25, 0);
+      break;
+    }
+    case "sandcastle_kit": {
+      g.add(mesh(new THREE.CylinderGeometry(10, 12, 4, 12), P, 0, 2, 0));
+      boxM(g, 10, 10, 10, P, -2, 9, 0);
+      boxM(g, 4, 6, 4, P, -2, 17, 0);
+      for (const x of [-5, -1, 3]) boxM(g, 2.5, 2.5, 2.5, A, x - 2, 15, 4);
+      g.add(mesh(new THREE.CylinderGeometry(3.5, 4.2, 7, 10), A, 10, 5, 4));
+      boxM(g, 1.2, 5, 1.2, S, 10, 10, 4);
+      boxM(g, 1.5, 12, 1.5, S, 8, 10, -4);
+      boxM(g, 5, 1.5, 4, A, 8, 4, -4);
+      break;
+    }
+    case "wind_chimes": {
+      boxM(g, 14, 1.5, 4, P, 0, 30, 0);
+      g.add(mesh(new THREE.CylinderGeometry(0.5, 0.5, 6, 6), S, 0, 34, 0));
+      for (const [x, h, r] of [
+        [-5, 14, 1.1],
+        [-2.5, 18, 0.95],
+        [0, 16, 1.05],
+        [2.5, 20, 0.9],
+        [5, 15, 1.15],
+      ]) {
+        g.add(mesh(new THREE.CylinderGeometry(r, r, h, 8), A, x, 30 - h / 2 - 1, 0));
+      }
+      g.add(mesh(new THREE.CylinderGeometry(1.4, 1.4, 2, 8), S, 0, 14, 0));
+      break;
+    }
+    case "sewing_machine": {
+      boxM(g, 16, 2, 10, P, 0, 1, 0);
+      boxM(g, 10, 6, 8, S, -2, 5, 0);
+      boxM(g, 12, 3.5, 4, S, 2, 10, 0);
+      boxM(g, 3.5, 7, 4, S, 7, 7, 0);
+      boxM(g, 1.2, 5, 1.2, A, 7, 4, 2);
+      const wheel = mesh(new THREE.CylinderGeometry(3, 3, 1.5, 12), A, -6, 7, 0);
+      wheel.rotation.z = Math.PI / 2;
+      g.add(wheel);
+      g.add(mesh(new THREE.CylinderGeometry(1.4, 1.4, 2.5, 8), A, 0, 13, 0));
+      break;
+    }
+    case "trampoline": {
+      g.add(mesh(new THREE.CylinderGeometry(22, 22, 1.6, 18), P, 0, 10, 0));
+      const rim = mesh(new THREE.TorusGeometry(22, 1.8, 6, 18), S, 0, 10, 0);
+      rim.rotation.x = Math.PI / 2;
+      g.add(rim);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        boxM(g, 2.2, 10, 2.2, S, Math.cos(a) * 18, 5, Math.sin(a) * 18);
+      }
+      g.add(mesh(new THREE.CylinderGeometry(8, 8, 0.8, 12), A, 0, 11, 0));
+      break;
+    }
+    case "bird_bath": {
+      g.add(mesh(new THREE.CylinderGeometry(5, 7, 3, 12), S, 0, 1.5, 0));
+      g.add(mesh(new THREE.CylinderGeometry(2.8, 3.5, 12, 10), P, 0, 9, 0));
+      g.add(mesh(new THREE.CylinderGeometry(10, 9, 3, 14), P, 0, 16, 0));
+      g.add(mesh(new THREE.CylinderGeometry(7.5, 7.5, 1.2, 14), A, 0, 17.5, 0));
+      const rim = mesh(new THREE.TorusGeometry(9, 1.2, 6, 14), S, 0, 17, 0);
+      rim.rotation.x = Math.PI / 2;
+      g.add(rim);
+      break;
+    }
+    case "campfire_pit": {
+      g.add(mesh(new THREE.CylinderGeometry(14, 16, 2, 14), S, 0, 1, 0));
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        boxM(g, 5, 4, 5, P, Math.cos(a) * 14, 3, Math.sin(a) * 14);
+      }
+      boxM(g, 18, 3, 3.5, S, 0, 4, 0);
+      const log2 = mesh(new THREE.BoxGeometry(18, 3, 3.5), S, 0, 5.5, 0);
+      log2.rotation.y = Math.PI / 2.5;
+      g.add(log2);
+      g.add(mesh(new THREE.CylinderGeometry(0.5, 4, 10, 8), A, 0, 12, 0));
+      g.add(mesh(new THREE.CylinderGeometry(0.3, 2.5, 7, 6), P, 1.5, 11, 1));
+      break;
+    }
+    case "piano": {
+      boxM(g, 48, 28, 16, namedMat("Primary", 0x2a3040, true), 0, 16, -2);
+      boxM(g, 44, 2.5, 10, S, 0, 14, 8);
+      boxM(g, 40, 1.4, 7, namedMat("Accent", 0xfff6e5, true), 0, 15.8, 9);
+      for (const x of [-14, -8, -2, 4, 10]) {
+        boxM(g, 2.2, 1.6, 4, namedMat("Secondary", 0x1a1a22, true), x, 16.6, 8);
+      }
+      boxM(g, 28, 10, 1.5, S, 0, 28, 4);
+      for (const x of [-18, 18]) boxM(g, 4, 12, 4, S, x, 6, 2);
+      boxM(g, 16, 2, 4, A, 0, 2, 8);
+      break;
+    }
+    case "puzzle_table": {
+      boxM(g, 48, 2.5, 26, P, 0, 14, 0);
+      for (const [x, z] of [
+        [-20, -10],
+        [20, -10],
+        [-20, 10],
+        [20, 10],
+      ]) {
+        boxM(g, 3, 13, 3, S, x, 6.5, z);
+      }
+      boxM(g, 28, 1.2, 16, A, 0, 16, 0);
+      boxM(g, 5, 1.4, 5, S, -8, 17, -3);
+      boxM(g, 5, 1.4, 5, P, -2, 17, 2);
+      boxM(g, 5, 1.4, 5, S, 6, 17, -2);
+      boxM(g, 4, 1.4, 4, A, 10, 17, 4);
+      boxM(g, 4, 1.4, 4, P, -12, 17, 4);
+      break;
+    }
     default:
       boxM(g, 24, 14, 24, P, 0, 7, 0);
   }
@@ -1250,6 +1451,21 @@ async function main() {
     "party_lights",
     "arcade_cabinet",
     "hammock",
+    "workbench",
+    "tool_rack",
+    "fishing_spot",
+    "craft_table",
+    "pottery_wheel",
+    "wood_shelf",
+    "lantern",
+    "sandcastle_kit",
+    "wind_chimes",
+    "sewing_machine",
+    "trampoline",
+    "bird_bath",
+    "campfire_pit",
+    "piano",
+    "puzzle_table",
   ];
   for (const id of furniture) {
     matCache.clear();

@@ -56,6 +56,15 @@ export const NPCS: NpcDef[] = [
     spawnTx: 34,
     spawnTy: 54,
   },
+  {
+    id: "reed",
+    name: "Reed",
+    color: Palette.woodDark,
+    homeLot: "workshop",
+    traits: ["Steady", "Crafty"],
+    spawnTx: 101,
+    spawnTy: 22,
+  },
 ];
 
 export const RELATIONSHIP_ACQUAINTANCE = 10;
@@ -149,4 +158,5 @@ export const TONE_RECEPTIVENESS: Record<
   vera: { friendly: 0.9, polite: 1.2, flirty: 0.5, rude: 1.4 },
   theo: { friendly: 1.0, polite: 1.4, flirty: 0.3, rude: 1.5 },
   sage: { friendly: 1.2, polite: 1.3, flirty: 0.4, rude: 1.6 },
+  reed: { friendly: 1.1, polite: 1.2, flirty: 0.5, rude: 1.2 },
 };

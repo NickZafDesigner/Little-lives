@@ -99,4 +99,6 @@ export const SIDE_QUEST_IDS = [
   "vera_parcel",
   "theo_returns",
   "sage_supplies",
+  "reed_planks",
+  "pip_pier",
 ] as const;

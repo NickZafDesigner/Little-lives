@@ -30,9 +30,9 @@ export interface ActorHandle {
   playReaction(kind: ActorReaction): void;
   /** Snap body into a bed/stand pose (overrides walk/idle until stand). */
   setPose(pose: ActorPose): void;
-  /** Arms-out stretch, ~0.9s. */
+  /** Arms-up stretch, ~0.75s. */
   playStretch(): void;
-  /** Brief head tilt / mouth yawn, ~0.7s. */
+  /** Brief head tip / open-mouth yawn, ~0.65s. */
   playYawn(): void;
   /** Friendly raised-hand wave, ~1.0s. */
   playWave(): void;
@@ -1047,7 +1047,9 @@ export function createActor(look: PlayerLook): ActorHandle {
       limbs.armL.rotation.z = easeToward(limbs.armL.rotation.z, l.z + 0.35, dt, 6);
       limbs.armR.rotation.z = easeToward(limbs.armR.rotation.z, r.z - 0.35, dt, 6);
     } else if (pose === "sit") {
-      body.rotation.x = easeToward(body.rotation.x, -0.28, dt, 7);
+      // Soft sit-up; stretch leans back a little instead of warping limbs.
+      const lean = -0.28 - stretchU * 0.12;
+      body.rotation.x = easeToward(body.rotation.x, lean, dt, 7);
       body.position.y = easeToward(body.position.y, SIT_Y, dt, 7);
       body.position.z = easeToward(body.position.z, SIT_Z, dt, 7);
       body.position.x = easeToward(body.position.x, 0, dt, 8);
@@ -1058,36 +1060,54 @@ export function createActor(look: PlayerLook): ActorHandle {
 
       const l = armRest(limbs.armL);
       const r = armRest(limbs.armR);
-      const armOut = stretchU * 1.1;
+      // Gentle reach-up stretch - keep arms close to the body silhouette.
+      const reach = stretchU * 0.55;
+      const lift = stretchU * 0.7;
       limbs.armL.rotation.x = easeToward(
         limbs.armL.rotation.x,
-        l.x - 0.4 - stretchU * 0.6,
+        l.x - 0.25 - lift,
         dt,
-        10,
+        9,
       );
       limbs.armR.rotation.x = easeToward(
         limbs.armR.rotation.x,
-        r.x - 0.4 - stretchU * 0.6,
+        r.x - 0.25 - lift,
         dt,
-        10,
+        9,
       );
       limbs.armL.rotation.z = easeToward(
         limbs.armL.rotation.z,
-        l.z + 0.55 + armOut,
+        l.z + 0.35 + reach,
         dt,
-        10,
+        9,
       );
       limbs.armR.rotation.z = easeToward(
         limbs.armR.rotation.z,
-        r.z - 0.55 - armOut,
+        r.z - 0.35 - reach,
         dt,
-        10,
+        9,
       );
 
       const head = headNode();
       if (head) {
-        head.rotation.x = easeToward(head.rotation.x, -0.15 - yawnU * 0.55, dt, 10);
-        head.scale.y = easeToward(head.scale.y, 1 + yawnU * 0.08, dt, 10);
+        // Tip back slightly for the yawn - never scale the head (reads as a warp).
+        head.rotation.x = easeToward(
+          head.rotation.x,
+          -0.08 - yawnU * 0.28,
+          dt,
+          9,
+        );
+        head.scale.y = 1;
+      }
+      const mouth = AssetLibrary.findNamed(body, "Mouth");
+      if (mouth && faceRest.mouth) {
+        // Soft O-mouth for the yawn instead of stretching the whole head.
+        const open = yawnU;
+        mouth.scale.set(
+          faceRest.mouth.x * (1 - open * 0.25),
+          faceRest.mouth.y * (1 + open * 0.85),
+          faceRest.mouth.z,
+        );
       }
     }
 
@@ -1098,11 +1118,8 @@ export function createActor(look: PlayerLook): ActorHandle {
     if (!yawning && yawnDur > 0) {
       yawnDur = 0;
       yawnT = 0;
-      const head = headNode();
-      if (head) {
-        head.rotation.x = easeToward(head.rotation.x, 0, dt, 8);
-        head.scale.y = easeToward(head.scale.y, 1, dt, 8);
-      }
+      const mouth = AssetLibrary.findNamed(body, "Mouth");
+      if (mouth && faceRest.mouth) mouth.scale.copy(faceRest.mouth);
     }
   };
 
@@ -1164,11 +1181,11 @@ export function createActor(look: PlayerLook): ActorHandle {
     },
     playStretch() {
       stretchT = 0;
-      stretchDur = 0.9;
+      stretchDur = 0.75;
     },
     playYawn() {
       yawnT = 0;
-      yawnDur = 0.7;
+      yawnDur = 0.65;
     },
     playWave() {
       if (pose !== "stand") return;
@@ -1233,11 +1250,11 @@ export function createActor(look: PlayerLook): ActorHandle {
         } else {
           const hop = Math.sin(u * Math.PI);
           body.position.x = 0;
-          body.position.y = hop * 0.48;
-          body.rotation.z = Math.sin(u * Math.PI * 2) * 0.06;
-          // Squash on launch, stretch in air
-          const squash = u < 0.2 ? 1 - u * 0.6 : 1 + hop * 0.12;
-          const stretchAmt = u < 0.2 ? 1 + u * 0.5 : 1 - hop * 0.08;
+          body.position.y = hop * 0.42;
+          body.rotation.z = Math.sin(u * Math.PI * 2) * 0.04;
+          // Light hop squash - keep it subtle so the face doesn't warp.
+          const squash = u < 0.18 ? 1 - u * 0.25 : 1 + hop * 0.04;
+          const stretchAmt = u < 0.18 ? 1 + u * 0.18 : 1 - hop * 0.03;
           applyBodyScale(squash, stretchAmt, squash);
         }
         if (u >= 1) {

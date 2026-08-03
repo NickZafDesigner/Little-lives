@@ -1,10 +1,11 @@
 import * as THREE from "three";
 import { Palette } from "../game/palette";
-import { TILE, WALL_T } from "../game/constants";
+import { TILE, WALL_T, CAM_OFFSET_X, CAM_OFFSET_Z } from "../game/constants";
 import { LOTS, LOT_DOOR_TX, type LotBounds } from "../world/lots";
 import { LOT_INTERIORS } from "../world/rooms";
-import type { LotId } from "../data/types";
+import type { Dir, LotId } from "../data/types";
 import { matFlat, matClone } from "./materials";
+import { woodFloorTexture } from "./terrainTextures";
 
 export interface BuildingHandle {
   lotId: LotId;
@@ -116,6 +117,13 @@ const LOT_STYLE: Partial<
     floor: Palette.floor,
     floorTrim: Palette.woodDark,
   },
+  workshop: {
+    wall: 0xefebe9,
+    roof: Palette.woodDeep,
+    door: Palette.woodDark,
+    floor: Palette.wood,
+    floorTrim: Palette.woodDeep,
+  },
 };
 
 
@@ -144,13 +152,18 @@ function box(
 }
 
 /** SE camera looks NW - player is behind a wall when on its north/west side. */
-const WALL_FADE_OPACITY = 0.5;
+const WALL_FADE_OPACITY = 0.34;
 /** Enter / exit cutaway (roof + near walls) ease duration. */
 const CUTAWAY_FADE_SEC = 0.55;
 /** Internal partition ghost-in / ghost-out duration. */
-const INNER_FADE_SEC = 0.35;
-/** Slight span pad so fade holds near segment ends / doorjambs. */
-const INNER_FADE_SPAN_PAD = TILE * 0.25;
+const INNER_FADE_SEC = 0.22;
+/**
+ * How far beside a wall segment the player can stand and still count as
+ * "behind" it. Must cover a full room (bathroom is ~6 tiles wide) and door gaps.
+ */
+const INNER_LATERAL_REACH = TILE * 5;
+/** Widen ray hits so short stubs (fridge wall) still catch near-misses. */
+const INNER_RAY_PAD = TILE * 0.75;
 
 /** Smoothstep - softens linear 0→1 cutaway / wall fades. */
 function easeSmooth(t: number): number {
@@ -168,22 +181,27 @@ function setMeshFadeOpacity(mesh: THREE.Mesh, opacity: number) {
   const key = (opacity * 1000 + 0.5) | 0;
   if (mesh.userData._fadeKey === key) return;
   mesh.userData._fadeKey = key;
-  const m = mesh.material;
-  if (!(m instanceof THREE.MeshToonMaterial)) return;
-  if (opacity <= 0.01) {
-    mesh.visible = false;
-    return;
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  let handled = false;
+  for (const m of mats) {
+    if (!(m instanceof THREE.MeshToonMaterial)) continue;
+    handled = true;
+    if (opacity <= 0.01) {
+      mesh.visible = false;
+      return;
+    }
+    mesh.visible = true;
+    if (opacity >= 0.999) {
+      m.transparent = false;
+      m.opacity = 1;
+      m.depthWrite = true;
+    } else {
+      m.transparent = true;
+      m.opacity = opacity;
+      m.depthWrite = false;
+    }
   }
-  mesh.visible = true;
-  if (opacity >= 0.999) {
-    m.transparent = false;
-    m.opacity = 1;
-    m.depthWrite = true;
-  } else {
-    m.transparent = true;
-    m.opacity = opacity;
-    m.depthWrite = false;
-  }
+  if (!handled && opacity <= 0.01) mesh.visible = false;
 }
 
 function setGroupFadeOpacity(
@@ -205,20 +223,126 @@ function ghostOpacity(t: number): number {
   return 1 + (WALL_FADE_OPACITY - 1) * easeSmooth(t);
 }
 
-function playerBehindInternalWall(
+/** Distance from a point to a 1D segment [min, max]. */
+function distToSpan(p: number, min: number, max: number): number {
+  if (p < min) return min - p;
+  if (p > max) return p - max;
+  return 0;
+}
+
+/**
+ * True when the SE camera→player segment crosses this axis-aligned wall run.
+ * `pad` grows the span so doorjamb stubs still register near-misses.
+ */
+function segmentHitsCamRay(
+  axis: "x" | "y",
+  min: number,
+  max: number,
+  plane: number,
+  px: number,
+  pz: number,
+  pad = INNER_RAY_PAD,
+): boolean {
+  const camX = px + CAM_OFFSET_X;
+  const camZ = pz + CAM_OFFSET_Z;
+  const dx = px - camX;
+  const dz = pz - camZ;
+
+  if (axis === "x") {
+    if (Math.abs(dz) < 1e-6) return false;
+    const t = (plane - camZ) / dz;
+    if (t <= 0.02 || t >= 0.98) return false;
+    const x = camX + t * dx;
+    return x >= min - pad && x <= max + pad;
+  }
+
+  if (Math.abs(dx) < 1e-6) return false;
+  const t = (plane - camX) / dx;
+  if (t <= 0.02 || t >= 0.98) return false;
+  const z = camZ + t * dz;
+  return z >= min - pad && z <= max + pad;
+}
+
+/**
+ * Whether this partition would hide the player from the SE ortho camera.
+ *
+ * Primary: camera→player ray crosses the segment (true occlusion).
+ * Fallback keeps the Sims-style side rules when the ray slips a door gap:
+ * - EW: player north of the wall and within lateral reach
+ * - NS: player within the wall's north-south reach (either side - west
+ *   dividers clip the silhouette even though the ray ends at the character)
+ */
+function wallObscuresPlayer(
   data: InternalWallData,
   px: number,
   pz: number,
 ): boolean {
   const half = INNER_T / 2;
-  if (data.axis === "x") {
-    // EW wall: occludes when player is north of it (camera-far).
-    if (pz >= data.plane - half) return false;
-    return px >= data.min - INNER_FADE_SPAN_PAD && px <= data.max + INNER_FADE_SPAN_PAD;
+
+  if (
+    segmentHitsCamRay(data.axis, data.min, data.max, data.plane, px, pz)
+  ) {
+    return true;
   }
-  // NS wall: occludes when player is west of it (camera-far).
-  if (px >= data.plane - half) return false;
-  return pz >= data.min - INNER_FADE_SPAN_PAD && pz <= data.max + INNER_FADE_SPAN_PAD;
+
+  if (data.axis === "x") {
+    if (pz >= data.plane + half) return false;
+    return distToSpan(px, data.min, data.max) <= INNER_LATERAL_REACH;
+  }
+
+  if (distToSpan(pz, data.min, data.max) > INNER_LATERAL_REACH) return false;
+  // Either side of an NS run - east is camera-near, west still clips.
+  return true;
+}
+
+/**
+ * Wall-flush props (fridge, TV, …) sit on the camera-near face of partitions.
+ * Ghost them when the player stands behind the piece so a solid appliance
+ * doesn't keep blocking after its wall has faded.
+ */
+export function wallFlushObscuresPlayer(
+  fx: number,
+  fz: number,
+  rot: Dir,
+  px: number,
+  pz: number,
+): boolean {
+  const reach = TILE * 2.8;
+  switch (rot) {
+    case "down":
+      // Faces south; back toward an EW wall. Behind = north of the piece.
+      if (pz >= fz - 2) return false;
+      return Math.abs(px - fx) <= reach;
+    case "up":
+      if (pz <= fz + 2) return false;
+      return Math.abs(px - fx) <= reach;
+    case "right":
+      // Faces east; back toward a west wall. Behind = west of the piece.
+      if (px >= fx - 2) return false;
+      return Math.abs(pz - fz) <= reach;
+    case "left":
+      if (px <= fx + 2) return false;
+      return Math.abs(pz - fz) <= reach;
+  }
+}
+
+/** Ease wall-flush furniture toward ghost / solid with the same opacity curve. */
+export function updateWallFlushFurnitureFade(
+  root: THREE.Object3D,
+  dt: number,
+  wantGhost: boolean,
+): void {
+  const target = wantGhost ? 1 : 0;
+  let t = (root.userData.fadeT as number) ?? 0;
+  if (t === target) {
+    // Still apply once so newly spawned meshes pick up the current state.
+    if (root.userData._fadeApplied === target) return;
+  } else {
+    t = approach(t, target, dt / INNER_FADE_SEC);
+    root.userData.fadeT = t;
+  }
+  root.userData._fadeApplied = t === target ? target : -1;
+  setGroupFadeOpacity(root, ghostOpacity(t), t < 0.45);
 }
 
 /**
@@ -609,8 +733,22 @@ function buildHouse(lot: LotBounds): BuildingHandle {
   const leftCx = minX + leftW / 2;
   const rightCx = doorX1 + rightW / 2;
 
-  // Floor slab - wood tones so interiors read apart from pastel walls.
-  box(group, outerW, PLINTH_H, outerD, style.floor, cx, PLINTH_H / 2, cz);
+  // Floor slab - wood grain matching terrain; UV repeat so boards stay tile-scale.
+  const floorMap = woodFloorTexture().clone();
+  floorMap.needsUpdate = true;
+  floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping;
+  floorMap.repeat.set(outerW / TILE, outerD / TILE);
+  box(
+    group,
+    outerW,
+    PLINTH_H,
+    outerD,
+    style.floor,
+    cx,
+    PLINTH_H / 2,
+    cz,
+    matFlat(0xffffff, { map: floorMap }),
+  );
 
   // --- Far walls (always visible): north + west ---
   box(group, outerW, WALL_H, t, style.wall, cx, wallY, northZ);
@@ -829,9 +967,7 @@ function buildHouse(lot: LotBounds): BuildingHandle {
     for (const mesh of internalWalls) {
       const data = mesh.userData.internalWall as InternalWallData | undefined;
       const want =
-        open && data
-          ? playerBehindInternalWall(data, playerX, playerZ)
-          : false;
+        open && data ? wallObscuresPlayer(data, playerX, playerZ) : false;
       const target = want ? 1 : 0;
       let t = (mesh.userData.fadeT as number) ?? 0;
       if (t === target) continue;
@@ -891,7 +1027,7 @@ export function buildBuildings(): {
   const buildings: BuildingHandle[] = [];
 
   for (const lot of LOTS) {
-    if (lot.id === "park" || lot.id === "playpark") continue;
+    if (lot.id === "park" || lot.id === "playpark" || lot.id === "pier" || lot.id === "forest" || lot.id === "mine") continue;
     const b = buildHouse(lot);
     group.add(b.group);
     buildings.push(b);

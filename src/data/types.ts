@@ -21,7 +21,11 @@ export type LotId =
   | "shelter"
   | "market"
   | "library"
-  | "clinic";
+  | "clinic"
+  | "workshop"
+  | "pier"
+  | "forest"
+  | "mine";
 
 export type NpcId =
   | "mabel"
@@ -30,6 +34,7 @@ export type NpcId =
   | "vera"
   | "theo"
   | "sage"
+  | "reed"
   | "player";
 
 export type DialogueTone = "friendly" | "flirty" | "rude" | "polite";
@@ -197,6 +202,11 @@ export interface QuestSaveData {
   flags: Record<string, boolean>;
 }
 
+export interface InventorySave {
+  tools: string[];
+  materials: Record<string, number>;
+}
+
 export interface SaveData {
   version: number;
   money: number;
@@ -221,6 +231,10 @@ export interface SaveData {
   lastShiftDay?: number;
   lastPetCareDay: number;
   petCareStreak: number;
+  /** Permanent tools + stackable materials. */
+  inventory?: InventorySave;
+  /** Harvest node uid → dayIndex when depleted (respawns next day). */
+  harvestDepleted?: Record<string, number>;
   player: {
     x: number;
     y: number;

@@ -120,6 +120,16 @@ export const EXCLUSIVE_HANGOUTS: Record<ChatNpcId, ExclusiveHangout> = {
     durationMs: 1500,
     line: "Physician's orders: breathe, sip, stay a while.",
   },
+  reed: {
+    id: "exclusive_build",
+    label: "Build something together",
+    sub: "Close friends only",
+    delta: 17,
+    needSocial: 16,
+    needFun: 14,
+    durationMs: 1600,
+    line: "Pass me that clamp. …Okay, this one's ours. Don't sell it.",
+  },
 };
 
 export function closeFriendUnlockLine(npcId: ChatNpcId): string {
@@ -130,6 +140,7 @@ export function closeFriendUnlockLine(npcId: ChatNpcId): string {
     vera: "Fine. Close friends get the real deals. Don't make me regret it.",
     theo: "I trust you with the quiet corners of the library. That's… a lot.",
     sage: "You've become someone I rely on. That means a great deal.",
+    reed: "Close friends get first pick of the scrap maple. Don't waste it.",
   };
   return lines[npcId];
 }
@@ -142,6 +153,7 @@ export function crushUnlockLine(npcId: ChatNpcId): string {
     vera: "Don't get cocky. …But yes, I noticed.",
     theo: "I -  ahem. Your company is… distracting. In a good way.",
     sage: "My pulse just did something unprofessional. Ignore that.",
+    reed: "Huh. Usually I notice wood grain first. Not today.",
   };
   return lines[npcId];
 }
