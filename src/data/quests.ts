@@ -1,3 +1,5 @@
+import type { MaterialId } from "./items";
+
 export type QuestEvent =
   | "game_started"
   | "opened_build"
@@ -87,6 +89,8 @@ export interface QuestDef {
     money?: number;
     friendshipNpcId?: string;
     friendshipDelta?: number;
+    /** Small thank-you materials (bag items). */
+    materials?: Array<{ id: MaterialId; count: number }>;
   };
 }
 
@@ -377,9 +381,10 @@ export const QUESTS: QuestDef[] = [
       },
     ],
     rewards: {
-      money: 15,
+      money: 25,
       friendshipNpcId: "jun",
       friendshipDelta: 12,
+      materials: [{ id: "flower", count: 2 }],
     },
   },
   {
@@ -410,9 +415,10 @@ export const QUESTS: QuestDef[] = [
       },
     ],
     rewards: {
-      money: 25,
+      money: 28,
       friendshipNpcId: "mabel",
       friendshipDelta: 15,
+      materials: [{ id: "apple", count: 1 }],
     },
   },
   {
@@ -439,9 +445,10 @@ export const QUESTS: QuestDef[] = [
       },
     ],
     rewards: {
-      money: 20,
+      money: 22,
       friendshipNpcId: "pip",
       friendshipDelta: 15,
+      materials: [{ id: "flower", count: 1 }],
     },
   },
   {
@@ -471,6 +478,7 @@ export const QUESTS: QuestDef[] = [
       money: 30,
       friendshipNpcId: "vera",
       friendshipDelta: 12,
+      materials: [{ id: "orange", count: 1 }],
     },
   },
   {
@@ -501,6 +509,7 @@ export const QUESTS: QuestDef[] = [
       money: 28,
       friendshipNpcId: "theo",
       friendshipDelta: 14,
+      materials: [{ id: "flower", count: 1 }],
     },
   },
   {
@@ -530,6 +539,7 @@ export const QUESTS: QuestDef[] = [
       money: 35,
       friendshipNpcId: "sage",
       friendshipDelta: 15,
+      materials: [{ id: "flower", count: 1 }],
     },
   },
   {
@@ -559,6 +569,7 @@ export const QUESTS: QuestDef[] = [
       money: 32,
       friendshipNpcId: "reed",
       friendshipDelta: 14,
+      materials: [{ id: "wood", count: 2 }],
     },
   },
   {
@@ -589,6 +600,7 @@ export const QUESTS: QuestDef[] = [
       money: 24,
       friendshipNpcId: "pip",
       friendshipDelta: 12,
+      materials: [{ id: "fish", count: 1 }],
     },
   },
   {
@@ -619,9 +631,10 @@ export const QUESTS: QuestDef[] = [
       },
     ],
     rewards: {
-      money: 18,
+      money: 20,
       friendshipNpcId: "nibs",
       friendshipDelta: 10,
+      materials: [{ id: "flower", count: 1 }],
     },
   },
   {
@@ -655,6 +668,7 @@ export const QUESTS: QuestDef[] = [
       money: 22,
       friendshipNpcId: "crumb",
       friendshipDelta: 10,
+      materials: [{ id: "apple", count: 1 }],
     },
   },
   {
@@ -689,6 +703,7 @@ export const QUESTS: QuestDef[] = [
       money: 26,
       friendshipNpcId: "sprocket",
       friendshipDelta: 10,
+      materials: [{ id: "wood", count: 1 }],
     },
   },
 ];

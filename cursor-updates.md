@@ -10,3 +10,4 @@
 
 - Restarted the Vite dev server; app available at http://localhost:5173/Little-lives/.
 - Interaction menu: Offer to help gets a mint helping-hand badge; specials (favours, jobs, Where's Reed) sit above chat with a subtle divider; card is larger.
+- Side quests now pay clearer rewards (cash + a small item), celebrate that first, then any catalog unlock, and only then a separate Sunny Sofa afford moment if you can actually buy it.

@@ -7,6 +7,7 @@ import {
 import type { GameState } from "./GameState";
 import {
   completedUnlockTaskIds,
+  furnitureUnlockedByTasks,
   toastNewUnlocks,
 } from "./unlockProgress";
 
@@ -20,20 +21,29 @@ export interface QuestTrackerInfo {
   need?: number;
 }
 
+export interface QuestCompleteMeta {
+  /** Furniture names newly unlocked by this completion (buyable, not free). */
+  unlockFurniture: string[];
+}
+
 /**
  * Data-driven quest runner. Gameplay emits events; this advances steps,
  * unlocks follow-ups, applies rewards, and feeds the HUD tracker.
  */
 export class QuestSystem {
   private state: GameState;
-  private completeHandler: ((def: QuestDef) => void) | null = null;
+  private completeHandler:
+    | ((def: QuestDef, meta: QuestCompleteMeta) => void)
+    | null = null;
 
   constructor(state: GameState) {
     this.state = state;
   }
 
   /** Optional hook for UI celebrations when a quest finishes. */
-  onQuestComplete(handler: ((def: QuestDef) => void) | null) {
+  onQuestComplete(
+    handler: ((def: QuestDef, meta: QuestCompleteMeta) => void) | null,
+  ) {
     this.completeHandler = handler;
   }
 
@@ -55,6 +65,7 @@ export class QuestSystem {
     const unlockBefore = completedUnlockTaskIds(this.state);
     const q = this.state.quests;
     let changed = false;
+    const justCompleted: QuestDef[] = [];
 
     for (const questId of [...q.active]) {
       const def = questById[questId];
@@ -72,13 +83,35 @@ export class QuestSystem {
 
       if (this.isQuestFullyDone(def, counts)) {
         this.completeQuest(def);
+        justCompleted.push(def);
         changed = true;
       }
     }
 
-    if (changed) {
-      this.tryUnlockQuests();
-      if (unlockToast) toastNewUnlocks(this.state, unlockBefore);
+    if (!changed) return;
+
+    this.tryUnlockQuests();
+    const after = completedUnlockTaskIds(this.state);
+    const newly: string[] = [];
+    for (const id of after) {
+      if (!unlockBefore.has(id)) newly.push(id);
+    }
+    const unlockFurniture = furnitureUnlockedByTasks(newly);
+    const sideDone = justCompleted.some((d) => d.side);
+
+    for (const def of justCompleted) {
+      if (def.side && this.completeHandler) {
+        this.completeHandler(def, { unlockFurniture });
+      } else if (def.rewards) {
+        const bits: string[] = [`${def.title} complete!`];
+        if (def.rewards.money) bits.push(`+$${def.rewards.money}`);
+        this.state.showToast(bits.join(" "), 2800);
+      }
+    }
+
+    // Side-quest UI sequences unlock moments itself — don't toast over the reward.
+    if (unlockToast && !sideDone) {
+      toastNewUnlocks(this.state, unlockBefore);
     }
   }
 
@@ -209,20 +242,12 @@ export class QuestSystem {
           );
         }
       }
+      if (def.rewards.materials) {
+        for (const m of def.rewards.materials) {
+          if (m.count > 0) this.state.addMaterial(m.id, m.count);
+        }
+      }
     }
-
-    // Side quests get a proper hand-in celebration from the world UI.
-    if (def.side && this.completeHandler) {
-      this.completeHandler(def);
-      return;
-    }
-
-    if (def.rewards) {
-      const bits: string[] = [`${def.title} complete!`];
-      if (def.rewards.money) bits.push(`+$${def.rewards.money}`);
-      this.state.showToast(bits.join(" "), 2800);
-    }
-    // Main-chain completions rely on the next quest's journal dialogue.
   }
 
   private canUnlock(def: QuestDef): boolean {

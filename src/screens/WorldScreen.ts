@@ -329,7 +329,11 @@ export function createWorldScreen(
   let confetti!: ConfettiBurst;
   let payCelebration!: PayCelebration;
   let momentCelebration!: MomentCelebration;
-  let pendingSideQuestCelebration: QuestDef | null = null;
+  type PendingSideCelebration = {
+    def: QuestDef;
+    unlockFurniture: string[];
+  };
+  let pendingSideQuestCelebration: PendingSideCelebration | null = null;
   let giftHandoff!: GiftHandoffCard;
   let storyPrologue!: StoryPrologue;
   /** NPC under the cursor in live mode (for name tooltips). */
@@ -2400,6 +2404,25 @@ export function createWorldScreen(
     !!momentCelebration?.isVisible();
 
   let sofaAffordQueued = false;
+  /** Sequenced milestone banners so reward / unlock / afford don't collide. */
+  const celebQueue: Array<(done: () => void) => void> = [];
+  let celebBusy = false;
+
+  const pumpCelebQueue = () => {
+    if (celebBusy) return;
+    const job = celebQueue.shift();
+    if (!job) return;
+    celebBusy = true;
+    job(() => {
+      celebBusy = false;
+      pumpCelebQueue();
+    });
+  };
+
+  const enqueueCelebration = (job: (done: () => void) => void) => {
+    celebQueue.push(job);
+    pumpCelebQueue();
+  };
 
   const primaryJobId = (): string | null => {
     if (state.activeJobId) return state.activeJobId;
@@ -2737,7 +2760,7 @@ export function createWorldScreen(
     state.furniture.some((f) => f.defId === "sofa" && f.lotId === "home");
 
   /** First time the player can afford a Sunny Sofa - nudge them into build mode. */
-  const queueSofaAffordCelebration = () => {
+  const queueSofaAffordCelebration = (opts?: { forceCheck?: boolean }) => {
     const price = furnitureById.sofa?.price ?? 100;
     if (sofaAffordQueued || state.hasStoryFlag("first_sofa_afford")) return;
     if (ownsHomeSofa()) {
@@ -2747,26 +2770,26 @@ export function createWorldScreen(
     if (state.money < price) return;
 
     sofaAffordQueued = true;
-    let tries = 0;
-    const tryShow = () => {
-      tries += 1;
-      if (uiBusy() && tries < 60) {
-        window.setTimeout(tryShow, 350);
-        return;
-      }
+    enqueueCelebration((done) => {
       sofaAffordQueued = false;
-      if (ownsHomeSofa()) {
-        state.setStoryFlag("first_sofa_afford");
+      // Re-check after earlier celebrations (and any spending) finish.
+      if (ownsHomeSofa() || state.money < price) {
+        if (ownsHomeSofa()) state.setStoryFlag("first_sofa_afford");
+        done();
         return;
       }
-      if (state.money < price) return;
-      if (!state.setStoryFlag("first_sofa_afford")) return;
-      if (!momentCelebration) return;
-
+      if (!state.setStoryFlag("first_sofa_afford")) {
+        done();
+        return;
+      }
+      if (!momentCelebration) {
+        done();
+        return;
+      }
       celebrateKeyItem({
         eyebrow: "You can buy it!",
         title: "Sunny Sofa",
-        note: "Go home and press B to enter build mode",
+        note: `You have $${state.money} · sofa costs $${price} · press B at home`,
         furnitureDefId: "sofa",
         badge: "★",
         accent: "gold",
@@ -2774,19 +2797,22 @@ export function createWorldScreen(
         palette: "gold",
         sfx: "chime",
         durationMs: 4200,
+        onDone: done,
       });
-    };
-    window.setTimeout(tryShow, 0);
+    });
+    void opts;
   };
 
   /** Side-quest hand-in: wait for dialogue to finish, then banner + confetti. */
   const flushSideQuestCelebration = () => {
-    const def = pendingSideQuestCelebration;
-    if (!def || !momentCelebration) return;
+    const pending = pendingSideQuestCelebration;
+    if (!pending || !momentCelebration) return;
     if (dialogue?.isOpen()) return;
     pendingSideQuestCelebration = null;
 
+    const { def, unlockFurniture } = pending;
     const money = def.rewards?.money ?? 0;
+    const mats = def.rewards?.materials ?? [];
     const friendId = def.rewards?.friendshipNpcId;
     const friendDelta = def.rewards?.friendshipDelta ?? 0;
     const friend =
@@ -2794,6 +2820,10 @@ export function createWorldScreen(
       (friendId ? ambientNpcById[friendId] : undefined);
     const noteBits: string[] = [];
     if (money > 0) noteBits.push(`+$${money}`);
+    for (const m of mats) {
+      const name = materialById[m.id]?.name ?? m.id;
+      noteBits.push(`+${m.count} ${name}`);
+    }
     if (friend && friendDelta > 0) {
       noteBits.push(`+${friendDelta} with ${friend.name}`);
     }
@@ -2804,21 +2834,50 @@ export function createWorldScreen(
       npc?.actor.playReaction("pop");
     }
 
-    celebrateKeyItem({
-      eyebrow: "Side quest complete!",
-      title: def.title,
-      note: noteBits.length ? noteBits.join(" · ") : "Thanks for helping out.",
-      badge: "✓",
-      accent: "mint",
-      confetti: money > 0 ? "huge" : "big",
-      palette: "party",
-      sfx: money > 0 ? "cash" : "chime",
-      durationMs: 4000,
+    enqueueCelebration((done) => {
+      celebrateKeyItem({
+        eyebrow: "Side quest complete!",
+        title: def.title,
+        note: noteBits.length ? noteBits.join(" · ") : "Thanks for helping out.",
+        badge: "✓",
+        accent: "mint",
+        confetti: money > 0 || mats.length > 0 ? "huge" : "big",
+        palette: "party",
+        sfx: money > 0 ? "cash" : "chime",
+        durationMs: 4200,
+        onDone: done,
+      });
     });
+
+    // Separate unlock moment(s) — available to buy, not "you can afford".
+    for (const name of unlockFurniture) {
+      const defId = Object.values(furnitureById).find((f) => f.name === name)?.id;
+      enqueueCelebration((done) => {
+        celebrateKeyItem({
+          eyebrow: "Catalog unlock!",
+          title: name,
+          note: "Now available to buy in build mode",
+          furnitureDefId: defId,
+          badge: "★",
+          accent: "rose",
+          confetti: "soft",
+          palette: "party",
+          sfx: "chime",
+          durationMs: 3600,
+          onDone: done,
+        });
+      });
+    }
+
+    // Only after rewards land visually — and only if they can still afford it.
+    queueSofaAffordCelebration();
   };
 
-  const queueSideQuestCelebration = (def: QuestDef) => {
-    pendingSideQuestCelebration = def;
+  const queueSideQuestCelebration = (
+    def: QuestDef,
+    unlockFurniture: string[] = [],
+  ) => {
+    pendingSideQuestCelebration = { def, unlockFurniture };
     // If no thank-you dialogue is up, celebrate on the next frame.
     window.setTimeout(() => flushSideQuestCelebration(), 0);
   };
@@ -7156,8 +7215,11 @@ export function createWorldScreen(
       confetti = new ConfettiBurst(ui);
       payCelebration = new PayCelebration(ui);
       momentCelebration = new MomentCelebration(ui);
-      quests.onQuestComplete((def) => {
-        if (def.side) queueSideQuestCelebration(def);
+      quests.onQuestComplete((def, meta) => {
+        if (def.side) {
+          queueSideQuestCelebration(def, meta.unlockFurniture);
+          return;
+        }
         queueSofaAffordCelebration();
       });
       giftHandoff = new GiftHandoffCard(ui);
@@ -8000,7 +8062,6 @@ export function createWorldScreen(
       dialogue.setPlayerLook(state.playerLook);
       dialogue.update(dt);
       hud.update();
-      queueSofaAffordCelebration();
 
       {
         const rect = app.canvas.getBoundingClientRect();
