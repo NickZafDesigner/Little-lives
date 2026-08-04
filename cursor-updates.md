@@ -12,3 +12,4 @@
 - Interaction menu: Offer to help gets a mint helping-hand badge; specials (favours, jobs, Where's Reed) sit above chat with a subtle divider; card is larger.
 - Side quests now pay clearer rewards (cash + a small item), celebrate that first, then any catalog unlock, and only then a separate Sunny Sofa afford moment if you can actually buy it.
 - Jun's café favor is now brew a drink at the counter/coffee machine (no hire needed); board work-assists also show the right tip instead of Ask about work.
+- Side-quest hand-ins wait for thank-you dialogue to finish, then show a clear Rewards! celebration (cash, items, confetti) so the payout isn't missed.

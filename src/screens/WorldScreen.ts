@@ -2822,11 +2822,17 @@ export function createWorldScreen(
     void opts;
   };
 
+  /** True while spoken lines are up or still queued for the dialogue box. */
+  const dialoguePending = () =>
+    !!dialogue?.isOpen() || state.dialogueQueue.length > 0;
+
   /** Side-quest hand-in: wait for dialogue to finish, then banner + confetti. */
   const flushSideQuestCelebration = () => {
     const pending = pendingSideQuestCelebration;
     if (!pending || !momentCelebration) return;
-    if (dialogue?.isOpen()) return;
+    // Thank-you lines are often queued the same tick as quest complete —
+    // wait until they've been shown and dismissed before rewarding.
+    if (dialoguePending()) return;
     pendingSideQuestCelebration = null;
 
     const { def, unlockFurniture } = pending;
@@ -2853,17 +2859,25 @@ export function createWorldScreen(
       npc?.actor.playReaction("pop");
     }
 
+    const rewardThumb =
+      mats[0] != null
+        ? (`mat:${mats[0].id}` as import("../mesh/inventoryItems").InventoryThumbId)
+        : undefined;
+
     enqueueCelebration((done) => {
       celebrateKeyItem({
-        eyebrow: "Side quest complete!",
+        eyebrow: "Rewards!",
         title: def.title,
-        note: noteBits.length ? noteBits.join(" · ") : "Thanks for helping out.",
-        badge: "✓",
+        note: noteBits.length
+          ? noteBits.join(" · ")
+          : "Thanks for helping out.",
+        badge: money > 0 ? "$" : "✓",
+        thumbId: rewardThumb,
         accent: "mint",
         confetti: money > 0 || mats.length > 0 ? "huge" : "big",
         palette: "party",
         sfx: money > 0 ? "cash" : "chime",
-        durationMs: 4200,
+        durationMs: 4500,
         onDone: done,
       });
     });
@@ -2897,8 +2911,24 @@ export function createWorldScreen(
     unlockFurniture: string[] = [],
   ) => {
     pendingSideQuestCelebration = { def, unlockFurniture };
-    // If no thank-you dialogue is up, celebrate on the next frame.
-    window.setTimeout(() => flushSideQuestCelebration(), 0);
+    // Poll until thank-you dialogue has opened and closed (or none arrives).
+    let tries = 0;
+    const tryFlush = () => {
+      if (!pendingSideQuestCelebration) return;
+      if (dialoguePending()) {
+        tries = 0;
+        window.setTimeout(tryFlush, 120);
+        return;
+      }
+      // Brief grace so a just-queued line can land in the dialogue box.
+      if (tries < 4) {
+        tries += 1;
+        window.setTimeout(tryFlush, 80);
+        return;
+      }
+      flushSideQuestCelebration();
+    };
+    window.setTimeout(tryFlush, 80);
   };
 
   const celebrateToolPurchase = (toolId: import("../data/items").ToolId) => {
