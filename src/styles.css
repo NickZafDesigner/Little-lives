@@ -4744,6 +4744,26 @@ input:focus-visible {
     0 2px 0 rgba(58, 40, 24, 0.1);
 }
 
+.ll-menu-row-bang {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  border: 2px solid var(--ll-wood-deep);
+  font-family: var(--ll-font-display);
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff8ea;
+  background: linear-gradient(180deg, #f0b060, var(--ll-blush));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 248, 230, 0.4),
+    0 2px 0 rgba(58, 40, 24, 0.12);
+}
+
 .ll-menu-row-copy {
   display: flex;
   flex-direction: column;
@@ -4769,6 +4789,22 @@ input:focus-visible {
 
 .ll-menu-row.is-quest .ll-menu-row-label {
   color: var(--ll-mint-deep);
+}
+
+.ll-menu-row.is-critical {
+  background: linear-gradient(180deg, #fff3dc, #f6dfb4);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(240, 176, 96, 0.45),
+    0 3px 0 rgba(160, 90, 30, 0.16);
+}
+
+.ll-menu-row.is-critical .ll-menu-row-label {
+  color: var(--ll-wood-deep);
+}
+
+.ll-menu-row.is-critical:hover:not(:disabled),
+.ll-menu-row.is-critical.is-focused:not(:disabled) {
+  background: linear-gradient(180deg, #ffe3b0, #f0b060);
 }
 
 .ll-menu-row-sub {

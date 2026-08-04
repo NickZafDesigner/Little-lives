@@ -7,8 +7,8 @@ export interface MenuOption {
   label: string;
   sub?: string;
   disabled?: boolean;
-  /** Highlight as a side-quest offer row. */
-  accent?: "quest";
+  /** Highlight as a side-quest offer row, or a mission-critical action (!). */
+  accent?: "quest" | "critical";
   /** Utility / tip rows show this face so they stand apart from idle chat. */
   portrait?: PortraitId;
 }
@@ -140,7 +140,10 @@ export class InteractionMenu {
       if (opt.accent === "quest") {
         btn.classList.add("is-quest", "ll-quest-glow");
       }
-      if (opt.portrait) btn.classList.add("has-face");
+      if (opt.accent === "critical") btn.classList.add("is-critical");
+      const showFace = Boolean(opt.portrait);
+      const showBang = opt.accent === "critical" && !showFace;
+      if (showFace || showBang) btn.classList.add("has-face");
       btn.disabled = Boolean(opt.disabled);
       btn.dataset.optId = opt.id;
       btn.style.setProperty("--ll-i", String(delayStart + i));
@@ -149,10 +152,15 @@ export class InteractionMenu {
         <span class="ll-menu-row-label">${escapeHtml(opt.label)}</span>
         ${opt.sub ? `<span class="ll-menu-row-sub">${escapeHtml(opt.sub)}</span>` : ""}
       `;
-      btn.innerHTML = opt.portrait
-        ? `<canvas class="ll-menu-row-face" width="32" height="32" aria-hidden="true"></canvas><span class="ll-menu-row-copy">${copy}</span>`
+      const lead = showFace
+        ? `<canvas class="ll-menu-row-face" width="32" height="32" aria-hidden="true"></canvas>`
+        : showBang
+          ? `<span class="ll-menu-row-bang" aria-hidden="true">!</span>`
+          : "";
+      btn.innerHTML = lead
+        ? `${lead}<span class="ll-menu-row-copy">${copy}</span>`
         : copy;
-      if (opt.portrait) {
+      if (showFace && opt.portrait) {
         const face = btn.querySelector(".ll-menu-row-face") as HTMLCanvasElement;
         drawPortrait(face, opt.portrait);
       }

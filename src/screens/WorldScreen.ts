@@ -3952,6 +3952,7 @@ export function createWorldScreen(
         id: "weekly_beat",
         label: `Join ${beat.title}`,
         sub: beat.blurb,
+        accent: "critical",
       });
     }
 
@@ -4754,6 +4755,7 @@ export function createWorldScreen(
             ? "Clock in early"
             : "Clock in",
         sub: `${jobDisplayName(job.id, promoted)} · ~$${estPay} · ${jobTaskCount(job)} tasks`,
+        accent: "critical",
       },
     ];
     if (
@@ -4766,6 +4768,7 @@ export function createWorldScreen(
         id: "weekly_beat",
         label: `Join ${beat.title}`,
         sub: beat.blurb,
+        accent: "critical",
       });
     }
     menu.show(
@@ -4899,12 +4902,14 @@ export function createWorldScreen(
           id: "ask_job",
           label: "Ask about a job",
           sub: hireJob.name,
+          accent: "critical",
         });
       } else {
         options.push({
           id: "shift_chat",
           label: "Ask about work",
           sub: "Hours: 9 AM - 5 PM",
+          accent: "critical",
         });
       }
     }
@@ -4914,6 +4919,7 @@ export function createWorldScreen(
         id: "browse_tools",
         label: "Browse tools",
         sub: "Axes, pickaxes, shovels & rods",
+        accent: "critical",
       });
     } else if (!hasMetReed()) {
       options.push({
@@ -4928,6 +4934,7 @@ export function createWorldScreen(
         id: "sell_materials",
         label: "Sell materials",
         sub: "Wood, stone, ore, fish…",
+        accent: "critical",
       });
     }
 
@@ -5100,11 +5107,11 @@ export function createWorldScreen(
       });
     }
 
-    // Promote glowing side-quest rows to the top of the list.
+    // Promote glowing side-quest rows, then mission-critical actions, to the top.
     options.sort((a, b) => {
-      const aq = a.accent === "quest" ? 0 : 1;
-      const bq = b.accent === "quest" ? 0 : 1;
-      return aq - bq;
+      const rank = (o: MenuOption) =>
+        o.accent === "quest" ? 0 : o.accent === "critical" ? 1 : 2;
+      return rank(a) - rank(b);
     });
 
     for (const a of SOCIAL_ACTIONS) {
@@ -5184,17 +5191,20 @@ export function createWorldScreen(
           ? "Leave a haul by the porch"
           : "Already gathered today",
         disabled: !canErrand,
+        accent: "critical",
       });
       options.push({
         id: "roommate_move_out",
         label: "Ask to move out",
         sub: "Back to their own place",
+        accent: "critical",
       });
     } else if (rel.score >= RELATIONSHIP_MAX) {
       options.push({
         id: "roommate_move_in",
         label: "Ask to move in",
         sub: "Live with you at home",
+        accent: "critical",
       });
     }
 
