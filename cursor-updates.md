@@ -6,3 +6,5 @@
 - Utility chat options like "Where's Reed?" now show that NPC's portrait on the choice card so they stand apart from idle chat replies.
 - Work-assist commissions from the notice board now Accept and pin you to the workplace station (café coffee machine / market shelf) instead of launching the minigame on the board; finish by interacting there.
 - Surface items now sit on the host's visual top (wall-flush aware) and shrink to stay inside the rim instead of hanging off tile edges.
+
+- Restarted the Vite dev server; app available at http://localhost:5173/Little-lives/.

@@ -569,20 +569,13 @@ export class PlayerStatusModal {
   private renderGuide(): string {
     return `
       <p class="ll-status-guide-lead">Controls and a few tips for getting around town.</p>
-      <h3 class="ll-status-section">Getting around</h3>
+      <h3 class="ll-status-section">Controls</h3>
       <ul class="ll-status-keys">
-        <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span>Move</span></li>
-        <li><kbd>Click</kbd> <span>Walk or interact</span></li>
-      </ul>
-      <h3 class="ll-status-section">Useful keys</h3>
-      <ul class="ll-status-keys">
-        <li><kbd>E</kbd> / <kbd>Space</kbd> <span>Walk to &amp; use a nearby person, pet, or object (tip shows the action)</span></li>
+        <li><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> <span>Move</span></li>
+        <li><kbd>Space</kbd> <span>Talk, use, or pick up what's nearby</span></li>
         <li><kbd>B</kbd> <span>Build &amp; decorate at home</span></li>
-        <li><kbd>Tab</kbd> <span>Cycle menu options (Shift+Tab back) · reopen build catalog</span></li>
-        <li><kbd>Enter</kbd> <span>Confirm the highlighted menu option</span></li>
-        <li><kbd>R</kbd> <span>Rotate furniture in build mode</span></li>
-        <li><kbd>Q</kbd> <span>Save your game</span></li>
-        <li><kbd>Esc</kbd> <span>Close menus / pause to title</span></li>
+        <li><kbd>R</kbd> <span>Rotate furniture while building</span></li>
+        <li><kbd>Esc</kbd> <span>Close menus / exit</span></li>
       </ul>
       <h3 class="ll-status-section">Friends &amp; flowers</h3>
       <ul class="ll-status-tips">

@@ -149,19 +149,13 @@ export function createTitleScreen(
               <div class="ll-howto-body">
                 <p class="ll-howto-lead">Settle into town, look after your needs, make friends, care for pets, and earn a little money to furnish your home.</p>
                 <section class="ll-howto-section">
-                  <h3>Getting around</h3>
+                  <h3>Controls</h3>
                   <ul class="ll-howto-keys">
-                    <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span>Move</span></li>
-                    <li><kbd>Click</kbd> <span>Walk or interact</span></li>
-                  </ul>
-                </section>
-                <section class="ll-howto-section">
-                  <h3>Useful keys</h3>
-                  <ul class="ll-howto-keys">
-                    <li><kbd>E</kbd> <span>Interact with nearby people, pets &amp; objects</span></li>
+                    <li><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> <span>Move</span></li>
+                    <li><kbd>Space</kbd> <span>Talk, use, or pick up what's nearby</span></li>
                     <li><kbd>B</kbd> <span>Build &amp; decorate at home</span></li>
-                    <li><kbd>Q</kbd> <span>Save your game</span></li>
-                    <li><kbd>Esc</kbd> <span>Open the pause menu</span></li>
+                    <li><kbd>R</kbd> <span>Rotate furniture while building</span></li>
+                    <li><kbd>Esc</kbd> <span>Close menus / exit</span></li>
                   </ul>
                 </section>
                 <section class="ll-howto-section">
