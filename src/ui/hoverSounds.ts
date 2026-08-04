@@ -11,7 +11,6 @@ const HOVER_SELECTOR = [
   ".ll-outfit",
   ".ll-build-item:not(.is-locked)",
   ".ll-menu-row:not(:disabled)",
-  ".ll-menu-chip:not(:disabled)",
   ".ll-dialogue-choice",
   ".ll-stat",
   ".ll-build-tool",

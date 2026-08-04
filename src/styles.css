@@ -4744,57 +4744,6 @@ input:focus-visible {
     0 2px 0 rgba(58, 40, 24, 0.08);
 }
 
-.ll-menu-chips {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.3rem;
-}
-
-.ll-menu-chip {
-  padding: 0.48rem 0.4rem;
-  border: 2px solid var(--ll-wood-deep);
-  border-radius: 999px;
-  background: linear-gradient(180deg, #fff8e8, #f7ebcf);
-  box-shadow:
-    inset 0 0 0 1.5px var(--ll-wood-light),
-    0 2px 0 rgba(58, 40, 24, 0.12);
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: var(--ll-ink);
-  cursor: pointer;
-  text-align: center;
-  opacity: 0;
-  transform: translateY(6px);
-  animation: ll-menu-row-in 0.22s ease-out forwards;
-  animation-delay: calc(0.04s + var(--ll-i, 0) * 0.028s);
-  transition:
-    background 0.12s ease,
-    color 0.12s ease,
-    box-shadow 0.12s ease,
-    transform 0.12s ease;
-}
-
-.ll-menu-chip:hover:not(:disabled),
-.ll-menu-chip.is-focused:not(:disabled) {
-  background: linear-gradient(180deg, #ffe3b0, #f0b060);
-  color: var(--ll-wood-deep);
-  transform: translateY(-1px);
-  box-shadow:
-    inset 0 0 0 1.5px rgba(255, 248, 230, 0.55),
-    0 3px 0 rgba(160, 90, 30, 0.28);
-}
-
-.ll-menu-chip:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
-.ll-menu-chip:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-  filter: grayscale(0.35);
-}
-
 @keyframes ll-menu-fade {
   from {
     opacity: 0;

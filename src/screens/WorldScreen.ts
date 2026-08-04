@@ -38,14 +38,11 @@ import {
 import {
   BAG_GIFTS,
   CRAFTED_GIFTS,
-  DIALOGUE_TONES,
   NPCS,
   RELATIONSHIP_CLOSE,
-  RELATIONSHIP_CRUSH,
   RELATIONSHIP_FRIEND,
   RELATIONSHIP_MAX,
   SOCIAL_ACTIONS,
-  TONE_RECEPTIVENESS,
 } from "../data/npcs";
 import { recipeById, type CraftedId } from "../data/crafting";
 import { TownBoardSystem } from "../systems/TownBoardSystem";
@@ -55,7 +52,6 @@ import {
   chatScript,
   favouriteFoodNpcLine,
   friendUnlockLine,
-  toneReply,
   type ChatChoice,
   type ChatNpcId,
 } from "../data/dialogue";
@@ -84,7 +80,6 @@ import {
   type ToolId,
 } from "../data/items";
 import type {
-  DialogueTone,
   Dir,
   JobDef,
   JobTaskDef,
@@ -121,7 +116,6 @@ import {
 import { QuestSystem } from "../systems/QuestSystem";
 import {
   closeFriendUnlockLine,
-  crushUnlockLine,
   bestieUnlockLine,
   EXCLUSIVE_HANGOUTS,
   tierFromScore,
@@ -5013,14 +5007,6 @@ export function createWorldScreen(
       return aq - bq;
     });
 
-    for (const tone of DIALOGUE_TONES) {
-      options.push({
-        id: `tone_${tone.id}`,
-        label: tone.label,
-        sub: tone.sub,
-      });
-    }
-
     for (const a of SOCIAL_ACTIONS) {
       const cost = "cost" in a ? a.cost : undefined;
       const minScore = "minScore" in a ? a.minScore : undefined;
@@ -5501,60 +5487,6 @@ export function createWorldScreen(
             );
             quests.emit("pip_ask_pier");
             afterGroundQuestUnlocked("pip_ask_pier");
-          });
-          return;
-        }
-
-        if (id.startsWith("tone_")) {
-          const tone = id.slice(5) as DialogueTone;
-          const toneDef = DIALOGUE_TONES.find((t) => t.id === tone);
-          if (!toneDef) return;
-          holdNpcStill(npcId);
-          Audio.sfx("talk");
-          state.startBusy(toneDef.label, toneDef.durationMs);
-          delayed(toneDef.durationMs, () => {
-            const recept = TONE_RECEPTIVENESS[npcId][tone];
-            const { mult, toast } = socialOutcomeMultiplier(
-              state.playerTraits,
-              state.needs.hygiene,
-              moodFromNeeds(state.needs),
-              tone,
-              state.isWet,
-            );
-            const raw = Math.round(toneDef.delta * recept * mult);
-            if (tone === "flirty" && raw > 0) {
-              state.flirtCounts[npcId] = (state.flirtCounts[npcId] ?? 0) + 1;
-            }
-            const before = state.relationships[npcId]?.score ?? 0;
-            const result = state.adjustRelationship(
-              npcId,
-              raw,
-              RELATIONSHIP_FRIEND,
-            );
-            state.needs = applyNeedDeltas(state.needs, {
-              social: toneDef.needSocial,
-              fun: toneDef.needFun ?? 0,
-            });
-            const flirts = state.flirtCounts[npcId] ?? 0;
-            const becameCrush =
-              before < RELATIONSHIP_CRUSH &&
-              result.after >= RELATIONSHIP_CRUSH &&
-              flirts >= 3;
-            if (becameCrush) {
-              Audio.sfx("success");
-              state.showDialogue(npcId, def.name, crushUnlockLine(npcId));
-            } else if (
-              result.becameFriend ||
-              result.becameClose ||
-              result.becameBestie
-            ) {
-              noteFriendshipGain(npcId, result, def.name);
-            } else {
-              Audio.sfx(raw < 0 ? "deny" : "chime");
-              state.showDialogue(npcId, def.name, toneReply(npcId, tone));
-            }
-            if (toast) think(toast, 2800);
-            aspirations.refresh();
           });
           return;
         }

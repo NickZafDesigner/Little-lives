@@ -17,24 +17,10 @@ export type MenuPortrait = {
 };
 
 const SOCIAL_IDS = new Set(["joke", "gift", "gift_bag", "hangout"]);
-const OPTION_SELECTOR =
-  ".ll-menu-row:not(:disabled), .ll-menu-chip:not(:disabled)";
-
-function isTone(id: string): boolean {
-  return id.startsWith("tone_");
-}
+const OPTION_SELECTOR = ".ll-menu-row:not(:disabled)";
 
 function isSocial(id: string): boolean {
   return SOCIAL_IDS.has(id) || id.startsWith("exclusive_");
-}
-
-function toneChipLabel(label: string): string {
-  return label
-    .replace(/^Be\s+/i, "")
-    .replace(/\s+chat$/i, "")
-    .replace(/^Flirt a little$/i, "Flirt")
-    .replace(/^Friendly$/i, "Friendly")
-    .replace(/^polite$/i, "Polite");
 }
 
 export class InteractionMenu {
@@ -92,8 +78,7 @@ export class InteractionMenu {
     Audio.sfx("menu");
 
     const face = portrait ?? { id: "player" as PortraitId, look: this.playerLook };
-    const primary = options.filter((o) => !isTone(o.id) && !isSocial(o.id));
-    const tones = options.filter((o) => isTone(o.id));
+    const primary = options.filter((o) => !isSocial(o.id));
     const social = options.filter((o) => isSocial(o.id));
 
     this.el.innerHTML = `
@@ -120,20 +105,6 @@ export class InteractionMenu {
     if (primary.length) {
       body.appendChild(this.buildList(primary, delay));
       delay += primary.length;
-    }
-
-    if (tones.length) {
-      const section = document.createElement("section");
-      section.className = "ll-menu-section";
-      section.innerHTML = `<h4 class="ll-menu-section-label">Tone</h4>`;
-      const chips = document.createElement("div");
-      chips.className = "ll-menu-chips";
-      tones.forEach((opt, i) => {
-        chips.appendChild(this.buildChip(opt, delay + i));
-      });
-      section.appendChild(chips);
-      body.appendChild(section);
-      delay += tones.length;
     }
 
     if (social.length) {
@@ -187,28 +158,6 @@ export class InteractionMenu {
       list.appendChild(btn);
     });
     return list;
-  }
-
-  private buildChip(opt: MenuOption, delayIndex: number): HTMLButtonElement {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "ll-menu-chip";
-    btn.disabled = Boolean(opt.disabled);
-    btn.dataset.optId = opt.id;
-    btn.style.setProperty("--ll-i", String(delayIndex));
-    btn.title = opt.sub ? `${opt.label} - ${opt.sub}` : opt.label;
-    btn.setAttribute("role", "menuitem");
-    btn.textContent = toneChipLabel(opt.label);
-    btn.addEventListener("click", (e) => this.handlePick(e, opt));
-    btn.addEventListener("pointerenter", () => {
-      if (opt.disabled) return;
-      const idx = this.enabledButtons().indexOf(btn);
-      if (idx >= 0) {
-        this.focusIndex = idx;
-        this.syncFocus(false);
-      }
-    });
-    return btn;
   }
 
   private enabledButtons(): HTMLButtonElement[] {
