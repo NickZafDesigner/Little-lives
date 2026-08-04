@@ -1680,11 +1680,12 @@ export function createWorldScreen(
 
   const spawnFurniture = (f: PlacedFurniture) => {
     let surfaceY = 0;
+    let host: PlacedFurniture | undefined;
     if (f.parentUid) {
-      const host = state.furniture.find((h) => h.uid === f.parentUid);
+      host = state.furniture.find((h) => h.uid === f.parentUid);
       if (host) surfaceY = surfaceHeightFor(host.defId);
     }
-    const mesh = placeFurniture(f, { surfaceY });
+    const mesh = placeFurniture(f, { surfaceY, host });
     furnitureMeshes.set(f.uid, mesh);
     app.renderer.add(mesh);
     return mesh;
@@ -6725,14 +6726,28 @@ export function createWorldScreen(
 
     const ok = canPlace(defId, tx, ty, placeRot, { free: !!heldFurniture });
     let surfaceY = 0;
+    let surfaceHost: PlacedFurniture | null = null;
     const ghostDef = furnitureById[defId];
     if (ghostDef?.placeOnSurface || ghostDef?.allowsSurface) {
       const host = surfaceHostAt(tx, ty, "home");
-      if (host && (ghostDef.placeOnSurface || canPlace(defId, tx, ty, placeRot, { free: !!heldFurniture }))) {
+      if (
+        host &&
+        (ghostDef.placeOnSurface ||
+          canPlace(defId, tx, ty, placeRot, { free: !!heldFurniture }))
+      ) {
         surfaceY = surfaceHeightFor(host.defId);
+        surfaceHost = host;
       }
     }
-    buildFeedback.showFurniturePlace(defId, tx, ty, placeRot, ok, surfaceY);
+    buildFeedback.showFurniturePlace(
+      defId,
+      tx,
+      ty,
+      placeRot,
+      ok,
+      surfaceY,
+      surfaceHost,
+    );
   };
 
   const finishWakeIntro = () => {

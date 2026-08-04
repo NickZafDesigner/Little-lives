@@ -11,8 +11,11 @@ import {
   applyFurnitureRotation,
   createFurnitureMesh,
   furnitureFootprint,
+  furnitureOnSurfacePos,
   furnitureWorldPos,
   nextFurnitureDir,
+  SURFACE_ITEM_SCALE,
+  surfaceItemScaleFor,
   yawForFurniture,
 } from "../mesh/furniture";
 import type { TownRenderer } from "../render/TownRenderer";
@@ -56,26 +59,52 @@ export class BuildFeedback {
     rot: Dir,
     ok: boolean,
     surfaceY = 0,
+    host?: PlacedFurniture | null,
   ) {
     const { tw, th } = furnitureFootprint(defId, rot);
     this.renderer.setBuildSelection(null);
     this.renderer.setHoverTile({ tx, ty }, { tw, th, ok });
 
-    if (this.ghostDefId !== defId || !this.ghost) {
+    const onSurface = !!host;
+    // Rebuild when host presence changes so scale matches floor vs surface.
+    const ghostKey = `${defId}:${onSurface ? host!.uid : "floor"}`;
+    if (this.ghostDefId !== ghostKey || !this.ghost) {
       const mesh = createFurnitureMesh(defId);
-      const def = furnitureById[defId];
-      if (def?.placeOnSurface) mesh.scale.setScalar(0.85);
+      if (onSurface) {
+        const hostMesh = createFurnitureMesh(host!.defId);
+        mesh.scale.setScalar(
+          surfaceItemScaleFor(mesh, hostMesh, host!.rot ?? "down"),
+        );
+      } else {
+        const def = furnitureById[defId];
+        if (def?.placeOnSurface) mesh.scale.setScalar(SURFACE_ITEM_SCALE);
+      }
       mesh.traverse((o) => {
         if (o instanceof THREE.Mesh) o.raycast = () => {};
       });
       this.renderer.setGhost(mesh);
       this.ghost = mesh;
-      this.ghostDefId = defId;
+      this.ghostDefId = ghostKey;
     }
 
-    // Flush bias measures local Z depth - reset yaw before measuring.
+    // Flush / surface bias measure local Z depth - reset yaw before measuring.
     this.ghost!.rotation.y = 0;
-    const { x, z } = furnitureWorldPos(defId, tx, ty, rot, this.ghost!);
+    let x: number;
+    let z: number;
+    if (host) {
+      const hostMesh = createFurnitureMesh(host.defId);
+      ({ x, z } = furnitureOnSurfacePos(
+        defId,
+        tx,
+        ty,
+        rot,
+        host,
+        hostMesh,
+        this.ghost!,
+      ));
+    } else {
+      ({ x, z } = furnitureWorldPos(defId, tx, ty, rot, this.ghost!));
+    }
     applyFurnitureRotation(this.ghost!, rot);
     this.ghost!.position.set(x, surfaceY, z);
     this.renderer.setGhostTint(ok);

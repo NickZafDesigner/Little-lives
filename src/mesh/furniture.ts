@@ -46,6 +46,10 @@ export function applyFurnitureRotation(mesh: THREE.Object3D, rot: Dir = "down") 
 
 /** Keep a little air between wall-flush pieces and the shell inner face. */
 const WALL_CLEARANCE = 10;
+/** Pad between a surface item's AABB and the host top rim. */
+const SURFACE_EDGE_PAD = 2.5;
+/** Default scale for items sitting on a counter / table. */
+export const SURFACE_ITEM_SCALE = 0.82;
 
 /**
  * World XZ for a furniture anchor (footprint centre + optional wall-flush
@@ -92,6 +96,96 @@ export function furnitureWorldPos(
   return { x, z };
 }
 
+/** Local XZ half-extents; swap when the piece faces left/right. */
+function halfExtentsXZ(
+  mesh: THREE.Object3D,
+  rot: Dir,
+): { hx: number; hz: number } {
+  const box = new THREE.Box3().setFromObject(mesh);
+  let hx = Math.max(0.5, (box.max.x - box.min.x) / 2);
+  let hz = Math.max(0.5, (box.max.z - box.min.z) / 2);
+  if (rot === "left" || rot === "right") {
+    const swap = hx;
+    hx = hz;
+    hz = swap;
+  }
+  return { hx, hz };
+}
+
+/**
+ * World XZ for an item on a host surface. Anchors to the host's visual
+ * centre (including wall-flush) and maps the child's tile slot into the
+ * usable top so pieces don't hang off the rim.
+ *
+ * `hostMesh` / `childMesh` must be unrotated (yaw 0) for local bounds.
+ */
+export function furnitureOnSurfacePos(
+  childDefId: string,
+  childTx: number,
+  childTy: number,
+  childRot: Dir,
+  host: PlacedFurniture,
+  hostMesh: THREE.Object3D,
+  childMesh?: THREE.Object3D,
+): { x: number; z: number } {
+  const hostRot = host.rot ?? "down";
+  const hostPos = furnitureWorldPos(
+    host.defId,
+    host.tx,
+    host.ty,
+    hostRot,
+    hostMesh,
+  );
+  const hostFoot = furnitureFootprint(host.defId, hostRot);
+  const hostHalf = halfExtentsXZ(hostMesh, hostRot);
+
+  let childHx = TILE * 0.28;
+  let childHz = TILE * 0.28;
+  if (childMesh) {
+    const childHalf = halfExtentsXZ(childMesh, childRot);
+    childHx = childHalf.hx;
+    childHz = childHalf.hz;
+  } else {
+    const foot = furnitureFootprint(childDefId, childRot);
+    childHx = (foot.tw * TILE * SURFACE_ITEM_SCALE) / 2;
+    childHz = (foot.th * TILE * SURFACE_ITEM_SCALE) / 2;
+  }
+
+  const maxOx = Math.max(0, hostHalf.hx - childHx - SURFACE_EDGE_PAD);
+  const maxOz = Math.max(0, hostHalf.hz - childHz - SURFACE_EDGE_PAD);
+
+  // Map tile-slot centre to [-1, 1] across the host footprint, then into
+  // the usable top. Single-tile hosts keep the item dead-centre.
+  const slotU =
+    hostFoot.tw <= 1
+      ? 0
+      : ((childTx - host.tx + 0.5) / hostFoot.tw) * 2 - 1;
+  const slotV =
+    hostFoot.th <= 1
+      ? 0
+      : ((childTy - host.ty + 0.5) / hostFoot.th) * 2 - 1;
+
+  return {
+    x: hostPos.x + slotU * maxOx,
+    z: hostPos.z + slotV * maxOz,
+  };
+}
+
+/** Fit a surface item so its XZ AABB stays inside the host top. */
+export function surfaceItemScaleFor(
+  childMesh: THREE.Object3D,
+  hostMesh: THREE.Object3D,
+  hostRot: Dir = "down",
+): number {
+  const hostHalf = halfExtentsXZ(hostMesh, hostRot);
+  const childBox = new THREE.Box3().setFromObject(childMesh);
+  const childW = Math.max(0.5, childBox.max.x - childBox.min.x);
+  const childD = Math.max(0.5, childBox.max.z - childBox.min.z);
+  const fitX = (hostHalf.hx * 2 - SURFACE_EDGE_PAD * 2) / childW;
+  const fitZ = (hostHalf.hz * 2 - SURFACE_EDGE_PAD * 2) / childD;
+  return Math.min(SURFACE_ITEM_SCALE, fitX, fitZ, 1);
+}
+
 export function createFurnitureMesh(defId: string): THREE.Group {
   // Prefer authored GLB; fall back to procedural silhouette, then table.
   const root = AssetLibrary.hasFurniture(defId)
@@ -119,15 +213,31 @@ export function surfaceHeightFor(defId: string): number {
 
 export function placeFurniture(
   f: PlacedFurniture,
-  opts?: { surfaceY?: number },
+  opts?: { surfaceY?: number; host?: PlacedFurniture },
 ): THREE.Group {
   const rot = f.rot ?? "down";
   const mesh = createFurnitureMesh(f.defId);
   const def = furnitureById[f.defId];
-  if (def?.placeOnSurface) {
-    mesh.scale.setScalar(0.85);
+  const host = opts?.host;
+  let x: number;
+  let z: number;
+  if (host) {
+    const hostMesh = createFurnitureMesh(host.defId);
+    const scale = surfaceItemScaleFor(mesh, hostMesh, host.rot ?? "down");
+    mesh.scale.setScalar(scale);
+    ({ x, z } = furnitureOnSurfacePos(
+      f.defId,
+      f.tx,
+      f.ty,
+      rot,
+      host,
+      hostMesh,
+      mesh,
+    ));
+  } else {
+    if (def?.placeOnSurface) mesh.scale.setScalar(SURFACE_ITEM_SCALE);
+    ({ x, z } = furnitureWorldPos(f.defId, f.tx, f.ty, rot, mesh));
   }
-  const { x, z } = furnitureWorldPos(f.defId, f.tx, f.ty, rot, mesh);
   applyFurnitureRotation(mesh, rot);
   mesh.position.set(x, opts?.surfaceY ?? 0, z);
   mesh.userData.uid = f.uid;
