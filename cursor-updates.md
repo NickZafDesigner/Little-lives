@@ -1,5 +1,6 @@
 # Cursor updates
 
+- Simplified the How to play and Guide controls to arrows, Space, B, R, and Esc.
 - Mission-critical menu actions (ask for a job, browse tools, sell materials, clock in, move in/out) now use a warm ! badge square so they stand apart from casual chat.
 - Sized the outdoor shadow volume past the camera view and recentered it with a dead zone so shadows no longer pop in at the screen edge while walking.
 - Home door sign and building nametag now use the player name as "[Name's] Home" instead of "Your Home".
