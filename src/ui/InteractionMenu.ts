@@ -25,6 +25,20 @@ function isSocial(id: string): boolean {
   return SOCIAL_IDS.has(id) || id.startsWith("exclusive_");
 }
 
+/** Quest / job / tip rows that belong above idle chat. */
+function isSpecial(o: MenuOption): boolean {
+  return (
+    o.accent === "quest" || o.accent === "critical" || Boolean(o.portrait)
+  );
+}
+
+function specialRank(o: MenuOption): number {
+  if (o.accent === "quest") return 0;
+  if (o.accent === "critical") return 1;
+  if (o.portrait) return 2;
+  return 3;
+}
+
 export class InteractionMenu {
   private el: HTMLElement;
   private onPick: ((id: string) => void) | null = null;
@@ -80,7 +94,10 @@ export class InteractionMenu {
     Audio.sfx("menu");
 
     const face = portrait ?? { id: "player" as PortraitId, look: this.playerLook };
-    const primary = options.filter((o) => !isSocial(o.id));
+    const special = options
+      .filter((o) => isSpecial(o) && !isSocial(o.id))
+      .sort((a, b) => specialRank(a) - specialRank(b));
+    const chat = options.filter((o) => !isSpecial(o) && !isSocial(o.id));
     const social = options.filter((o) => isSocial(o.id));
 
     this.el.innerHTML = `
@@ -104,15 +121,35 @@ export class InteractionMenu {
     const body = this.el.querySelector(".ll-menu-body")!;
     let delay = 0;
 
-    if (primary.length) {
-      body.appendChild(this.buildList(primary, delay));
-      delay += primary.length;
+    if (special.length) {
+      body.appendChild(this.buildList(special, delay));
+      delay += special.length;
+    }
+
+    if (chat.length) {
+      if (special.length) {
+        const rule = document.createElement("div");
+        rule.className = "ll-menu-divider";
+        rule.setAttribute("role", "separator");
+        body.appendChild(rule);
+      }
+      body.appendChild(this.buildList(chat, delay));
+      delay += chat.length;
     }
 
     if (social.length) {
       const section = document.createElement("section");
       section.className = "ll-menu-section";
-      section.innerHTML = `<h4 class="ll-menu-section-label">Social</h4>`;
+      if (special.length || chat.length) {
+        const rule = document.createElement("div");
+        rule.className = "ll-menu-divider";
+        rule.setAttribute("role", "separator");
+        section.appendChild(rule);
+      }
+      section.insertAdjacentHTML(
+        "beforeend",
+        `<h4 class="ll-menu-section-label">Social</h4>`,
+      );
       section.appendChild(this.buildList(social, delay));
       body.appendChild(section);
     }
@@ -143,7 +180,8 @@ export class InteractionMenu {
       if (opt.accent === "critical") btn.classList.add("is-critical");
       const showFace = Boolean(opt.portrait);
       const showBang = opt.accent === "critical" && !showFace;
-      if (showFace || showBang) btn.classList.add("has-face");
+      const showHelp = opt.accent === "quest" && !showFace;
+      if (showFace || showBang || showHelp) btn.classList.add("has-face");
       btn.disabled = Boolean(opt.disabled);
       btn.dataset.optId = opt.id;
       btn.style.setProperty("--ll-i", String(delayStart + i));
@@ -156,7 +194,9 @@ export class InteractionMenu {
         ? `<canvas class="ll-menu-row-face" width="32" height="32" aria-hidden="true"></canvas>`
         : showBang
           ? `<span class="ll-menu-row-bang" aria-hidden="true">!</span>`
-          : "";
+          : showHelp
+            ? `<span class="ll-menu-row-help" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 11V7a2 2 0 1 1 4 0v6"/><path d="M12 9a2 2 0 1 1 4 0v4"/><path d="M16 11a2 2 0 1 1 4 0v3.5a4.5 4.5 0 0 1-4.5 4.5H13a5 5 0 0 1-5-5V11"/><path d="M8 11H6.5A2.5 2.5 0 0 0 4 13.5v0A2.5 2.5 0 0 0 6.5 16H8"/></svg></span>`
+            : "";
       btn.innerHTML = lead
         ? `${lead}<span class="ll-menu-row-copy">${copy}</span>`
         : copy;

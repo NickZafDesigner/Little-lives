@@ -289,7 +289,17 @@ export class DialogueBox {
     this.choicesEl.innerHTML = "";
     this.choiceFocus = 0;
 
-    for (const choice of this.pendingChoices) {
+    const special = this.pendingChoices.filter((c) => Boolean(c.portrait));
+    const rest = this.pendingChoices.filter((c) => !c.portrait);
+    const ordered = [...special, ...rest];
+
+    ordered.forEach((choice, i) => {
+      if (special.length && rest.length && i === special.length) {
+        const rule = document.createElement("div");
+        rule.className = "ll-dialogue-choice-divider";
+        rule.setAttribute("role", "separator");
+        this.choicesEl.appendChild(rule);
+      }
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "ll-dialogue-choice";
@@ -321,7 +331,7 @@ export class DialogueBox {
         }
       });
       this.choicesEl.appendChild(btn);
-    }
+    });
     this.syncChoiceFocus(false);
   }
 

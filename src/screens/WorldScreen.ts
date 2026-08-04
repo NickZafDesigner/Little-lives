@@ -677,7 +677,7 @@ export function createWorldScreen(
     );
     const choices = [...beat.choices];
     if (!hasMetReed()) {
-      choices.push({
+      choices.unshift({
         id: "__ask_reed",
         label: "Where's Reed?",
         playerLine: "Do you know where I can find Reed?",
@@ -5108,13 +5108,7 @@ export function createWorldScreen(
       });
     }
 
-    // Promote glowing side-quest rows, then mission-critical actions, to the top.
-    options.sort((a, b) => {
-      const rank = (o: MenuOption) =>
-        o.accent === "quest" ? 0 : o.accent === "critical" ? 1 : 2;
-      return rank(a) - rank(b);
-    });
-
+    // Side-quest / critical / tip rows are promoted by InteractionMenu.
     for (const a of SOCIAL_ACTIONS) {
       const cost = "cost" in a ? a.cost : undefined;
       const minScore = "minScore" in a ? a.minScore : undefined;

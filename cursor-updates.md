@@ -9,3 +9,4 @@
 - Surface items now sit on the host's visual top (wall-flush aware) and shrink to stay inside the rim instead of hanging off tile edges.
 
 - Restarted the Vite dev server; app available at http://localhost:5173/Little-lives/.
+- Interaction menu: Offer to help gets a mint helping-hand badge; specials (favours, jobs, Where's Reed) sit above chat with a subtle divider; card is larger.
