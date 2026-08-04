@@ -2120,11 +2120,30 @@ export function createWorldScreen(
       }
     }
 
+    const assist = townBoard.getAcceptedWorkAssist();
+    if (
+      assist &&
+      !state.jobActive &&
+      townBoard.furnitureMatchesAssist(furn.uid, assist.furnitureUid)
+    ) {
+      return assist.label;
+    }
+
+    if (
+      quests.isActive("jun_favor") &&
+      quests.currentStepId("jun_favor") === "water" &&
+      furn.lotId === "cafe" &&
+      townBoard.furnitureMatchesAssist(furn.uid, "c_coffee")
+    ) {
+      return "Brew a drink";
+    }
+
     const job = JOBS.find(
       (j) => j.lotId === furn.lotId && j.stationDefId === furn.defId,
     );
     if (job) {
       if (state.hiredJobs.includes(job.id)) return "Work";
+      if (assist?.jobId === job.id) return assist.label;
       return "Ask about work";
     }
 
@@ -3944,6 +3963,18 @@ export function createWorldScreen(
       return;
     }
 
+    // Jun café favor — brew at the coffee machine / its counter (no hire needed).
+    if (
+      !state.jobActive &&
+      quests.isActive("jun_favor") &&
+      quests.currentStepId("jun_favor") === "water" &&
+      furn.lotId === "cafe" &&
+      townBoard.furnitureMatchesAssist(furn.uid, "c_coffee")
+    ) {
+      beginJunFavorBrew();
+      return;
+    }
+
     // Mid-shift: only the current task station runs the minigame
     if (state.jobActive && state.activeJobId) {
       const active = jobById[state.activeJobId];
@@ -3966,6 +3997,30 @@ export function createWorldScreen(
       (j) => j.lotId === furn.lotId && j.stationDefId === furn.defId,
     );
     if (job) {
+      if (!state.isHired(job.id)) {
+        const pendingAssist = townBoard.getAcceptedWorkAssist();
+        if (pendingAssist?.jobId === job.id) {
+          pinWorkAssistArrow(pendingAssist);
+          think(
+            `Use the ${pendingAssist.stationLabel} — ${pendingAssist.label}.`,
+            3400,
+          );
+          return;
+        }
+        if (
+          quests.isActive("jun_favor") &&
+          quests.currentStepId("jun_favor") === "water" &&
+          job.id === "cafe_barista"
+        ) {
+          const coffee = state.furniture.find((f) => f.uid === "c_coffee");
+          if (coffee) {
+            const pos = furnitureWorldPos(coffee.uid);
+            if (pos) hintArrow?.pinAt(pos.x, pos.z, "Brew a drink");
+          }
+          think("Brew a drink on the coffee machine for Jun.", 3400);
+          return;
+        }
+      }
       openJobMenu(job.id, x, y);
       return;
     }
@@ -4021,13 +4076,13 @@ export function createWorldScreen(
       const needsPet = petItems.has(furn.defId) && Boolean(i.petNeedDeltas);
       const blocked = needsPet && !state.adoptedPet;
       const waterFavor =
-        i.id === "admire" &&
-        furn.defId === "plant" &&
+        i.id === "brew" &&
+        furn.defId === "coffee_machine" &&
         furn.lotId === "cafe" &&
         quests.isActive("jun_favor") &&
         quests.currentStepId("jun_favor") === "water";
       const sleepLabel = waterFavor
-        ? "Water plant"
+        ? "Brew a drink"
         : i.id === "sleep"
           ? "Sleep (wake at 8 AM)"
           : i.label;
@@ -4106,6 +4161,32 @@ export function createWorldScreen(
 
       const interaction = def.interactions.find((i) => i.id === id);
       if (!interaction) return;
+
+      if (
+        interaction.id === "brew" &&
+        furn.defId === "coffee_machine" &&
+        furn.lotId === "cafe" &&
+        quests.isActive("jun_favor") &&
+        quests.currentStepId("jun_favor") === "water"
+      ) {
+        beginJunFavorBrew();
+        return;
+      }
+      if (
+        interaction.id === "admire" &&
+        furn.defId === "plant" &&
+        furn.lotId === "cafe" &&
+        quests.isActive("jun_favor") &&
+        quests.currentStepId("jun_favor") === "water"
+      ) {
+        think("Jun asked for a drink — use the coffee machine.", 3600);
+        const coffee = state.furniture.find((f) => f.uid === "c_coffee");
+        if (coffee) {
+          const pos = furnitureWorldPos(coffee.uid);
+          if (pos) hintArrow?.pinAt(pos.x, pos.z, "Brew a drink");
+        }
+        return;
+      }
 
       if (interaction.id === "craft" && furn.defId === "craft_table") {
         openCraftTable(furn);
@@ -4239,18 +4320,7 @@ export function createWorldScreen(
           }
         }
         Audio.sfx("success");
-        if (
-          interaction.id === "admire" &&
-          furn.defId === "plant" &&
-          furn.lotId === "cafe" &&
-          quests.isActive("jun_favor") &&
-          quests.currentStepId("jun_favor") === "water"
-        ) {
-          quests.emit("watered_cafe_plant");
-          think("Plant watered - better tell Jun.", 3600);
-        } else {
-          think(mod.toast ?? `${interaction.label} - that's better!`, 3200);
-        }
+        think(mod.toast ?? `${interaction.label} - that's better!`, 3200);
         if (
           interaction.petNeedDeltas &&
           (interaction.id === "pet_rest" ||
@@ -4720,6 +4790,29 @@ export function createWorldScreen(
     );
   };
 
+  /** Jun café favor: brew without needing a hired shift. */
+  const beginJunFavorBrew = () => {
+    if (workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) return;
+    Audio.sfx("interact");
+    workMini.play(
+      "timing",
+      "Brew a drink",
+      () => {
+        hintArrow?.hide();
+        Audio.sfx("success");
+        confetti.burst("soft");
+        quests.emit("watered_cafe_plant");
+        think("Drink's ready — better tell Jun.", 3600);
+        state.needs = applyNeedDeltas(state.needs, {
+          energy: -4,
+          fun: 6,
+          social: 4,
+        });
+      },
+      (grade) => celebrateGrade(grade),
+    );
+  };
+
   const beginWorkTask = (job: JobDef, task: JobTaskDef) => {
     if (workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) return;
     Audio.sfx("interact");
@@ -5108,7 +5201,7 @@ export function createWorldScreen(
       } else if (step === "report") {
         options.push({
           id: "jun_report",
-          label: "Plant's watered",
+          label: "Drink's ready",
           sub: "Report back to Jun",
           accent: "quest",
         });
@@ -5491,9 +5584,14 @@ export function createWorldScreen(
             state.showDialogue(
               "jun",
               "Jun",
-              "Perfect - water the plant by the service counter, then come tell me how it's looking.",
+              "Perfect - brew a quick drink on the coffee machine at the counter, then come tell me how it turned out.",
             );
             quests.emit("jun_ask_favor");
+            const coffee = state.furniture.find((f) => f.uid === "c_coffee");
+            if (coffee) {
+              const pos = furnitureWorldPos(coffee.uid);
+              if (pos) hintArrow?.pinAt(pos.x, pos.z, "Brew a drink");
+            }
           });
           return;
         }
@@ -5505,7 +5603,7 @@ export function createWorldScreen(
             state.showDialogue(
               "jun",
               "Jun",
-              "Look at that leaf shine! You're a natural. Thanks.",
+              "Smells perfect! You're a natural. Thanks for jumping in.",
             );
             quests.emit("jun_favor_done");
           });

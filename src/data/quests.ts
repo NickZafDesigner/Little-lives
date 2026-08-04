@@ -356,11 +356,11 @@ export const QUESTS: QuestDef[] = [
   {
     id: "jun_favor",
     title: "Café Favor",
-    journalLine: "Jun asked me to water the café plant - easy favor.",
+    journalLine: "Jun asked me to whip up a quick drink at the café - easy favor.",
     side: true,
     offerNpcId: "jun",
     offerPitch: [
-      "Hey! Before the rush - could you water the plant by the service counter? It looks thirsty.",
+      "Hey! Before the rush - could you brew a quick drink on the coffee machine? We're slammed for a second.",
     ],
     requires: ["empty_nest"],
     steps: [
@@ -372,12 +372,12 @@ export const QUESTS: QuestDef[] = [
       {
         id: "water",
         event: "watered_cafe_plant",
-        objectiveLabel: "Water the plant in the café",
+        objectiveLabel: "Brew a drink at the café coffee machine",
       },
       {
         id: "report",
         event: "jun_favor_done",
-        objectiveLabel: "Tell Jun the plant's happy",
+        objectiveLabel: "Tell Jun the drink's ready",
       },
     ],
     rewards: {
