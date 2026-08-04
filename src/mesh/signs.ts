@@ -14,6 +14,21 @@ export interface SignDef {
   side?: "west" | "east";
 }
 
+/** e.g. Pippin → "Pippin's Home", James → "James' Home". */
+export function homeSignTitle(playerName: string): string {
+  const name = playerName.trim() || "Pippin";
+  const possessive = /s$/i.test(name) ? `${name}'` : `${name}'s`;
+  return `${possessive} Home`;
+}
+
+/** Keep the shared home SignDef in sync for menus / look-ups. */
+export function resolveHomeSignName(playerName: string): string {
+  const title = homeSignTitle(playerName);
+  const home = TOWN_SIGNS.find((s) => s.id === "sign_home");
+  if (home) home.name = title;
+  return title;
+}
+
 /** Clickable town signs - one per landmark, planted beside the front door. */
 export const TOWN_SIGNS: SignDef[] = [
   {
@@ -179,10 +194,12 @@ export interface SignHandle {
   worldZ: number;
 }
 
-export function buildTownSigns(): {
+export function buildTownSigns(playerName = "Pippin"): {
   group: THREE.Group;
   signs: SignHandle[];
 } {
+  resolveHomeSignName(playerName);
+
   const group = new THREE.Group();
   group.name = "signs";
   const signs: SignHandle[] = [];

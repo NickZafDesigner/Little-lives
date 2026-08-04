@@ -240,7 +240,7 @@ export class TownRenderer {
     this.scene.add(this.moveMarker);
   }
 
-  buildWorld(map: TownMapData) {
+  buildWorld(map: TownMapData, playerName = "Pippin") {
     if (this.worldBuilt) return;
     const terrain = buildTerrain(map);
     this.scene.add(terrain.group);
@@ -251,7 +251,7 @@ export class TownRenderer {
     this.scene.add(built.group);
     this.buildings = built.buildings;
     this.buildingsUpdate = built.update;
-    const signed = buildTownSigns();
+    const signed = buildTownSigns(playerName);
     addOutline(signed.group, 1.04);
     this.scene.add(signed.group);
     this.signs = signed.signs;

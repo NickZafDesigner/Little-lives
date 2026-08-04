@@ -1,3 +1,4 @@
+import { homeSignTitle } from "../mesh/signs";
 import { LOTS, lotDoorWorld } from "../world/lots";
 
 const SHOW_MS = 2600;
@@ -22,7 +23,7 @@ export class BuildingNameTags {
   private root: HTMLElement;
   private tags = new Map<string, TagState>();
 
-  constructor(parent: HTMLElement) {
+  constructor(parent: HTMLElement, playerName = "Pippin") {
     this.root = document.createElement("div");
     this.root.className = "ll-nametags ll-building-tags";
     this.root.setAttribute("aria-hidden", "true");
@@ -32,7 +33,8 @@ export class BuildingNameTags {
       const door = lotDoorWorld(lot.id)!;
       const el = document.createElement("div");
       el.className = "ll-nametag ll-nametag-building";
-      el.textContent = lot.name;
+      el.textContent =
+        lot.id === "home" ? homeSignTitle(playerName) : lot.name;
       el.hidden = true;
       this.root.appendChild(el);
       this.tags.set(lot.id, {
