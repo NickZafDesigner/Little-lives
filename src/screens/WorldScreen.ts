@@ -604,7 +604,11 @@ export function createWorldScreen(
   const presentAmbientChoices = (npcId: string, choices: AmbientChoice[]) => {
     if (!choices.length) return;
     dialogue.offerChoices(
-      choices.map((c) => ({ id: c.id, label: c.label })),
+      choices.map((c) => ({
+        id: c.id,
+        label: c.label,
+        portrait: c.portrait,
+      })),
       (choiceId) => {
         const choice = choices.find((c) => c.id === choiceId);
         if (choice) pickAmbientChoice(npcId, choice);
@@ -679,6 +683,7 @@ export function createWorldScreen(
         playerLine: "Do you know where I can find Reed?",
         npcLines: [reedDirectionLine(def.id)],
         anim: "pop",
+        portrait: "reed",
       });
     }
     presentAmbientChoices(id, choices);
@@ -3868,6 +3873,17 @@ export function createWorldScreen(
       return;
     }
 
+    // Board work-assist: finish at the pinned station (e.g. café coffee machine)
+    const assist = townBoard.getAcceptedWorkAssist();
+    if (
+      assist &&
+      !state.jobActive &&
+      townBoard.furnitureMatchesAssist(furn.uid, assist.furnitureUid)
+    ) {
+      beginCommissionAssist(assist);
+      return;
+    }
+
     // Mid-shift: only the current task station runs the minigame
     if (state.jobActive && state.activeJobId) {
       const active = jobById[state.activeJobId];
@@ -4577,34 +4593,68 @@ export function createWorldScreen(
         return;
       }
       if (action.kind === "work_assist") {
-        const job = jobById[action.jobId];
-        const task = job?.tasks[0];
-        if (!job || !task) {
+        const assist = townBoard.acceptOffer(action.offerUid);
+        if (!assist) {
           Audio.sfx("deny");
           return;
         }
-        workMini.play(
-          task.mini,
-          `Help: ${task.label}`,
-          (grade) => {
-            if (!townBoard.completeOffer(action.offerUid, { grade })) {
-              Audio.sfx("deny");
-              return;
-            }
-            Audio.sfx("success");
-            confetti.burst(grade === "perfect" ? "big" : "soft");
-            state.needs = applyNeedDeltas(state.needs, {
-              energy: grade === "perfect" ? -4 : -6,
-              fun: 8,
-              social: 10,
-            });
-            think(`Helped ${NPCS.find((n) => n.id === job.hireNpcId)?.name ?? "town"} — favor up!`, 3200);
-            aspirations.refresh();
-          },
-          (grade) => celebrateGrade(grade),
+        pinWorkAssistArrow(assist);
+        Audio.sfx("chime");
+        state.showToast(
+          `${assist.template.title}: head to the ${assist.lotLabel}`,
+          3200,
+        );
+        think(
+          `Help at the ${assist.lotLabel} — use the ${assist.stationLabel}.`,
+          3600,
         );
       }
     });
+  };
+
+  const pinWorkAssistArrow = (
+    assist: NonNullable<ReturnType<TownBoardSystem["getAcceptedWorkAssist"]>>,
+  ) => {
+    const pos = furnitureWorldPos(assist.furnitureUid);
+    if (pos) {
+      hintArrow?.pinAt(pos.x, pos.z, assist.label);
+      return;
+    }
+    const job = jobById[assist.jobId];
+    if (!job) return;
+    const door = lotDoorWorld(job.lotId);
+    if (door) hintArrow?.pinAt(door.x, door.z, assist.lotLabel);
+  };
+
+  const beginCommissionAssist = (
+    assist: NonNullable<ReturnType<TownBoardSystem["getAcceptedWorkAssist"]>>,
+  ) => {
+    if (workMini.isOpen() || timeMontage.isPlaying() || tvViewer.isOpen()) return;
+    Audio.sfx("interact");
+    workMini.play(
+      assist.mini,
+      `Help: ${assist.label}`,
+      (grade) => {
+        if (!townBoard.completeOffer(assist.offerUid, { grade })) {
+          Audio.sfx("deny");
+          return;
+        }
+        hintArrow?.hide();
+        Audio.sfx("success");
+        confetti.burst(grade === "perfect" ? "big" : "soft");
+        state.needs = applyNeedDeltas(state.needs, {
+          energy: grade === "perfect" ? -4 : -6,
+          fun: 8,
+          social: 10,
+        });
+        const boss =
+          NPCS.find((n) => n.id === jobById[assist.jobId]?.hireNpcId)
+            ?.name ?? "town";
+        think(`Helped ${boss} — favor up!`, 3200);
+        aspirations.refresh();
+      },
+      (grade) => celebrateGrade(grade),
+    );
   };
 
   const beginWorkTask = (job: JobDef, task: JobTaskDef) => {
@@ -4868,6 +4918,7 @@ export function createWorldScreen(
         id: "ask_reed",
         label: "Where's Reed?",
         sub: "Tools · east workshop",
+        portrait: "reed",
       });
     }
     if (def.id === "vera") {
@@ -6917,7 +6968,7 @@ export function createWorldScreen(
       state.harvestNodes = map.harvestNodes;
       baseCollision = map.collision.map((row) => [...row]);
       collision = baseCollision.map((row) => [...row]);
-      app.renderer.buildWorld(map);
+      app.renderer.buildWorld(map, state.playerName);
 
       player = createActor(state.playerLook);
       if (!isContinue) {
@@ -7075,7 +7126,7 @@ export function createWorldScreen(
         flushSideQuestCelebration();
       });
       nametags = new NpcNameTags(ui);
-      buildingTags = new BuildingNameTags(ui);
+      buildingTags = new BuildingNameTags(ui, state.playerName);
       thoughtBubble = new ThoughtBubble(ui);
       hintArrow = new HintArrow(ui);
       interactTip = new InteractTip(ui);

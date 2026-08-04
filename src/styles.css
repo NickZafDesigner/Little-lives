@@ -4473,11 +4473,48 @@ input:focus-visible {
   box-shadow: inset 0 -2px 0 rgba(74, 52, 40, 0.08);
 }
 
+.ll-dialogue-choice.has-face {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.55rem 0.35rem 0.35rem;
+  background: linear-gradient(180deg, #fff6e5, var(--ll-sunk));
+  box-shadow:
+    inset 0 0 0 1.5px var(--ll-wood-light),
+    inset 0 -2px 0 rgba(74, 52, 40, 0.1);
+}
+
+.ll-dialogue-choice-face {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  border: 2px solid var(--ll-wood);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: #fff6e5;
+  box-shadow: inset 0 0 0 1px var(--ll-wood-light);
+}
+
+.ll-dialogue-choice-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
 .ll-dialogue-choice:hover,
 .ll-dialogue-choice:focus-visible,
 .ll-dialogue-choice.is-focused {
   background: #f0e0c6;
   outline: none;
+}
+
+.ll-dialogue-choice.has-face:hover,
+.ll-dialogue-choice.has-face:focus-visible,
+.ll-dialogue-choice.has-face.is-focused {
+  background: linear-gradient(180deg, #ffe3b0, #f0b060);
 }
 
 .ll-dialogue-choice-sub {
@@ -4684,6 +4721,35 @@ input:focus-visible {
     border-color 0.12s ease,
     box-shadow 0.12s ease,
     transform 0.12s ease;
+}
+
+.ll-menu-row.has-face {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.65rem 0.4rem 0.4rem;
+}
+
+.ll-menu-row-face {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  border: 2px solid var(--ll-wood);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: #fff6e5;
+  box-shadow:
+    inset 0 0 0 1px var(--ll-wood-light),
+    0 2px 0 rgba(58, 40, 24, 0.1);
+}
+
+.ll-menu-row-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.08rem;
+  min-width: 0;
 }
 
 .ll-menu-row.is-quest.ll-quest-glow {

@@ -9,6 +9,8 @@ export interface MenuOption {
   disabled?: boolean;
   /** Highlight as a side-quest offer row. */
   accent?: "quest";
+  /** Utility / tip rows show this face so they stand apart from idle chat. */
+  portrait?: PortraitId;
 }
 
 export type MenuPortrait = {
@@ -138,14 +140,22 @@ export class InteractionMenu {
       if (opt.accent === "quest") {
         btn.classList.add("is-quest", "ll-quest-glow");
       }
+      if (opt.portrait) btn.classList.add("has-face");
       btn.disabled = Boolean(opt.disabled);
       btn.dataset.optId = opt.id;
       btn.style.setProperty("--ll-i", String(delayStart + i));
       btn.setAttribute("role", "menuitem");
-      btn.innerHTML = `
+      const copy = `
         <span class="ll-menu-row-label">${escapeHtml(opt.label)}</span>
         ${opt.sub ? `<span class="ll-menu-row-sub">${escapeHtml(opt.sub)}</span>` : ""}
       `;
+      btn.innerHTML = opt.portrait
+        ? `<canvas class="ll-menu-row-face" width="32" height="32" aria-hidden="true"></canvas><span class="ll-menu-row-copy">${copy}</span>`
+        : copy;
+      if (opt.portrait) {
+        const face = btn.querySelector(".ll-menu-row-face") as HTMLCanvasElement;
+        drawPortrait(face, opt.portrait);
+      }
       btn.addEventListener("click", (e) => this.handlePick(e, opt));
       btn.addEventListener("pointerenter", () => {
         if (opt.disabled) return;

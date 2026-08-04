@@ -12,6 +12,8 @@ export interface DialogueChoice {
   id: string;
   label: string;
   sub?: string;
+  /** Utility / tip choices show this face so they stand apart from idle chat. */
+  portrait?: PortraitId;
 }
 
 /**
@@ -291,10 +293,20 @@ export class DialogueBox {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "ll-dialogue-choice";
+      if (choice.portrait) btn.classList.add("has-face");
       btn.dataset.choiceId = choice.id;
-      btn.innerHTML = choice.sub
+      const copy = choice.sub
         ? `<span class="ll-dialogue-choice-label">${escapeHtml(choice.label)}</span><span class="ll-dialogue-choice-sub">${escapeHtml(choice.sub)}</span>`
         : `<span class="ll-dialogue-choice-label">${escapeHtml(choice.label)}</span>`;
+      btn.innerHTML = choice.portrait
+        ? `<canvas class="ll-dialogue-choice-face" width="32" height="32" aria-hidden="true"></canvas><span class="ll-dialogue-choice-copy">${copy}</span>`
+        : copy;
+      if (choice.portrait) {
+        const face = btn.querySelector(
+          ".ll-dialogue-choice-face",
+        ) as HTMLCanvasElement;
+        drawPortrait(face, choice.portrait);
+      }
       btn.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         e.stopPropagation();

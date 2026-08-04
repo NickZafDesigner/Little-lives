@@ -17,6 +17,8 @@ export interface AmbientChoice {
   anim?: AmbientAnim;
   /** Optional follow-up replies for another beat. */
   choices?: AmbientChoice[];
+  /** Utility tip choices (e.g. directions) show this portrait id on the button. */
+  portrait?: string;
 }
 
 /** Opening line(s) + a small menu of funny responses. */
