@@ -13,12 +13,26 @@ import {
   type RecipeDef,
   type TownBoardState,
 } from "../data/crafting";
+import { furnitureById } from "../data/furniture";
 import type { MaterialId } from "../data/items";
+import { jobById, lotNameForJob } from "../data/jobs";
 import { NPCS } from "../data/npcs";
+import type { WorkMiniKind } from "../data/types";
 import type { MiniGrade } from "../ui/WorkMinigame";
 import { gradeScore } from "../ui/WorkMinigame";
 import { beatForDay } from "./dayCycle";
 import type { GameState } from "./GameState";
+
+export interface WorkAssistTarget {
+  offerUid: string;
+  template: CommissionTemplate;
+  jobId: string;
+  furnitureUid: string;
+  mini: WorkMiniKind;
+  label: string;
+  lotLabel: string;
+  stationLabel: string;
+}
 
 function mulberry32(seed: number) {
   return () => {
@@ -133,6 +147,70 @@ export class TownBoardSystem {
     return out;
   }
 
+  /** Resolve where a work_assist commission is completed. */
+  resolveWorkAssist(template: CommissionTemplate): WorkAssistTarget | null {
+    if (template.kind !== "work_assist" || !template.jobId) return null;
+    const job = jobById[template.jobId];
+    const task = job?.tasks[0];
+    if (!job || !task) return null;
+    const furnitureUid = template.furnitureUid ?? task.furnitureUid;
+    const placed = this.state.furniture.find((f) => f.uid === furnitureUid);
+    const stationLabel =
+      (placed && furnitureById[placed.defId]?.name) ||
+      furnitureById[
+        this.state.furniture.find((f) => f.uid === task.furnitureUid)?.defId ?? ""
+      ]?.name ||
+      "station";
+    return {
+      offerUid: "",
+      template,
+      jobId: job.id,
+      furnitureUid,
+      mini: task.mini,
+      label: task.label,
+      lotLabel: lotNameForJob(job.id),
+      stationLabel,
+    };
+  }
+
+  /** Accepted, incomplete work_assist commission (at most one actionable). */
+  getAcceptedWorkAssist(): WorkAssistTarget | null {
+    for (const offer of this.state.townBoard.offers) {
+      if (offer.done || !offer.accepted) continue;
+      const template = commissionById[offer.templateId];
+      if (!template || template.kind !== "work_assist") continue;
+      const resolved = this.resolveWorkAssist(template);
+      if (!resolved) continue;
+      return { ...resolved, offerUid: offer.uid };
+    }
+    return null;
+  }
+
+  acceptOffer(offerUid: string): WorkAssistTarget | null {
+    const offer = this.state.townBoard.offers.find((o) => o.uid === offerUid);
+    if (!offer || offer.done) return null;
+    const template = commissionById[offer.templateId];
+    if (!template || template.kind !== "work_assist") return null;
+    const resolved = this.resolveWorkAssist(template);
+    if (!resolved) return null;
+    offer.accepted = true;
+    return { ...resolved, offerUid: offer.uid };
+  }
+
+  /** Whether furniture is the assist station (or its host / surface appliance). */
+  furnitureMatchesAssist(
+    furnUid: string,
+    targetUid: string,
+  ): boolean {
+    if (furnUid === targetUid) return true;
+    const furn = this.state.furniture.find((f) => f.uid === furnUid);
+    if (!furn) return false;
+    if (furn.parentUid === targetUid) return true;
+    return this.state.furniture.some(
+      (f) => f.parentUid === furnUid && f.uid === targetUid,
+    );
+  }
+
   /** Whether the player can turn in / complete this offer right now. */
   canComplete(template: CommissionTemplate): boolean {
     const s = this.state;
@@ -160,7 +238,7 @@ export class TownBoardSystem {
     }
   }
 
-  completeStatus(template: CommissionTemplate): string {
+  completeStatus(template: CommissionTemplate, offer?: BoardOffer): string {
     switch (template.kind) {
       case "deliver_craft":
         return this.canComplete(template)
@@ -173,8 +251,14 @@ export class TownBoardSystem {
           ? "Ready to turn in"
           : `Need ${need}× ${template.materialId} (${have}/${need})`;
       }
-      case "work_assist":
-        return "Tap to help now";
+      case "work_assist": {
+        const target = this.resolveWorkAssist(template);
+        if (!target) return "Help at the workplace";
+        if (offer?.accepted) {
+          return `Go to the ${target.lotLabel} · use the ${target.stationLabel}`;
+        }
+        return `Accept, then help at the ${target.lotLabel}`;
+      }
       case "bring_beat":
         return this.state.craftedCount(template.craftedId!) > 0
           ? "Bring it to today's Park Picnic"

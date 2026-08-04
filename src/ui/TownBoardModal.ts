@@ -87,16 +87,22 @@ export class TownBoardModal {
     const s = this.state;
     const rows = this.board.openOffers().map(({ offer, template }) => {
       const npc = NPCS.find((n) => n.id === template.npcId);
-      const status = this.board.completeStatus(template);
+      const status = this.board.completeStatus(template, offer);
       const done = offer.done;
       let actionLabel = "Turn in";
       let actionKind = "turn_in";
       let enabled = !done && this.board.canComplete(template);
 
       if (template.kind === "work_assist") {
-        actionLabel = "Help now";
-        actionKind = "work_assist";
-        enabled = !done;
+        if (offer.accepted && !done) {
+          actionLabel = "Accepted";
+          actionKind = "work_assist";
+          enabled = false;
+        } else {
+          actionLabel = "Accept";
+          actionKind = "work_assist";
+          enabled = !done;
+        }
       } else if (template.kind === "bring_beat") {
         actionLabel = "At picnic";
         actionKind = "turn_in";

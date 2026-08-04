@@ -4610,6 +4610,8 @@ export function createWorldScreen(
         );
       }
     });
+    const pendingAssist = townBoard.getAcceptedWorkAssist();
+    if (pendingAssist) pinWorkAssistArrow(pendingAssist);
   };
 
   const pinWorkAssistArrow = (

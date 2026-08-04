@@ -174,6 +174,8 @@ export interface CommissionTemplate {
   materialId?: MaterialId;
   materialCount?: number;
   jobId?: string;
+  /** work_assist: interact here (defaults to job.tasks[0].furnitureUid). */
+  furnitureUid?: string;
   beatId?: WeeklyBeatId;
   rewardMoney: number;
   rewardFriendship: number;
@@ -279,6 +281,7 @@ export const COMMISSION_TEMPLATES: CommissionTemplate[] = [
     blurb: "Rush hour at Jun's - hop in for one quick task.",
     npcId: "jun",
     jobId: "cafe_barista",
+    furnitureUid: "c_coffee",
     rewardMoney: 15,
     rewardFriendship: 8,
     rewardFavor: 1,
@@ -330,6 +333,8 @@ export interface BoardOffer {
   dayPosted: number;
   /** True once turned in / completed. */
   done: boolean;
+  /** work_assist: accepted from the board; finish at the job station. */
+  accepted?: boolean;
 }
 
 export interface TownBoardState {
