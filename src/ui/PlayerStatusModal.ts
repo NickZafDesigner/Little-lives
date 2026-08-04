@@ -18,6 +18,7 @@ import {
 } from "../systems/unlockProgress";
 import { paintFurnitureThumb, paintInventoryThumb } from "./FurniturePreview";
 import { Audio } from "../audio/AudioManager";
+import { closeButtonHtml } from "./closeIcon";
 import { drawPortrait } from "./portraits";
 import { renderInventoryBody } from "./InventoryModal";
 import {
@@ -184,7 +185,7 @@ export class PlayerStatusModal {
               <p class="ll-status-modal-sub">Day ${s.dayIndex} · ${clockLabel(s.dayTime)} · Mood ${mood}</p>
             </div>
           </div>
-          <button type="button" class="ll-status-modal-close" data-status-close aria-label="Close">✕</button>
+          ${closeButtonHtml({ attrs: "data-status-close" })}
         </header>
         <nav class="ll-status-tabs" role="tablist">
           <button type="button" class="ll-status-tab${this.tab === "status" ? " is-active" : ""}" data-tab="status" role="tab" aria-selected="${this.tab === "status"}">Status</button>

@@ -3,6 +3,7 @@ import type { App } from "../app/App";
 import { clearSave, hasSave } from "../save/saveLoad";
 import { Audio } from "../audio/AudioManager";
 import { muteButtonHtml, wireMute } from "../ui/mute";
+import { closeButtonHtml } from "../ui/closeIcon";
 import { mountPageZoomBanner } from "../ui/pageZoom";
 import { drawPortrait } from "../ui/portraits";
 import { applyClothingStyle, defaultPlayerLook } from "../data/character";
@@ -144,7 +145,7 @@ export function createTitleScreen(
             >
               <header class="ll-howto-head">
                 <h2 id="ll-howto-title" class="ll-howto-title">How to play</h2>
-                <button type="button" class="ll-howto-close" data-act="howto-close" aria-label="Close">✕</button>
+                ${closeButtonHtml({ attrs: 'data-act="howto-close"' })}
               </header>
               <div class="ll-howto-body">
                 <p class="ll-howto-lead">Settle into town, look after your needs, make friends, care for pets, and earn a little money to furnish your home.</p>
@@ -198,7 +199,7 @@ export function createTitleScreen(
         Audio.sfx("confirm");
         howto.hidden = false;
         const closeBtn = howto.querySelector(
-          ".ll-howto-close",
+          "button.ll-close",
         ) as HTMLButtonElement | null;
         closeBtn?.focus();
       };

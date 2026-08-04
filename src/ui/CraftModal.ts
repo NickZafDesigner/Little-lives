@@ -11,6 +11,7 @@ import {
   recipeUnlockHint,
 } from "../systems/TownBoardSystem";
 import { Audio } from "../audio/AudioManager";
+import { closeButtonHtml } from "./closeIcon";
 import { MenuKeyboardNav } from "./menuKeyboard";
 
 function escapeHtml(s: string): string {
@@ -127,7 +128,7 @@ export class CraftModal {
             <h2 class="ll-shop-modal-title">Craft Table</h2>
             <p class="ll-shop-modal-sub">Gather · craft · gift · decorate · Town Favor ${s.townBoard.favor}</p>
           </div>
-          <button type="button" class="ll-status-modal-close" data-craft-close aria-label="Close">✕</button>
+          ${closeButtonHtml({ attrs: "data-craft-close" })}
         </header>
         <ul class="ll-shop-list">${rows}</ul>
       </div>

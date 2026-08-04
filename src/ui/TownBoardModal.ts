@@ -6,6 +6,7 @@ import { NPCS } from "../data/npcs";
 import type { GameState } from "../systems/GameState";
 import { TownBoardSystem } from "../systems/TownBoardSystem";
 import { Audio } from "../audio/AudioManager";
+import { closeButtonHtml } from "./closeIcon";
 import { MenuKeyboardNav } from "./menuKeyboard";
 
 function escapeHtml(s: string): string {
@@ -145,7 +146,7 @@ export class TownBoardModal {
             <h2 class="ll-shop-modal-title">Town Notice Board</h2>
             <p class="ll-shop-modal-sub">Favor ${s.townBoard.favor} · ${openCount} open today · crafts ${s.townBoard.craftsMade}</p>
           </div>
-          <button type="button" class="ll-status-modal-close" data-board-close aria-label="Close">✕</button>
+          ${closeButtonHtml({ attrs: "data-board-close" })}
         </header>
         <ul class="ll-shop-list">${
           rows ||

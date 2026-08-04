@@ -11,6 +11,7 @@ import {
   getFurnitureUnlockProgress,
   isFurnitureUnlocked,
 } from "../systems/unlockProgress";
+import { closeButtonHtml } from "./closeIcon";
 import { FurniturePreview } from "./FurniturePreview";
 import { MenuKeyboardNav } from "./menuKeyboard";
 
@@ -178,7 +179,10 @@ export class BuildCatalog {
             <h2 class="ll-build-modal-title">Build</h2>
             <span class="ll-build-modal-money">$${s.money}</span>
           </div>
-          <button type="button" class="ll-build-modal-close" data-build-close aria-label="Close catalog">✕</button>
+          ${closeButtonHtml({
+            attrs: "data-build-close",
+            ariaLabel: "Close catalog",
+          })}
         </header>
         <div class="ll-build-modal-body">
           <aside class="ll-build-modal-rail">

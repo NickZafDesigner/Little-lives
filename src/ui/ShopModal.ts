@@ -7,6 +7,7 @@ import {
   type ToolId,
 } from "../data/items";
 import { Audio } from "../audio/AudioManager";
+import { closeButtonHtml } from "./closeIcon";
 import { paintInventoryThumb } from "./FurniturePreview";
 import type { InventoryThumbId } from "../mesh/inventoryItems";
 import { MenuKeyboardNav } from "./menuKeyboard";
@@ -127,7 +128,7 @@ export class ShopModal {
             <h2 class="ll-shop-modal-title">${escapeHtml(this.title)}</h2>
             <p class="ll-shop-modal-sub">Permanent tools · You have $${s.money}</p>
           </div>
-          <button type="button" class="ll-status-modal-close" data-shop-close aria-label="Close">✕</button>
+          ${closeButtonHtml({ attrs: "data-shop-close" })}
         </header>
         <ul class="ll-shop-list">${rows}</ul>
       </div>
@@ -183,7 +184,7 @@ export class ShopModal {
             <h2 class="ll-shop-modal-title">${escapeHtml(this.title)}</h2>
             <p class="ll-shop-modal-sub">You have $${s.money}${total > 0 ? ` · bag worth $${total}` : ""}</p>
           </div>
-          <button type="button" class="ll-status-modal-close" data-shop-close aria-label="Close">✕</button>
+          ${closeButtonHtml({ attrs: "data-shop-close" })}
         </header>
         <ul class="ll-shop-list">${rows}</ul>
         ${

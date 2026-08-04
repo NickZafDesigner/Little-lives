@@ -13,6 +13,7 @@ import { computeCozyScore } from "../systems/cozyScore";
 import { beatForDay } from "../systems/dayCycle";
 import { weatherHudLabel, weatherLabel } from "../systems/weather";
 import { jobById, jobDisplayName, jobTaskCount } from "../data/jobs";
+import { closeButtonHtml } from "./closeIcon";
 import { drawPortrait } from "./portraits";
 import { PlayerStatusModal } from "./PlayerStatusModal";
 import { ShopModal, type ShopMode } from "./ShopModal";
@@ -556,7 +557,12 @@ export class Hud {
 
     const beatHtml = showBeat
       ? `<div class="ll-beat">
-          <button type="button" class="ll-beat-dismiss" data-dismiss-beat aria-label="Dismiss">✕</button>
+          ${closeButtonHtml({
+            className: "ll-beat-dismiss",
+            size: "sm",
+            attrs: "data-dismiss-beat",
+            ariaLabel: "Dismiss",
+          })}
           <small>Today</small>
           <strong>${escapeHtml(opts.beatTitle)}</strong>
           <span>${escapeHtml(opts.beatPlace)}</span>

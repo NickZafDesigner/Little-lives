@@ -1949,25 +1949,56 @@ input:focus-visible {
   color: var(--ll-wood-deep);
 }
 
-.ll-howto-close {
-  width: 30px;
-  height: 30px;
+/* Shared circle close control — SVG X, not a text glyph. */
+.ll-close {
+  box-sizing: border-box;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  margin: 0;
   flex: 0 0 auto;
   border: 2px solid var(--ll-wood-deep);
   border-radius: 50%;
   background: var(--ll-sunk);
   color: var(--ll-ink-soft);
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 800;
   cursor: pointer;
-  line-height: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-items: center;
+  line-height: 0;
   box-shadow: 0 2px 0 rgba(58, 40, 24, 0.16);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
 }
 
-.ll-howto-close:hover {
+.ll-close-icon {
+  display: block;
+  width: 0.85rem;
+  height: 0.85rem;
+  margin: 0;
+  pointer-events: none;
+}
+
+.ll-close--sm {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-width: 1.5px;
+  box-shadow: none;
+}
+
+.ll-close--sm .ll-close-icon {
+  width: 0.55rem;
+  height: 0.55rem;
+}
+
+.ll-close:hover,
+.ll-close:focus-visible {
   background: #f0b060;
   color: var(--ll-wood-deep);
+  outline: none;
 }
 
 .ll-howto-body {
@@ -3334,24 +3365,6 @@ input:focus-visible {
   flex: 1;
 }
 
-.ll-needs-close {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--ll-sunk);
-  color: var(--ll-ink-soft);
-  font-size: 0.7rem;
-  font-weight: 800;
-  cursor: pointer;
-  line-height: 1;
-}
-
-.ll-needs-close:hover {
-  background: rgba(212, 80, 107, 0.18);
-  color: #c43d5a;
-}
 
 .ll-need.is-warn span,
 .ll-need.is-warn b {
@@ -3593,32 +3606,6 @@ input:focus-visible {
   position: absolute;
   top: 0.2rem;
   left: 0.2rem;
-  width: 1.15rem;
-  height: 1.15rem;
-  padding: 0;
-  border: 1.5px solid var(--ll-wood-deep);
-  border-radius: 50%;
-  background: rgba(255, 248, 220, 0.85);
-  color: var(--ll-ink-soft);
-  font: inherit;
-  font-size: 0.55rem;
-  font-weight: 800;
-  line-height: 1;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  display: grid;
-  place-items: center;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
-}
-
-.ll-beat-dismiss:hover,
-.ll-beat-dismiss:focus-visible {
-  background: #f0b060;
-  color: var(--ll-wood-deep);
-  outline: none;
 }
 
 .ll-beat small {
@@ -4651,29 +4638,7 @@ input:focus-visible {
 }
 
 .ll-menu-cancel {
-  width: 30px;
-  height: 30px;
-  border: 2px solid var(--ll-wood-deep);
-  border-radius: 50%;
-  background: var(--ll-sunk);
-  color: var(--ll-ink-soft);
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 800;
-  cursor: pointer;
-  line-height: 1;
-  box-shadow: 0 2px 0 rgba(58, 40, 24, 0.16);
   align-self: start;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease,
-    border-color 0.12s ease;
-}
-
-.ll-menu-cancel:hover {
-  background: var(--ll-blush);
-  color: #fffdf5;
-  border-color: var(--ll-blush-deep);
 }
 
 .ll-menu-body {
@@ -4997,23 +4962,6 @@ input:focus-visible {
   font-size: 0.95rem;
 }
 
-.ll-build-modal-close,
-.ll-status-modal-close {
-  border: none;
-  background: var(--ll-sunk);
-  color: var(--ll-ink-soft);
-  width: 2rem;
-  height: 2rem;
-  border-radius: var(--ll-r-sm);
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.ll-build-modal-close:hover,
-.ll-status-modal-close:hover {
-  background: #f0e0c6;
-}
 
 .ll-build-modal-body {
   display: grid;

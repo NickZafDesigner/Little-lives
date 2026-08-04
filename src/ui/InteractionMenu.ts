@@ -1,5 +1,6 @@
 import type { PlayerLook } from "../data/character";
 import { Audio } from "../audio/AudioManager";
+import { closeButtonHtml } from "./closeIcon";
 import { drawPortrait, type PortraitId } from "./portraits";
 
 export interface MenuOption {
@@ -109,7 +110,10 @@ export class InteractionMenu {
             <h3 class="ll-menu-title">${escapeHtml(title)}</h3>
             <p class="ll-menu-sub">${escapeHtml(subtitle)}</p>
           </div>
-          <button type="button" class="ll-menu-cancel" data-act="dismiss" aria-label="Close">✕</button>
+          ${closeButtonHtml({
+            className: "ll-menu-cancel",
+            attrs: 'data-act="dismiss"',
+          })}
         </header>
         <div class="ll-menu-body"></div>
       </div>
