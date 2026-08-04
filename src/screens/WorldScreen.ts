@@ -56,6 +56,7 @@ import {
   type ChatNpcId,
 } from "../data/dialogue";
 import { petById } from "../data/pets";
+import { VILLAGE_ANIMALS } from "../data/villageAnimals";
 import {
   GORDON_SHOE_TILE,
   PARK_LITTER_SPOTS,
@@ -199,10 +200,27 @@ interface NpcRuntime {
   dir: Dir;
   path: GridPos[];
   waitUntil: number;
-  /** Street hangabout - stays put, reply-menu banter only. */
+  /** Street hangabout - light local wander + reply-menu banter. */
   ambient?: boolean;
+  /** Seated patrons stay put on their chair. */
+  seated?: boolean;
+  /** Anchor tile for local wandering. */
+  homeTx?: number;
+  homeTy?: number;
+  /** Max tile radius from home when strolling. */
+  wanderR?: number;
   /** Boss is scripted to walk up for a warning / firing. */
   seekingPlayer?: boolean;
+}
+
+interface VillageAnimalRuntime {
+  id: string;
+  handle: PetHandle;
+  path: GridPos[];
+  waitUntil: number;
+  homeTx: number;
+  homeTy: number;
+  wanderR: number;
 }
 
 type TargetKind =
@@ -258,6 +276,7 @@ export function createWorldScreen(
   let playerX = state.playerX;
   let playerZ = state.playerY; // legacy save uses Y as map-south axis
   let npcs: NpcRuntime[] = [];
+  let villageAnimals: VillageAnimalRuntime[] = [];
   let pet: PetHandle | null = null;
   let furnitureMeshes = new Map<string, THREE.Group>();
   let harvestHandles = new Map<string, HarvestMeshHandle>();
@@ -1624,6 +1643,34 @@ export function createWorldScreen(
         y: ty,
       }
     );
+  };
+
+  /** Pick a walkable tile within `radius` of an anchor (for short strolls). */
+  const pickLocalWanderGoal = (
+    homeTx: number,
+    homeTy: number,
+    radius: number,
+    blocked: boolean[][],
+  ): GridPos | null => {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const gx =
+        homeTx + Math.floor(Math.random() * (radius * 2 + 1)) - radius;
+      const gy =
+        homeTy + Math.floor(Math.random() * (radius * 2 + 1)) - radius;
+      if (!inBounds(gx, gy) || blocked[gy]![gx]) continue;
+      const walkable = nearestWalkable(
+        blocked,
+        { x: gx, y: gy },
+        MAP_W,
+        MAP_H,
+        2,
+      );
+      if (walkable && (walkable.x !== homeTx || walkable.y !== homeTy || attempt > 3)) {
+        return walkable;
+      }
+      if (walkable) return walkable;
+    }
+    return null;
   };
 
   const spawnFurniture = (f: PlacedFurniture) => {
@@ -6962,11 +7009,46 @@ export function createWorldScreen(
             actor,
             dir: def.facing,
             path: [],
-            waitUntil: Number.POSITIVE_INFINITY,
+            // Seated patrons stay put; street hangabouts stroll after a short idle.
+            waitUntil: seated
+              ? Number.POSITIVE_INFINITY
+              : performance.now() + 800 + Math.random() * 2800,
             ambient: true,
+            seated,
+            homeTx: tile.x,
+            homeTy: tile.y,
+            wanderR: 3,
           };
         }),
       ];
+      villageAnimals = VILLAGE_ANIMALS.map((def) => {
+        const stand = snapNpcStand(def.spawnTx, def.spawnTy);
+        const handle = createPet({
+          id: def.id,
+          name: def.name,
+          species: def.species,
+          color: def.color,
+          accent: def.accent,
+          traits: [],
+          fee: 0,
+        });
+        handle.setPosition(
+          stand.x * TILE + TILE / 2,
+          stand.y * TILE + TILE / 2,
+        );
+        handle.setWalking(false);
+        handle.setFacingRight(Math.random() > 0.5);
+        app.renderer.add(handle.root);
+        return {
+          id: def.id,
+          handle,
+          path: [],
+          waitUntil: performance.now() + Math.random() * 3500,
+          homeTx: stand.x,
+          homeTy: stand.y,
+          wanderR: def.wanderRadius,
+        };
+      });
       syncPet();
 
       hud = new Hud(
@@ -7239,6 +7321,11 @@ export function createWorldScreen(
         app.renderer.remove(npc.actor.root);
         npc.actor.dispose();
       }
+      for (const animal of villageAnimals) {
+        app.renderer.remove(animal.handle.root);
+        animal.handle.dispose();
+      }
+      villageAnimals = [];
       if (pet) {
         app.renderer.remove(pet.root);
         pet.dispose();
@@ -7561,8 +7648,8 @@ export function createWorldScreen(
       const now = performance.now();
       const conversationOpen = dialogue.isOpen() || menu.isOpen();
       for (const npc of npcs) {
-        // Street hangabouts never wander - idle in place.
-        if (npc.ambient) {
+        // Seated hangabouts stay on their chair.
+        if (npc.seated) {
           npc.actor.setWalking(false);
           if (npc.id === engagedNpcId) faceNpcTowardPlayer(npc);
           npc.actor.update(dt);
@@ -7594,24 +7681,54 @@ export function createWorldScreen(
             npc.actor.update(dt);
             continue;
           }
-          npc.waitUntil = now + 1400 + Math.random() * 2200;
-          const def = NPCS.find((n) => n.id === npc.id)!;
-          // Roommates linger at the player's home; others keep their schedule.
-          let lotId = state.isRoommate(npc.id) ? "home" : def.homeLot;
-          if (!state.isRoommate(npc.id)) {
-            if (isEvening(state.dayTime) && Math.random() < 0.55) {
-              lotId = "park";
-            } else if (isNight(state.dayTime)) {
-              lotId = def.homeLot;
-            }
-          }
-          const lot = LOTS.find((l) => l.id === lotId)!;
-          const goal = {
-            x: lot.tx + 1 + Math.floor(Math.random() * (lot.tw - 2)),
-            y: lot.ty + 1 + Math.floor(Math.random() * (lot.th - 2)),
-          };
+          npc.waitUntil = now + 1600 + Math.random() * 2800;
           const standBlocked = npcStandBlocked();
-          const walkable = nearestWalkable(standBlocked, goal, MAP_W, MAP_H, 3);
+          let walkable: GridPos | null = null;
+
+          if (npc.ambient) {
+            // Street hangabouts pottering near their corner.
+            walkable = pickLocalWanderGoal(
+              npc.homeTx ?? 0,
+              npc.homeTy ?? 0,
+              npc.wanderR ?? 3,
+              standBlocked,
+            );
+          } else {
+            const def = NPCS.find((n) => n.id === npc.id)!;
+            // Roommates linger at the player's home; others keep their schedule.
+            let lotId = state.isRoommate(npc.id) ? "home" : def.homeLot;
+            if (!state.isRoommate(npc.id)) {
+              if (isEvening(state.dayTime) && Math.random() < 0.35) {
+                lotId = "park";
+              } else if (isNight(state.dayTime)) {
+                lotId = def.homeLot;
+              }
+            }
+            const lot = LOTS.find((l) => l.id === lotId)!;
+            const p = npc.actor.getPosition();
+            const cx = Math.floor(p.x / TILE);
+            const cy = Math.floor(p.z / TILE);
+            // Short local stroll inside the lot (not a cross-lot trek).
+            const r = 3;
+            const goal = {
+              x: Math.max(
+                lot.tx + 1,
+                Math.min(
+                  lot.tx + lot.tw - 2,
+                  cx + Math.floor(Math.random() * (r * 2 + 1)) - r,
+                ),
+              ),
+              y: Math.max(
+                lot.ty + 1,
+                Math.min(
+                  lot.ty + lot.th - 2,
+                  cy + Math.floor(Math.random() * (r * 2 + 1)) - r,
+                ),
+              ),
+            };
+            walkable = nearestWalkable(standBlocked, goal, MAP_W, MAP_H, 3);
+          }
+
           if (!walkable) continue;
           const p = npc.actor.getPosition();
           npc.path = findPathToAny(
@@ -7630,10 +7747,11 @@ export function createWorldScreen(
         const dx = tx - p.x;
         const dz = tz - p.z;
         const dist = Math.hypot(dx, dz);
-        const step = (npc.seekingPlayer ? 70 : 55) * dt;
+        const step = (npc.seekingPlayer ? 70 : npc.ambient ? 42 : 55) * dt;
         if (dist <= step) {
           npc.actor.setPosition(tx, tz);
           npc.path.shift();
+          if (npc.path.length === 0) npc.actor.setWalking(false);
         } else {
           npc.actor.setPosition(p.x + (dx / dist) * step, p.z + (dz / dist) * step);
           if (Math.abs(dx) > Math.abs(dz))
@@ -7643,6 +7761,55 @@ export function createWorldScreen(
           npc.actor.setWalking(true);
         }
         npc.actor.update(dt);
+      }
+
+      // Village animals pottering around town.
+      for (const animal of villageAnimals) {
+        if (conversationOpen || now < animal.waitUntil) {
+          animal.handle.setWalking(false);
+          animal.handle.update(dt);
+          continue;
+        }
+        if (animal.path.length === 0) {
+          animal.waitUntil = now + 2200 + Math.random() * 4200;
+          const goal = pickLocalWanderGoal(
+            animal.homeTx,
+            animal.homeTy,
+            animal.wanderR,
+            collision,
+          );
+          if (!goal) continue;
+          const p = animal.handle.getPosition();
+          animal.path = findPathToAny(
+            collision,
+            { x: Math.floor(p.x / TILE), y: Math.floor(p.z / TILE) },
+            [goal],
+            MAP_W,
+            MAP_H,
+          ).slice(1);
+          continue;
+        }
+        const next = animal.path[0]!;
+        const tx = next.x * TILE + TILE / 2;
+        const tz = next.y * TILE + TILE / 2;
+        const p = animal.handle.getPosition();
+        const dx = tx - p.x;
+        const dz = tz - p.z;
+        const dist = Math.hypot(dx, dz);
+        const step = 38 * dt;
+        if (dist <= step) {
+          animal.handle.setPosition(tx, tz);
+          animal.path.shift();
+          if (animal.path.length === 0) animal.handle.setWalking(false);
+        } else {
+          animal.handle.setPosition(
+            p.x + (dx / dist) * step,
+            p.z + (dz / dist) * step,
+          );
+          animal.handle.setFacingRight(dx >= 0);
+          animal.handle.setWalking(true);
+        }
+        animal.handle.update(dt);
       }
 
       // Pet follow
