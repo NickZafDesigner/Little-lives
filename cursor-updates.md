@@ -1,3 +1,3 @@
 # Cursor updates
 
-- Standing street NPCs now stroll a few tiles around their spot; seated patrons stay put. Named villagers take short walks inside their lot. Added eight decorative village animals (dogs, cats, bunny, bird, fox) that wander the park, streets, pier, and shopfronts.
+- Sized the outdoor shadow volume past the camera view and recentered it with a dead zone so shadows no longer pop in at the screen edge while walking.

@@ -125,10 +125,22 @@ export class TownRenderer {
   private sunAnchorZ = (MAP_H * TILE) / 2;
   /** Last day-time bucket that moved the sun (discrete steps, not per-frame). */
   private sunAngleStep = -1;
-  /** Half-extent of the local ortho shadow volume. */
-  private static readonly SHADOW_EXTENT = 400;
-  /** Snap shadow volume to this grid so walking doesn't swim the map. */
-  private static readonly SHADOW_SNAP = TILE;
+  /**
+   * Local ortho shadow half-extent is derived from the view so casters
+   * outside the screen already cast — avoids shadows popping in at the rim.
+   */
+  private shadowExtent = 0;
+  /** Coarse snap — small snaps crawl the map edge through the visible frame. */
+  private static readonly SHADOW_SNAP = TILE * 8;
+  /**
+   * Recenter only after the player leaves this fraction of the current extent
+   * (dead zone). Keeps the shadow-map edge outside the view between jumps.
+   */
+  private static readonly SHADOW_DEAD_ZONE = 0.35;
+  /** Extra coverage past the ortho half-diagonal (oblique ground + snap slack). */
+  private static readonly SHADOW_VIEW_MARGIN = 1.75;
+  /** Floor so a tight focus zoom still has a stable local volume. */
+  private static readonly SHADOW_EXTENT_MIN = 520;
   /** Sun direction steps per day (~7s each at a 14-min day). */
   private static readonly SUN_ANGLE_STEPS = 120;
 
@@ -183,25 +195,20 @@ export class TownRenderer {
     this.scene.add(this.hemi);
 
     this.sun = new THREE.DirectionalLight(0xffe4b8, 1.15);
-    // Tight local shadow volume around a grid-snapped anchor. Whole-town
-    // coverage was too coarse (shimmer); per-frame player follow crawled.
+    // Local shadow volume around a sticky snapped anchor. Whole-town coverage
+    // was too coarse (shimmer); per-frame player follow crawled; a volume
+    // smaller than the view made shadows pop in as casters entered the map.
     this.sun.target.position.set(this.sunAnchorX, 0, this.sunAnchorZ);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
-    const ext = TownRenderer.SHADOW_EXTENT;
     this.sun.shadow.camera.near = 1;
-    this.sun.shadow.camera.far = 900;
-    this.sun.shadow.camera.left = -ext;
-    this.sun.shadow.camera.right = ext;
-    this.sun.shadow.camera.top = ext;
-    this.sun.shadow.camera.bottom = -ext;
-    this.sun.shadow.camera.updateProjectionMatrix();
+    this.sun.shadow.camera.far = 1200;
     this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.15;
     this.sun.shadow.radius = 1;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
-    this.placeSun(this.sunAnchorX, this.sunAnchorZ, true);
+    this.syncShadowVolume(this.sunAnchorX, this.sunAnchorZ, true);
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -743,15 +750,50 @@ export class TownRenderer {
         Math.max(40, 180 + Math.sin(angle) * 260),
         Math.sin(angle) * 180,
       );
-      this.placeSun(this.sunAnchorX, this.sunAnchorZ, true);
+      this.syncShadowVolume(this.sunAnchorX, this.sunAnchorZ, true);
     }
   }
 
+  /** Half-extent needed so the shadow map covers the current view + margin. */
+  private desiredShadowExtent(): number {
+    const aspect = this.viewWidth / Math.max(1, this.viewHeight);
+    const halfDiag = (this.frustumSize / 2) * Math.hypot(aspect, 1);
+    const raw = Math.max(
+      TownRenderer.SHADOW_EXTENT_MIN,
+      halfDiag * TownRenderer.SHADOW_VIEW_MARGIN,
+    );
+    const snap = TownRenderer.SHADOW_SNAP;
+    return Math.ceil(raw / snap) * snap;
+  }
+
   /**
-   * Aim the sun at a grid-snapped world point. Snap keeps the shadow map
-   * frozen while walking; only jumps when crossing a cell.
+   * Keep the ortho shadow volume larger than the view and sticky on the player.
+   * Dead-zone recentering stops the map edge from sliding through the frame
+   * (the usual cause of shadows popping on as you walk).
    */
-  private placeSun(x: number, z: number, force = false) {
+  private syncShadowVolume(x: number, z: number, force = false) {
+    const ext = this.desiredShadowExtent();
+    if (ext !== this.shadowExtent) {
+      this.shadowExtent = ext;
+      const cam = this.sun.shadow.camera;
+      cam.left = -ext;
+      cam.right = ext;
+      cam.top = ext;
+      cam.bottom = -ext;
+      cam.updateProjectionMatrix();
+      // Extent change moves the usable map — re-anchor immediately.
+      force = true;
+    }
+
+    const dead = this.shadowExtent * TownRenderer.SHADOW_DEAD_ZONE;
+    if (
+      !force &&
+      Math.abs(x - this.sunAnchorX) < dead &&
+      Math.abs(z - this.sunAnchorZ) < dead
+    ) {
+      return;
+    }
+
     const snap = TownRenderer.SHADOW_SNAP;
     const sx = Math.round(x / snap) * snap;
     const sz = Math.round(z / snap) * snap;
@@ -846,12 +888,12 @@ export class TownRenderer {
     }
 
     // Indoor floors shimmer under a moving shadow map — kill casting inside.
-    // Outdoors: keep the volume glued to a snapped cell near the player.
+    // Outdoors: sticky local volume sized past the view so shadows don't pop in.
     if (insideLot) {
       this.sun.castShadow = false;
     } else {
       this.sun.castShadow = true;
-      this.placeSun(playerX, playerZ);
+      this.syncShadowVolume(playerX, playerZ);
     }
 
 
