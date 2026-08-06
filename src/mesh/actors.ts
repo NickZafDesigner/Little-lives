@@ -1217,8 +1217,9 @@ export function createActor(look: PlayerLook): ActorHandle {
 
       const l = armRest(limbs.armL);
       const r = armRest(limbs.armR);
-      // Swing: arms locked up on the chains. Slide: light balance arms.
-      // Rest sit: hands ease toward the lap.
+      // Clothing torsos are wider than the arm pivots (~±6.5 vs ±5.6), so any
+      // strong inward Z buries the arms inside the shirt. Keep rest-sit arms
+      // beside the hips; only swing/slide reach in/up intentionally.
       let armLift = stretchU * 0.7;
       let armReach = stretchU * 0.55;
       let armEase = 9;
@@ -1233,9 +1234,9 @@ export function createActor(look: PlayerLook): ActorHandle {
         armReach = 0.45;
         armEase = 10;
       } else {
-        // Hands settle toward thighs.
-        armLift = stretchU * 0.7 - 0.08;
-        armReach = stretchU * 0.55 + 0.18;
+        // Slightly forward, clear of the torso silhouette.
+        armLift = 0.14 + stretchU * 0.7;
+        armReach = -0.22 + stretchU * 0.55;
         armEase = 7;
       }
       limbs.armL.rotation.x = easeToward(
@@ -1359,11 +1360,32 @@ export function createActor(look: PlayerLook): ActorHandle {
         if (body.position.y < seat.y + 1) {
           body.position.y = seat.y;
         }
-        // Snap into a readable sit so swings/slides don't ease from a stand T-pose.
-        if (sitStyle === "swing" || sitStyle === "slide") {
+        // Snap into a readable sit so swings/slides/patrons don't ease from stand.
+        // From lie (wake sit-up), keep leaning eased - only snap when upright-ish.
+        const fromStand = Math.abs(body.rotation.x) < 0.55;
+        if (sitStyle === "swing" || sitStyle === "slide" || fromStand) {
           body.rotation.x = seat.lean;
           limbs.legL.rotation.x = seat.leg + 0.04;
           limbs.legR.rotation.x = seat.leg - 0.03;
+        }
+        const l = armRest(limbs.armL);
+        const r = armRest(limbs.armR);
+        if (sitStyle === "swing") {
+          limbs.armL.rotation.x = l.x - 0.22 - 1.05;
+          limbs.armR.rotation.x = r.x - 0.22 - 1.05;
+          limbs.armL.rotation.z = l.z + 0.28 + 0.55;
+          limbs.armR.rotation.z = r.z - 0.28 - 0.55;
+        } else if (sitStyle === "slide") {
+          limbs.armL.rotation.x = l.x - 0.22 - 0.35;
+          limbs.armR.rotation.x = r.x - 0.22 - 0.35;
+          limbs.armL.rotation.z = l.z + 0.28 + 0.45;
+          limbs.armR.rotation.z = r.z - 0.28 - 0.45;
+        } else {
+          // Match rest-sit targets in applyPoseTransforms (clear of torso).
+          limbs.armL.rotation.x = l.x - 0.22 - 0.14;
+          limbs.armR.rotation.x = r.x - 0.22 - 0.14;
+          limbs.armL.rotation.z = l.z + 0.28 - 0.22;
+          limbs.armR.rotation.z = r.z - 0.28 + 0.22;
         }
       } else if (next === "stand") {
         stretchDur = 0;

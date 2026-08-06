@@ -3,6 +3,7 @@ import {
   applyNeedDeltas,
   criticalNeedThoughts,
 } from "../data/needs";
+import type { NeedId } from "../data/types";
 import type { GameState } from "./GameState";
 import { sleepToMorning, emptyDailyStats, formatDailySummary } from "./dayCycle";
 import { computeCozyScore } from "./cozyScore";
@@ -10,6 +11,10 @@ import { computeCozyScore } from "./cozyScore";
 const THOUGHT_COOLDOWN_MS = 14_000;
 const COLLAPSE_COOLDOWN_MS = 45_000;
 const BLADDER_COOLDOWN_MS = 50_000;
+
+function needHint(state: GameState, id: NeedId) {
+  return { id, value: Math.round(state.needs[id]) };
+}
 
 /**
  * Soft need drama: comedy thoughts, collapse nap, bladder accident.
@@ -29,7 +34,9 @@ export function tickNeedDrama(
     const thought = criticalNeedThoughts(state.needs, state.isWet);
     if (thought) {
       state.lastCriticalThoughtAt = now;
-      state.showDialogue("player", state.playerName, thought);
+      state.showDialogue("player", state.playerName, thought.text, {
+        needHint: needHint(state, thought.needId),
+      });
     }
   }
 
@@ -49,7 +56,9 @@ export function tickNeedDrama(
     const showerLine = "Ugh… I need a shower.";
     if (onThought) onThought(showerLine);
     else state.showToast(showerLine, 2800);
-    state.showDialogue("player", state.playerName, "I… I wet myself.");
+    state.showDialogue("player", state.playerName, "I… I wet myself.", {
+      needHint: needHint(state, "bladder"),
+    });
     onBladderAccident?.();
   }
 
@@ -76,6 +85,7 @@ export function applyCollapseRecovery(state: GameState): string {
     "player",
     state.playerName,
     "Floor nap: 3 stars. Neck: 1 star.",
+    { needHint: needHint(state, "energy") },
   );
   return "Bonk. Tiny nap on the spot - feeling a bit better.";
 }

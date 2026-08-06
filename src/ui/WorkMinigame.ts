@@ -73,6 +73,8 @@ export class WorkMinigame {
   private outZoneAcc = 0;
   private needSteady = 1.65;
   private enterTimer = 0;
+  /** Pending result → close timeout (cleared by forceClose). */
+  private resultTimer = 0;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement("div");
@@ -103,6 +105,16 @@ export class WorkMinigame {
 
   isOpen(): boolean {
     return this.open;
+  }
+
+  /** Abort without awarding a grade (e.g. shift cut short at closing). */
+  forceClose() {
+    if (this.resultTimer) {
+      window.clearTimeout(this.resultTimer);
+      this.resultTimer = 0;
+    }
+    this.resolved = true;
+    this.close();
   }
 
   play(
@@ -578,7 +590,9 @@ export class WorkMinigame {
     else Audio.sfx("mini_miss");
     this.onGrade?.(grade);
     const done = this.onDone;
-    window.setTimeout(() => {
+    if (this.resultTimer) window.clearTimeout(this.resultTimer);
+    this.resultTimer = window.setTimeout(() => {
+      this.resultTimer = 0;
       this.close();
       done?.(grade);
     }, RESULT_HOLD_MS);
@@ -590,6 +604,10 @@ export class WorkMinigame {
     if (this.enterTimer) {
       window.clearTimeout(this.enterTimer);
       this.enterTimer = 0;
+    }
+    if (this.resultTimer) {
+      window.clearTimeout(this.resultTimer);
+      this.resultTimer = 0;
     }
     this.unbindInput();
     this.open = false;

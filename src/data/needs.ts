@@ -79,30 +79,41 @@ export function isNeedCritical(needs: NeedsState, id: NeedId): boolean {
   return needs[id] < NEED_CRITICAL;
 }
 
+export interface CriticalNeedThought {
+  text: string;
+  needId: NeedId;
+}
+
 export function criticalNeedThoughts(
   needs: NeedsState,
   isWet = false,
-): string | null {
+): CriticalNeedThought | null {
   if (isWet) {
-    return "Ugh. Still damp. Shower. Please.";
+    return { text: "Ugh. Still damp. Shower. Please.", needId: "hygiene" };
   }
   if (needs.energy < NEED_CRITICAL) {
-    return "Eyes… heavy… floor looks comfy…";
+    return { text: "Eyes… heavy… floor looks comfy…", needId: "energy" };
   }
   if (needs.hunger < NEED_CRITICAL) {
-    return "Stomach says: fridge. Immediately.";
+    return { text: "Stomach says: fridge. Immediately.", needId: "hunger" };
   }
   if (needs.bladder < NEED_CRITICAL) {
-    return "Uh-oh. Bathroom. Now-ish.";
+    return { text: "Uh-oh. Bathroom. Now-ish.", needId: "bladder" };
   }
   if (needs.hygiene < NEED_CRITICAL) {
-    return "I can smell myself. Not a compliment.";
+    return {
+      text: "I can smell myself. Not a compliment.",
+      needId: "hygiene",
+    };
   }
   if (needs.fun < NEED_CRITICAL) {
-    return "Everything feels beige. Need a spark.";
+    return { text: "Everything feels beige. Need a spark.", needId: "fun" };
   }
   if (needs.social < NEED_CRITICAL) {
-    return "I miss… people. Or at least a friendly wave.";
+    return {
+      text: "I miss… people. Or at least a friendly wave.",
+      needId: "social",
+    };
   }
   return null;
 }

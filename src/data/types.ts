@@ -266,7 +266,7 @@ export interface SaveData {
   pendingBossTalk?: null | {
     jobId: string;
     kind: "warn" | "fire";
-    reason?: "late" | "no_show";
+    reason?: "late" | "no_show" | "unfinished";
   };
   lastPetCareDay: number;
   petCareStreak: number;

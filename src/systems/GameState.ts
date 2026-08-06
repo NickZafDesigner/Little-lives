@@ -309,6 +309,8 @@ export class GameState {
     speakerId: import("../data/types").NpcId;
     speakerName: string;
     text: string;
+    /** Optional need meter shown under critical status thoughts. */
+    needHint?: { id: import("../data/types").NeedId; value: number };
   }> = [];
   dialogueSeq = 0;
   jobTasksDone = 0;
@@ -325,11 +327,11 @@ export class GameState {
   workMissStreak = 0;
   /** dayIndex when the last late/no-show was recorded (−1 = never). */
   lastWorkMissDay = -1;
-  /** Boss confrontation queued after a late clock-in or no-show. */
+  /** Boss confrontation queued after a late clock-in, no-show, or unfinished shift. */
   pendingBossTalk: null | {
     jobId: string;
     kind: "warn" | "fire";
-    reason: "late" | "no_show";
+    reason: "late" | "no_show" | "unfinished";
   } = null;
   hiredJobs: string[] = [];
   jobShiftCounts: Record<string, number> = {};
@@ -417,10 +419,13 @@ export class GameState {
   }
 
   /**
-   * Record a late clock-in or no-show for today. Idempotent per day.
-   * Queues a boss warning (strikes 1-2) or firing (strike 3).
+   * Record a late clock-in, no-show, or unfinished shift for today.
+   * Idempotent per day. Queues a boss warning (strikes 1-2) or firing (strike 3).
    */
-  noteWorkMiss(jobId: string, reason: "late" | "no_show"): number {
+  noteWorkMiss(
+    jobId: string,
+    reason: "late" | "no_show" | "unfinished",
+  ): number {
     if (this.lastWorkMissDay === this.dayIndex) {
       return this.workMissStreak;
     }
@@ -738,8 +743,14 @@ export class GameState {
     speakerId: import("../data/types").NpcId,
     speakerName: string,
     text: string,
+    opts?: { needHint?: { id: import("../data/types").NeedId; value: number } },
   ) {
-    this.dialogueQueue.push({ speakerId, speakerName, text });
+    this.dialogueQueue.push({
+      speakerId,
+      speakerName,
+      text,
+      needHint: opts?.needHint,
+    });
     this.dialogueSeq += 1;
   }
 

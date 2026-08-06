@@ -200,6 +200,30 @@ const WORK_NO_SHOW_WARNING_LINES: Record<string, [string, string]> = {
   ],
 };
 
+/** Clocked in but still on the floor when closing hit. */
+const WORK_UNFINISHED_WARNING_LINES: Record<string, [string, string]> = {
+  cafe_barista: [
+    "You started a shift and left it hanging. We close at five - that's a warning.",
+    "Second time you blow off closing. Finish your work before five - or don't come back.",
+  ],
+  market_clerk: [
+    "Half a shift isn't a shift. Closing's at five. Consider this a warning.",
+    "Second unfinished day. Shelves don't wait - wrap up before closing.",
+  ],
+  library_aide: [
+    "You were on the clock and unfinished at closing. Quietly: that's a warning.",
+    "Second incomplete shift. The desk closes at five - be done, or be gone.",
+  ],
+  clinic_aide: [
+    "Patients leave at five. You didn't finish. That's a warning.",
+    "Second unfinished shift. Reliability means closing clean - one more and you're out.",
+  ],
+  workshop_crafter: [
+    "You left the bench mid-job at closing. Warning one.",
+    "Second unfinished day. Measure your time - be done by five.",
+  ],
+};
+
 const WORK_FIRE_LINES: Record<string, string> = {
   cafe_barista:
     "Three strikes. You're fired. Hand back the apron - and good luck.",
@@ -213,14 +237,20 @@ const WORK_FIRE_LINES: Record<string, string> = {
     "Three misses. You're fired. The bench stays - you don't.",
 };
 
+export type WorkMissReason = "late" | "no_show" | "unfinished";
+
 export function workWarningLine(
   jobId: string,
   streak: number,
-  reason: "late" | "no_show",
+  reason: WorkMissReason,
 ): string {
   const idx = streak <= 1 ? 0 : 1;
   const table =
-    reason === "no_show" ? WORK_NO_SHOW_WARNING_LINES : WORK_WARNING_LINES;
+    reason === "no_show"
+      ? WORK_NO_SHOW_WARNING_LINES
+      : reason === "unfinished"
+        ? WORK_UNFINISHED_WARNING_LINES
+        : WORK_WARNING_LINES;
   return (
     table[jobId]?.[idx] ??
     (streak <= 1
@@ -234,4 +264,36 @@ export function workFireLine(jobId: string): string {
     WORK_FIRE_LINES[jobId] ??
     "Three strikes - late or no-shows. You're fired."
   );
+}
+
+/** First time the player walks into work on their first shift day. */
+const FIRST_DAY_WELCOME_LINES: Record<string, string> = {
+  cafe_barista:
+    "Hey - you made it! First day starts at the counter. Head over and clock in, and I'll get you going.",
+  market_clerk:
+    "There you are. Clock in at the counter - I'll point you at the shelves once you're on the books.",
+  library_aide:
+    "Welcome. Quietly, of course. Clock in at the desk whenever you're ready.",
+  clinic_aide:
+    "Glad you're here. Clock in at the desk and we'll take it from there.",
+  workshop_crafter:
+    "Good - you found the place. Clock in at the workbench and we'll get your hands dirty.",
+};
+
+export function jobFirstDayWelcomeLine(jobId: string): string {
+  return (
+    FIRST_DAY_WELCOME_LINES[jobId] ??
+    "Welcome aboard! Clock in at the station and we'll get started."
+  );
+}
+
+/** Screen arrow label pointing at the job's clock-in furniture. */
+export function jobClockInArrowLabel(jobId: string): string {
+  const job = jobById[jobId];
+  if (!job) return "Clock in";
+  if (job.stationDefId === "counter") return "Counter";
+  if (job.stationDefId === "library_desk" || job.stationDefId === "clinic_desk")
+    return "Desk";
+  if (job.stationDefId === "workbench") return "Workbench";
+  return "Clock in";
 }

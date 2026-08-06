@@ -12,7 +12,9 @@ import {
   PROMOTION_SHIFTS,
   WORK_MISS_LIMIT,
   jobById,
+  jobClockInArrowLabel,
   jobDisplayName,
+  jobFirstDayWelcomeLine,
   jobPay,
   jobTaskCount,
   lotNameForJob,
@@ -204,12 +206,16 @@ interface NpcRuntime {
   ambient?: boolean;
   /** Seated patrons stay put on their chair. */
   seated?: boolean;
+  /** Closing-time exit: stand up and walk out the door. */
+  leavingClosing?: boolean;
+  /** Hidden after leaving for the day - restored next morning. */
+  leftForDay?: boolean;
   /** Anchor tile for local wandering. */
   homeTx?: number;
   homeTy?: number;
   /** Max tile radius from home when strolling. */
   wanderR?: number;
-  /** Boss is scripted to walk up for a warning / firing. */
+  /** Scripted walk-up: boss warning/firing, or first-day welcome. */
   seekingPlayer?: boolean;
 }
 
@@ -346,6 +352,20 @@ export function createWorldScreen(
   let morningBeatActive = false;
   /** Edge-detect leaving home / arriving at café for guidance hints. */
   let wasAtCafe = false;
+  /** First-day boss walks up to welcome + point at the clock-in station. */
+  let pendingJobWelcome: string | null = null;
+  /**
+   * Unfinished shift at 5pm: patrons leave first, then boss warning.
+   * Boss approach is paused while this is set.
+   */
+  let shiftClosing: null | {
+    jobId: string;
+    lotId: LotId;
+    startedAt: number;
+    warnQueued: boolean;
+  } = null;
+  /** Edge-detect dayTime crossing WORK_END. */
+  let prevDayTimeForClosing = -1;
   let guidanceReady = false;
   const firedHints = new Set<string>();
   let nightNudgeAt = 0;
@@ -1790,6 +1810,7 @@ export function createWorldScreen(
   const occupiedSeatUids = (): Set<string> => {
     const occupied = new Set<string>();
     for (const npc of npcs) {
+      if (npc.leftForDay || npc.leavingClosing) continue;
       const pose = npc.actor.getPose();
       if (pose !== "sit" && pose !== "lie") continue;
       const p = npc.actor.getPosition();
@@ -1804,6 +1825,7 @@ export function createWorldScreen(
 
   const npcOnSeat = (uid: string): string | null => {
     for (const npc of npcs) {
+      if (npc.leftForDay || npc.leavingClosing) continue;
       const pose = npc.actor.getPose();
       if (pose !== "sit" && pose !== "lie") continue;
       const p = npc.actor.getPosition();
@@ -1847,6 +1869,7 @@ export function createWorldScreen(
       });
     }
     for (const npc of npcs) {
+      if (npc.leftForDay || npc.leavingClosing) continue;
       const def =
         NPCS.find((n) => n.id === npc.id) ?? ambientNpcById[npc.id];
       if (!def) continue;
@@ -1981,7 +2004,9 @@ export function createWorldScreen(
     }
     for (const mesh of porchMeshes.values()) out.push(mesh);
     for (const mesh of questItemMeshes.values()) out.push(mesh);
-    for (const npc of npcs) out.push(npc.actor.root);
+    for (const npc of npcs) {
+      if (!npc.leftForDay) out.push(npc.actor.root);
+    }
     if (pet) out.push(pet.root);
     for (const sign of app.renderer.getSigns()) out.push(sign.root);
     return out;
@@ -3029,20 +3054,381 @@ export function createWorldScreen(
     }
   };
 
-  /** Walk the boss toward the player when a write-up is pending. */
+  const jobStationWorldPos = (job: JobDef): { x: number; z: number } | null => {
+    const station = state.furniture.find(
+      (f) => f.lotId === job.lotId && f.defId === job.stationDefId,
+    );
+    if (station) return furnitureWorldPos(station.uid);
+    const firstTask = job.tasks[0];
+    return firstTask ? furnitureWorldPos(firstTask.furnitureUid) : null;
+  };
+
+  const pinClockInArrow = (job: JobDef) => {
+    const pos = jobStationWorldPos(job);
+    if (pos) hintArrow?.pinAt(pos.x, pos.z, jobClockInArrowLabel(job.id));
+  };
+
+  const storyFlagJobWelcome = (jobId: string) => `job_welcome_${jobId}`;
+
+  const deliverJobWelcome = (npc: NpcRuntime) => {
+    const jobId = pendingJobWelcome;
+    pendingJobWelcome = null;
+    npc.seekingPlayer = false;
+    if (!jobId) return;
+    const job = jobById[jobId];
+    const def = NPCS.find((n) => n.id === npc.id);
+    if (!job || !def) return;
+
+    state.setStoryFlag(storyFlagJobWelcome(jobId));
+    holdNpcStill(npc.id);
+    Audio.sfx("talk");
+    state.showDialogue(
+      npc.id as NpcId,
+      def.name,
+      jobFirstDayWelcomeLine(job.id),
+    );
+    pinClockInArrow(job);
+    think(`Clock in at the ${jobClockInArrowLabel(job.id).toLowerCase()}.`, 3600);
+  };
+
+  const clearWelcomeSeek = () => {
+    if (!pendingJobWelcome) return;
+    const job = jobById[pendingJobWelcome];
+    const npc = job ? npcs.find((n) => n.id === job.hireNpcId) : null;
+    if (npc) npc.seekingPlayer = false;
+    pendingJobWelcome = null;
+  };
+
+  /**
+   * Queue a one-shot first-day welcome when the player steps onto their
+   * workplace before their first clock-in for that job.
+   */
+  const maybeQueueFirstDayWelcome = (job: JobDef) => {
+    if (pendingJobWelcome || state.pendingBossTalk) return;
+    if (introActive || morningBeatActive || timeMontage?.isPlaying()) return;
+    if (uiBusy() || state.isBusy() || state.jobActive) return;
+    if (state.hasStoryFlag(storyFlagJobWelcome(job.id))) return;
+    // Already worked this job before - treat as veteran (skip welcome forever).
+    if ((state.jobShiftCounts[job.id] ?? 0) > 0) {
+      state.setStoryFlag(storyFlagJobWelcome(job.id));
+      return;
+    }
+    // Hire day / already worked today - not the open first shift.
+    if (state.lastShiftDay === state.dayIndex) return;
+    // Too late to start a shift today.
+    if (state.dayTime >= WORK_END) return;
+
+    pendingJobWelcome = job.id;
+  };
+
+  const finishPatronLeave = (npc: NpcRuntime) => {
+    npc.leavingClosing = false;
+    npc.leftForDay = true;
+    npc.seated = false;
+    npc.path = [];
+    npc.waitUntil = Number.POSITIVE_INFINITY;
+    npc.actor.setWalking(false);
+    npc.actor.root.visible = false;
+  };
+
+  /** Collision plus tiles occupied by other visible NPCs (avoids exit pile-ups). */
+  const closingNpcBlocked = (selfId: string): boolean[][] => {
+    const blocked = collision.map((row) => [...row]);
+    for (const other of npcs) {
+      if (other.id === selfId || other.leftForDay) continue;
+      if (!other.actor.root.visible) continue;
+      const p = other.actor.getPosition();
+      const tx = Math.floor(p.x / TILE);
+      const ty = Math.floor(p.z / TILE);
+      if (inBounds(tx, ty)) blocked[ty][tx] = true;
+      // Reserve the next step of anyone already walking out.
+      if (other.leavingClosing && other.path.length > 0) {
+        const next = other.path[0]!;
+        if (inBounds(next.x, next.y)) blocked[next.y][next.x] = true;
+      }
+    }
+    const pt = playerTile();
+    if (inBounds(pt.x, pt.y)) blocked[pt.y][pt.x] = true;
+    return blocked;
+  };
+
+  /** Walkable tiles just outside / beside the lot door for staggered exits. */
+  const closingExitGoals = (lotId: LotId, selfId: string): GridPos[] => {
+    const door = lotDoorWorld(lotId);
+    if (!door) return [];
+    const doorTx = Math.floor(door.x / TILE);
+    const doorTy = Math.floor(door.z / TILE);
+    const blocked = closingNpcBlocked(selfId);
+    const candidates: GridPos[] = [
+      { x: doorTx, y: doorTy + 1 },
+      { x: doorTx - 1, y: doorTy + 1 },
+      { x: doorTx + 1, y: doorTy + 1 },
+      { x: doorTx - 2, y: doorTy + 1 },
+      { x: doorTx + 2, y: doorTy + 1 },
+      { x: doorTx, y: doorTy + 2 },
+      { x: doorTx - 1, y: doorTy + 2 },
+      { x: doorTx + 1, y: doorTy + 2 },
+      { x: doorTx, y: doorTy },
+      { x: doorTx - 1, y: doorTy },
+      { x: doorTx + 1, y: doorTy },
+    ];
+    const open = candidates.filter(
+      (c) => inBounds(c.x, c.y) && !blocked[c.y][c.x],
+    );
+    if (open.length > 0) return open;
+    const near = nearestWalkable(
+      blocked,
+      { x: doorTx, y: doorTy + 1 },
+      MAP_W,
+      MAP_H,
+      5,
+    );
+    return near ? [near] : [];
+  };
+
+  const patronsOnLot = (lotId: LotId): NpcRuntime[] =>
+    npcs.filter((npc) => {
+      if (!npc.ambient || npc.leftForDay) return false;
+      const tx = npc.homeTx ?? Math.floor(npc.actor.getPosition().x / TILE);
+      const ty = npc.homeTy ?? Math.floor(npc.actor.getPosition().z / TILE);
+      return lotAtTile(tx, ty)?.id === lotId;
+    });
+
+  /** Stagger stand-ups so patrons don't all rise into the same aisle. */
+  const queuePatronsLeave = (lotId: LotId) => {
+    const door = lotDoorWorld(lotId);
+    const patrons = patronsOnLot(lotId);
+    patrons.sort((a, b) => {
+      if (!door) return 0;
+      const pa = a.actor.getPosition();
+      const pb = b.actor.getPosition();
+      return (
+        Math.hypot(pa.x - door.x, pa.z - door.z) -
+        Math.hypot(pb.x - door.x, pb.z - door.z)
+      );
+    });
+
+    const now = performance.now();
+    const STAGGER_MS = 950;
+    for (let i = 0; i < patrons.length; i++) {
+      const npc = patrons[i]!;
+      if (engagedNpcId === npc.id) releaseEngagedNpc();
+      npc.leavingClosing = true;
+      npc.seekingPlayer = false;
+      npc.path = [];
+      // Closest to the door leaves first; others wait their turn.
+      npc.waitUntil = now + 350 + i * STAGGER_MS;
+    }
+  };
+
+  const restoreDayPatrons = () => {
+    for (const npc of npcs) {
+      if (!npc.ambient) continue;
+      if (!npc.leftForDay && !npc.leavingClosing) continue;
+      const def = ambientNpcById[npc.id];
+      if (!def) continue;
+      npc.leavingClosing = false;
+      npc.leftForDay = false;
+      npc.path = [];
+      const seated = def.pose === "sit";
+      const tile = seated
+        ? { x: def.spawnTx, y: def.spawnTy }
+        : snapNpcStand(def.spawnTx, def.spawnTy);
+      npc.homeTx = tile.x;
+      npc.homeTy = tile.y;
+      npc.actor.root.visible = true;
+      npc.actor.setPosition(tile.x * TILE + TILE / 2, tile.y * TILE + TILE / 2);
+      npc.actor.setFacing(def.facing);
+      npc.dir = def.facing;
+      npc.actor.setWalking(false);
+      if (seated) {
+        npc.seated = true;
+        npc.actor.setPose("sit", { sitStyle: def.sitStyle ?? "couch" });
+        npc.waitUntil = Number.POSITIVE_INFINITY;
+      } else {
+        npc.seated = false;
+        npc.actor.setPose("stand");
+        npc.waitUntil = performance.now() + 800 + Math.random() * 2800;
+      }
+    }
+  };
+
+  const beginUnfinishedShiftClosing = (jobId: string) => {
+    const job = jobById[jobId];
+    if (!job || shiftClosing) return;
+
+    workMini?.forceClose();
+    menu?.close();
+    hintArrow?.hide();
+    clearWelcomeSeek();
+    Audio.playMusic("world");
+
+    state.jobActive = false;
+    state.activeJobId = null;
+    state.jobTasksDone = 0;
+    state.jobQualityScores = [];
+    state.shiftLate = false;
+
+    shiftClosing = {
+      jobId,
+      lotId: job.lotId,
+      startedAt: performance.now(),
+      warnQueued: false,
+    };
+    queuePatronsLeave(job.lotId);
+    think("Closing time - customers are heading out…", 3800);
+  };
+
+  const tickShiftClosingProgress = () => {
+    if (!shiftClosing || shiftClosing.warnQueued) return;
+
+    const stillLeaving = npcs.some((n) => n.leavingClosing);
+    const elapsed = performance.now() - shiftClosing.startedAt;
+    // Short beat even with no patrons; long timeout for stragglers.
+    const minWait = 1600;
+    const maxWait = 24000;
+    if (stillLeaving && elapsed < maxWait) return;
+    if (!stillLeaving && elapsed < minWait) return;
+
+    for (const n of npcs) {
+      if (n.leavingClosing) finishPatronLeave(n);
+    }
+
+    shiftClosing.warnQueued = true;
+    const jobId = shiftClosing.jobId;
+    shiftClosing = null;
+
+    // Late clock-in may already have noted a miss today - don't double-strike.
+    if (state.lastWorkMissDay !== state.dayIndex) {
+      state.noteWorkMiss(jobId, "unfinished");
+      think("Uh-oh… the boss wants a word.", 3600);
+    } else if (state.pendingBossTalk) {
+      think("Uh-oh… the boss wants a word.", 3600);
+    }
+  };
+
+  /**
+   * Mid-shift when the clock hits 5: patrons leave (staggered), then boss warning.
+   */
+  const tickUnfinishedShiftClosing = () => {
+    if (prevDayTimeForClosing < 0) {
+      prevDayTimeForClosing = state.dayTime;
+      // Save/load still on shift after hours - start closing immediately.
+      if (
+        state.jobActive &&
+        state.activeJobId &&
+        state.dayTime >= WORK_END &&
+        !timeMontage?.isPlaying()
+      ) {
+        beginUnfinishedShiftClosing(state.activeJobId);
+      }
+    } else {
+      const prev = prevDayTimeForClosing;
+      const nowT = state.dayTime;
+      prevDayTimeForClosing = nowT;
+
+      if (
+        !shiftClosing &&
+        state.jobActive &&
+        state.activeJobId &&
+        !timeMontage?.isPlaying() &&
+        prev < WORK_END &&
+        nowT >= WORK_END
+      ) {
+        beginUnfinishedShiftClosing(state.activeJobId);
+      }
+    }
+
+    if (shiftClosing) tickShiftClosingProgress();
+  };
+
+  /** Walk a seeking NPC (boss write-up or first-day welcome) up to the player. */
   const tickBossApproach = () => {
-    const talk = state.pendingBossTalk;
-    if (!talk) return;
+    // Patrons clear out at closing before any write-up.
+    if (shiftClosing) return;
     if (uiBusy() || state.mode !== "live") return;
     if (state.isBusy()) return;
 
-    const job = jobById[talk.jobId];
-    if (!job) {
-      state.pendingBossTalk = null;
+    // Write-ups take priority over the friendly welcome.
+    const talk = state.pendingBossTalk;
+    if (talk) {
+      clearWelcomeSeek();
+      const job = jobById[talk.jobId];
+      if (!job) {
+        state.pendingBossTalk = null;
+        return;
+      }
+      const npc = npcs.find((n) => n.id === job.hireNpcId);
+      if (!npc || npc.ambient) return;
+
+      if (!npc.seekingPlayer) {
+        npc.seekingPlayer = true;
+        npc.waitUntil = 0;
+        npc.path = [];
+      }
+
+      const p = npc.actor.getPosition();
+      const dist = Math.hypot(p.x - playerX, p.z - playerZ);
+      if (dist <= TILE * 1.55) {
+        deliverBossTalk(npc);
+        return;
+      }
+
+      const goals = tilesBesidePlayer();
+      if (goals.length === 0) return;
+
+      if (npc.path.length > 0) {
+        const dest = npc.path[npc.path.length - 1];
+        const pt = playerTile();
+        const destDist = Math.abs(dest.x - pt.x) + Math.abs(dest.y - pt.y);
+        if (destDist <= 2) return;
+      }
+
+      const start = {
+        x: Math.floor(p.x / TILE),
+        y: Math.floor(p.z / TILE),
+      };
+      const path = findPathToAny(collision, start, goals, MAP_W, MAP_H);
+      if (path.length === 0) {
+        const near =
+          nearestWalkable(npcStandBlocked(), goals[0], MAP_W, MAP_H, 4) ??
+          goals[0];
+        npc.actor.setPosition(near.x * TILE + TILE / 2, near.y * TILE + TILE / 2);
+        deliverBossTalk(npc);
+        return;
+      }
+      npc.path = path.slice(1);
+      if (npc.path.length === 0) deliverBossTalk(npc);
       return;
     }
+
+    const welcomeId = pendingJobWelcome;
+    if (!welcomeId) return;
+    const job = jobById[welcomeId];
+    if (!job) {
+      pendingJobWelcome = null;
+      return;
+    }
+    // Left the workplace or no longer eligible - drop the scripted approach.
+    if (
+      playerLotId() !== job.lotId ||
+      state.hasStoryFlag(storyFlagJobWelcome(job.id)) ||
+      state.lastShiftDay === state.dayIndex ||
+      state.jobActive
+    ) {
+      clearWelcomeSeek();
+      return;
+    }
+
     const npc = npcs.find((n) => n.id === job.hireNpcId);
-    if (!npc || npc.ambient) return;
+    if (!npc || npc.ambient) {
+      // Boss missing - still pin the station so the player isn't stranded.
+      state.setStoryFlag(storyFlagJobWelcome(job.id));
+      pendingJobWelcome = null;
+      pinClockInArrow(job);
+      think(jobFirstDayWelcomeLine(job.id), 4200);
+      return;
+    }
 
     if (!npc.seekingPlayer) {
       npc.seekingPlayer = true;
@@ -3053,14 +3439,13 @@ export function createWorldScreen(
     const p = npc.actor.getPosition();
     const dist = Math.hypot(p.x - playerX, p.z - playerZ);
     if (dist <= TILE * 1.55) {
-      deliverBossTalk(npc);
+      deliverJobWelcome(npc);
       return;
     }
 
     const goals = tilesBesidePlayer();
     if (goals.length === 0) return;
 
-    // Keep following an existing path unless the player has drifted far from it.
     if (npc.path.length > 0) {
       const dest = npc.path[npc.path.length - 1];
       const pt = playerTile();
@@ -3078,11 +3463,11 @@ export function createWorldScreen(
         nearestWalkable(npcStandBlocked(), goals[0], MAP_W, MAP_H, 4) ??
         goals[0];
       npc.actor.setPosition(near.x * TILE + TILE / 2, near.y * TILE + TILE / 2);
-      deliverBossTalk(npc);
+      deliverJobWelcome(npc);
       return;
     }
     npc.path = path.slice(1);
-    if (npc.path.length === 0) deliverBossTalk(npc);
+    if (npc.path.length === 0) deliverJobWelcome(npc);
   };
 
   /**
@@ -3145,6 +3530,10 @@ export function createWorldScreen(
         ground === Tile.pierDeck ||
         ground === Tile.dirt);
     const atCafe = lot === "cafe";
+    const hiredJobHere =
+      state.hiredJobs
+        .map((id) => jobById[id])
+        .find((j) => j && j.lotId === lot) ?? null;
 
     if (!guidanceReady) {
       wasAtCafe = atCafe;
@@ -3171,6 +3560,9 @@ export function createWorldScreen(
         "There's Jun - ask about that Help Wanted sign!",
       );
     }
+
+    // First eligible shift day: boss walks up and points at the clock-in station.
+    if (hiredJobHere) maybeQueueFirstDayWelcome(hiredJobHere);
 
     const jobId = primaryJobId();
     const job = jobId ? jobById[jobId] : null;
@@ -3382,6 +3774,9 @@ export function createWorldScreen(
         aspirations.refresh();
         townBoard.refreshIfNeeded();
         clearDayScopedHints();
+        restoreDayPatrons();
+        shiftClosing = null;
+        prevDayTimeForClosing = state.dayTime;
         if (primaryJobId()) {
           startMorningCommuteBeat({ softAudio: !!opts?.alarm });
         }
@@ -7903,13 +8298,103 @@ export function createWorldScreen(
         !app.renderer.isIndoors() && state.weather === "rain" ? "rain" : "none",
       );
 
-      // Boss walks up for attendance warnings / firing.
+      // Boss / hire NPC walk-up (write-ups, first-day welcome).
+      tickUnfinishedShiftClosing();
       tickBossApproach();
 
       // NPCs
       const now = performance.now();
       const conversationOpen = dialogue.isOpen() || menu.isOpen();
       for (const npc of npcs) {
+        if (npc.leftForDay) {
+          npc.actor.setWalking(false);
+          continue;
+        }
+
+        // Closing-time exit: stand on a stagger, then path out the door.
+        if (npc.leavingClosing) {
+          if (npc.seated) {
+            if (now < npc.waitUntil) {
+              npc.actor.setWalking(false);
+              npc.actor.update(dt);
+              continue;
+            }
+            npc.seated = false;
+            npc.actor.setPose("stand");
+          }
+          if (npc.id === engagedNpcId) {
+            npc.path = [];
+            npc.actor.setWalking(false);
+            faceNpcTowardPlayer(npc);
+            npc.actor.update(dt);
+            continue;
+          }
+          if (conversationOpen && !shiftClosing) {
+            npc.path = [];
+            npc.actor.setWalking(false);
+            npc.actor.update(dt);
+            continue;
+          }
+          if (npc.path.length === 0) {
+            if (now < npc.waitUntil) {
+              npc.actor.setWalking(false);
+              npc.actor.update(dt);
+              continue;
+            }
+            const lotId = shiftClosing?.lotId;
+            const goals = lotId ? closingExitGoals(lotId, npc.id) : [];
+            if (goals.length === 0) {
+              finishPatronLeave(npc);
+              continue;
+            }
+            const p = npc.actor.getPosition();
+            const start = {
+              x: Math.floor(p.x / TILE),
+              y: Math.floor(p.z / TILE),
+            };
+            const path = findPathToAny(
+              closingNpcBlocked(npc.id),
+              start,
+              goals,
+              MAP_W,
+              MAP_H,
+            );
+            if (path.length <= 1) {
+              finishPatronLeave(npc);
+              continue;
+            }
+            npc.path = path.slice(1);
+          }
+          const next = npc.path[0]!;
+          const tx = next.x * TILE + TILE / 2;
+          const tz = next.y * TILE + TILE / 2;
+          const p = npc.actor.getPosition();
+          const dx = tx - p.x;
+          const dz = tz - p.z;
+          const dist = Math.hypot(dx, dz);
+          const step = 48 * dt;
+          if (dist <= step) {
+            npc.actor.setPosition(tx, tz);
+            npc.path.shift();
+            if (npc.path.length === 0) {
+              finishPatronLeave(npc);
+              continue;
+            }
+          } else {
+            npc.actor.setPosition(
+              p.x + (dx / dist) * step,
+              p.z + (dz / dist) * step,
+            );
+            if (Math.abs(dx) > Math.abs(dz))
+              npc.dir = dx > 0 ? "right" : "left";
+            else npc.dir = dz > 0 ? "down" : "up";
+            npc.actor.setFacing(npc.dir);
+            npc.actor.setWalking(true);
+          }
+          npc.actor.update(dt);
+          continue;
+        }
+
         // Seated hangabouts stay on their chair.
         if (npc.seated) {
           npc.actor.setWalking(false);
@@ -8195,6 +8680,7 @@ export function createWorldScreen(
         const rect = app.canvas.getBoundingClientRect();
         const positions = new Map<string, { x: number; z: number }>();
         for (const npc of npcs) {
+          if (npc.leftForDay) continue;
           positions.set(npc.id, npc.actor.getPosition());
         }
         nametags.setQuestOfferIds(quests.pendingOfferNpcIds());

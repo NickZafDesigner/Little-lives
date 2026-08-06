@@ -1,11 +1,20 @@
 import type { PlayerLook } from "../data/character";
+import { NEED_CRITICAL, NEED_LABELS, NEED_LOW } from "../data/needs";
+import type { NeedId } from "../data/types";
 import { Audio } from "../audio/AudioManager";
 import { drawPortrait, type PortraitId } from "./portraits";
+
+export interface DialogueNeedHint {
+  id: NeedId;
+  value: number;
+}
 
 export interface DialogueLine {
   speakerId: PortraitId;
   speakerName: string;
   text: string;
+  /** Critical need thought - show which meter is in trouble. */
+  needHint?: DialogueNeedHint;
 }
 
 export interface DialogueChoice {
@@ -26,6 +35,7 @@ export class DialogueBox {
   private portrait: HTMLCanvasElement;
   private nameEl: HTMLElement;
   private textEl: HTMLElement;
+  private needEl: HTMLElement;
   private continueEl: HTMLElement;
   private choicesEl: HTMLElement;
   private visible = false;
@@ -75,6 +85,10 @@ export class DialogueBox {
     this.textEl = document.createElement("div");
     this.textEl.className = "ll-dialogue-text";
 
+    this.needEl = document.createElement("div");
+    this.needEl.className = "ll-dialogue-need";
+    this.needEl.hidden = true;
+
     this.continueEl = document.createElement("div");
     this.continueEl.className = "ll-dialogue-continue";
     this.continueEl.textContent = "Click anywhere · Space";
@@ -84,7 +98,13 @@ export class DialogueBox {
     this.choicesEl.className = "ll-dialogue-choices";
     this.choicesEl.hidden = true;
 
-    body.append(this.nameEl, this.textEl, this.continueEl, this.choicesEl);
+    body.append(
+      this.nameEl,
+      this.textEl,
+      this.needEl,
+      this.continueEl,
+      this.choicesEl,
+    );
     this.root.append(this.portrait, body);
     this.wrap.appendChild(this.root);
     parent.appendChild(this.wrap);
@@ -217,6 +237,7 @@ export class DialogueBox {
     this.visible = false;
     this.ignoreUntil = 0;
     this.clearChoices();
+    this.clearNeedHint();
 
     // Already gone
     if (this.wrap.hidden) {
@@ -254,6 +275,7 @@ export class DialogueBox {
     this.root.classList.remove("is-done", "is-enter", "is-exit", "has-choices");
     this.textEl.textContent = "";
     this.nameEl.textContent = "";
+    this.clearNeedHint();
     this.continueEl.hidden = true;
     this.clearChoices();
     const cb = this.onClosed;
@@ -417,11 +439,33 @@ export class DialogueBox {
     this.charsSinceVoice = 0;
     this.typing = true;
     this.textEl.textContent = "";
+    this.setNeedHint(next.needHint);
     this.continueEl.hidden = true;
     this.ignoreUntil = performance.now() + 280;
     this.refreshPortrait();
     this.bindKeys();
     Audio.voice(this.speakerId);
+  }
+
+  private setNeedHint(hint?: DialogueNeedHint) {
+    if (!hint) {
+      this.clearNeedHint();
+      return;
+    }
+    const v = Math.max(0, Math.min(100, Math.round(hint.value)));
+    let tone = "ok";
+    if (v < NEED_CRITICAL) tone = "bad is-critical";
+    else if (v < NEED_LOW) tone = "bad";
+    else if (v < 55) tone = "warn";
+    this.needEl.hidden = false;
+    this.needEl.innerHTML = `<span class="ll-dialogue-need-label">${escapeHtml(NEED_LABELS[hint.id])}</span><div class="ll-bar" role="meter" aria-label="${escapeHtml(NEED_LABELS[hint.id])}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${v}"><i class="${tone}" style="width:${v}%"></i></div><b class="ll-dialogue-need-val">${v}</b>`;
+    this.root.classList.add("has-need");
+  }
+
+  private clearNeedHint() {
+    this.needEl.hidden = true;
+    this.needEl.innerHTML = "";
+    this.root.classList.remove("has-need");
   }
 
   private bindKeys() {

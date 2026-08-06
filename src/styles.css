@@ -4398,6 +4398,47 @@ input:focus-visible {
   white-space: pre-wrap;
 }
 
+.ll-dialogue.has-need .ll-dialogue-text {
+  min-height: 0;
+}
+
+.ll-dialogue-need {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.45rem;
+  align-items: center;
+  margin-top: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(74, 52, 40, 0.06);
+  border-radius: var(--ll-r-md);
+  max-width: 220px;
+}
+
+.ll-dialogue-need[hidden] {
+  display: none !important;
+}
+
+.ll-dialogue-need-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ll-ink-soft);
+}
+
+.ll-dialogue-need .ll-bar {
+  min-width: 84px;
+}
+
+.ll-dialogue-need-val {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--ll-ink);
+  font-variant-numeric: tabular-nums;
+  min-width: 1.4em;
+  text-align: right;
+}
+
 .ll-dialogue-continue {
   position: absolute;
   right: 0;
