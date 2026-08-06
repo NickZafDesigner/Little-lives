@@ -186,9 +186,12 @@ export class TownRenderer {
       8000,
     );
     // Bake a fixed oblique orientation once - never re-derive it per frame.
+    // Order MUST be set before lookAt: changing it afterward recomposes the
+    // quaternion from XYZ-stored euler under YXZ and injects ~15° of roll,
+    // tilting every world-vertical off screen-upright.
+    this.camera.rotation.order = "YXZ";
     this.camera.position.copy(this.camOffset);
     this.camera.lookAt(0, 10, 0);
-    this.camera.rotation.order = "YXZ";
     this.camQuat.copy(this.camera.quaternion);
 
     this.hemi = new THREE.HemisphereLight(0xfff4e0, 0x6b9a55, 0.95);
