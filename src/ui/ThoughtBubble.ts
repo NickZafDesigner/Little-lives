@@ -17,6 +17,10 @@ export class ThoughtBubble {
   private sequenceTimer: number | null = null;
   private sequenceToken = 0;
   private zoomed = false;
+  /** Fired once when the bubble fully clears (not when replaced by another thought). */
+  private clearWaiters: Array<() => void> = [];
+  /** Fires whenever visibility flips (toasts / celebrations gate on this). */
+  onVisibilityChange: ((visible: boolean) => void) | null = null;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement("div");
@@ -39,6 +43,18 @@ export class ThoughtBubble {
 
   isVisible(): boolean {
     return this.visible;
+  }
+
+  /**
+   * Run `cb` once the bubble is fully clear (not visible).
+   * Fires immediately if nothing is showing.
+   */
+  whenCleared(cb: () => void) {
+    if (!this.visible) {
+      cb();
+      return;
+    }
+    this.clearWaiters.push(cb);
   }
 
   /** Enlarge the bubble while the camera is in cinematic close-up. */
@@ -155,7 +171,7 @@ export class ThoughtBubble {
     this.clearHideTimer();
     this.preview.dispose();
     if (!this.visible) return;
-    this.visible = false;
+    this.setVisible(false);
     this.bubble.classList.remove("is-in");
     this.bubble.classList.add("is-out");
     window.setTimeout(() => {
@@ -195,12 +211,24 @@ export class ThoughtBubble {
     this.clearSequence();
     this.clearHideTimer();
     this.preview.dispose();
+    this.clearWaiters.length = 0;
+    this.onVisibilityChange = null;
     this.visible = false;
     this.root.remove();
   }
 
+  private setVisible(next: boolean) {
+    if (this.visible === next) return;
+    this.visible = next;
+    this.onVisibilityChange?.(next);
+    if (!next) {
+      const waiters = this.clearWaiters.splice(0);
+      for (const cb of waiters) cb();
+    }
+  }
+
   private reveal() {
-    this.visible = true;
+    this.setVisible(true);
     this.bubble.hidden = false;
     this.bubble.classList.remove("is-out");
     // Restart enter animation

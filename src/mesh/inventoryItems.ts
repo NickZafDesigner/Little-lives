@@ -160,6 +160,33 @@ function makeFlower(): THREE.Group {
   return g;
 }
 
+function makeShell(): THREE.Group {
+  const g = new THREE.Group();
+  addBlob(g, matSmooth(Palette.cream), 0, 3.2, 0, 4.2, 1.35, 0.55, 1.15);
+  addBlob(g, matSmooth(Palette.blush), 0.4, 3.6, 0.2, 2.6, 1.2, 0.45, 1);
+  addBlob(g, matSmooth(Palette.sandDark), -1.8, 2.6, -0.4, 1.8, 1, 0.5, 0.9);
+  addBox(g, matFlat(Palette.creamDark), 2.4, 3.4, 0, 2.2, 1.4, 3.2);
+  return g;
+}
+
+function makeMushroom(): THREE.Group {
+  const g = new THREE.Group();
+  addBox(g, matFlat(Palette.cream), 0, 3.5, 0, 2.2, 6, 2.2);
+  addBlob(g, matSmooth(Palette.blushDark), 0, 8.2, 0, 5.2, 1.15, 0.55, 1.15);
+  addBlob(g, matSmooth(Palette.cream), -1.6, 7.6, 1.2, 1.1);
+  addBlob(g, matSmooth(Palette.cream), 1.8, 7.4, -0.8, 0.9);
+  return g;
+}
+
+function makeFeather(): THREE.Group {
+  const g = new THREE.Group();
+  addBox(g, matFlat(Palette.woodLight), 0, 5, 0, 1.1, 12, 1.1);
+  addBlob(g, matSmooth(Palette.white), 0, 9, 0, 3.4, 1.4, 0.35, 1);
+  addBlob(g, matSmooth(Palette.lavender), 0.6, 6.5, 0.2, 2.6, 1.2, 0.3, 0.95);
+  addBlob(g, matSmooth(Palette.sky), -0.5, 4.2, -0.2, 2.2, 1.1, 0.28, 0.9);
+  return g;
+}
+
 const toolMakers: Record<ToolId, () => THREE.Group> = {
   axe: makeAxe,
   pickaxe: makePickaxe,
@@ -178,6 +205,9 @@ const materialMakers: Record<MaterialId, () => THREE.Group> = {
   orange: makeOrange,
   grape: makeGrape,
   flower: makeFlower,
+  shell: makeShell,
+  mushroom: makeMushroom,
+  feather: makeFeather,
 };
 
 export type InventoryThumbId = `tool:${ToolId}` | `mat:${MaterialId}`;

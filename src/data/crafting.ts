@@ -12,6 +12,8 @@ export type CraftedId =
   | "fruit_jam"
   | "clay_mug"
   | "ore_trinket"
+  | "shell_charm"
+  | "keepsake_jar"
   | "pet_toy_mouse"
   | "craft_stool"
   | "craft_planter"
@@ -98,6 +100,36 @@ export const RECIPES: RecipeDef[] = [
     output: "gift",
     giftDelta: 30,
     giftPreference: { reed: 8, theo: 5, vera: 3 },
+  },
+  {
+    id: "shell_charm",
+    name: "Shell Charm",
+    description: "A beach shell strung with a wildflower ribbon.",
+    costs: [
+      { itemId: "shell", count: 2 },
+      { itemId: "flower", count: 1 },
+    ],
+    mini: "hold",
+    unlock: { kind: "always" },
+    output: "gift",
+    giftDelta: 26,
+    giftPreference: { vera: 8, pip: 6, jun: 3 },
+  },
+  {
+    id: "keepsake_jar",
+    name: "Keepsake Jar",
+    description: "A little jar of town finds - shell, mushroom, feather, bloom.",
+    costs: [
+      { itemId: "shell", count: 1 },
+      { itemId: "mushroom", count: 1 },
+      { itemId: "feather", count: 1 },
+      { itemId: "flower", count: 1 },
+    ],
+    mini: "sequence",
+    unlock: { kind: "town_favor", min: 3 },
+    output: "gift",
+    giftDelta: 36,
+    giftPreference: { mabel: 6, theo: 8, pip: 4, jun: 3, sage: 3, vera: 3, reed: 3 },
   },
   {
     id: "pet_toy_mouse",
@@ -249,6 +281,29 @@ export const COMMISSION_TEMPLATES: CommissionTemplate[] = [
     rewardMoney: 12,
     rewardFriendship: 10,
     rewardFavor: 1,
+  },
+  {
+    id: "pip_shells",
+    kind: "deliver_material",
+    title: "Pond Edge Shells",
+    blurb: "Pip wants 3 seashells to line the pond rim.",
+    npcId: "pip",
+    materialId: "shell",
+    materialCount: 3,
+    rewardMoney: 16,
+    rewardFriendship: 12,
+    rewardFavor: 1,
+  },
+  {
+    id: "theo_keepsake",
+    kind: "deliver_craft",
+    title: "Library Keepsake",
+    blurb: "Theo would love a Keepsake Jar for the reading nook.",
+    npcId: "theo",
+    craftedId: "keepsake_jar",
+    rewardMoney: 32,
+    rewardFriendship: 16,
+    rewardFavor: 2,
   },
   {
     id: "vera_wood",

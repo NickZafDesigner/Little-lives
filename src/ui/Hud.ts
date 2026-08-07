@@ -756,6 +756,14 @@ export class Hud {
 
   private updateToast() {
     const s = this.state;
+    // Hide while a thought bubble holds toasts (message is queued / paused).
+    if (s.toastHeld) {
+      if (this.toastVisible) {
+        this.toastVisible = false;
+        this.toastEl.hidden = true;
+      }
+      return;
+    }
     const visible = performance.now() < s.toastUntil;
     if (!visible) {
       if (this.toastVisible) {

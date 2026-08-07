@@ -291,7 +291,9 @@ export interface SaveData {
   harvestDepleted?: Record<string, number>;
   /** Harvest node uid → dayIndex when fruit was shaken loose (respawns next day). */
   harvestShaken?: Record<string, number>;
-  /** Flower tile key "tx,ty" → dayIndex when picked. */
+  /** Forage tile key "tx,ty" → dayIndex when picked (flowers + overlays). */
+  forageDepleted?: Record<string, number>;
+  /** @deprecated Migrated into forageDepleted on load. */
   flowerDepleted?: Record<string, number>;
   /** Villagers who have moved into the player's home. */
   roommates?: string[];

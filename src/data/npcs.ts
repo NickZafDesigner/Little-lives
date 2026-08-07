@@ -122,6 +122,24 @@ export const BAG_GIFTS: Array<{
     delta: 16,
     preference: { reed: 4, pip: 3, vera: 2 },
   },
+  {
+    itemId: "shell",
+    label: "Give Seashell",
+    delta: 15,
+    preference: { vera: 6, pip: 5, jun: 2 },
+  },
+  {
+    itemId: "mushroom",
+    label: "Give Mushroom",
+    delta: 16,
+    preference: { sage: 7, reed: 5, theo: 2 },
+  },
+  {
+    itemId: "feather",
+    label: "Give Feather",
+    delta: 14,
+    preference: { theo: 7, jun: 5, mabel: 2 },
+  },
 ];
 
 /** Handmade gifts from the craft table. */
@@ -154,6 +172,18 @@ export const CRAFTED_GIFTS: Array<{
     label: "Give Ore Trinket",
     delta: 30,
     preference: { reed: 8, theo: 5, vera: 3 },
+  },
+  {
+    craftedId: "shell_charm",
+    label: "Give Shell Charm",
+    delta: 26,
+    preference: { vera: 8, pip: 6, jun: 3 },
+  },
+  {
+    craftedId: "keepsake_jar",
+    label: "Give Keepsake Jar",
+    delta: 36,
+    preference: { mabel: 6, theo: 8, pip: 4, jun: 3, sage: 3, vera: 3, reed: 3 },
   },
 ];
 

@@ -82,6 +82,11 @@ import {
   type MaterialId,
   type ToolId,
 } from "../data/items";
+import {
+  forageById,
+  rollForageYield,
+  type ForageItemId,
+} from "../data/forage";
 import type {
   Dir,
   JobDef,
@@ -235,7 +240,7 @@ type TargetKind =
   | "pet"
   | "sign"
   | "harvest"
-  | "flower"
+  | "forage"
   | "porch"
   | "quest_item";
 
@@ -246,6 +251,8 @@ interface Target {
   tiles: GridPos[];
   x: number;
   z: number;
+  /** Set for forage targets. */
+  forageItemId?: ForageItemId;
 }
 
 const WALK_SPEED = 237;
@@ -355,14 +362,16 @@ export function createWorldScreen(
   /** First-day boss walks up to welcome + point at the clock-in station. */
   let pendingJobWelcome: string | null = null;
   /**
-   * Unfinished shift at 5pm: patrons leave first, then boss warning.
-   * Boss approach is paused while this is set.
+   * Closing time: patrons leave (staggered). Unfinished shifts then get a
+   * boss warning; completed shifts just clear the floor. Boss approach is
+   * paused while this is set (needed for exit pathfinding lotId).
    */
   let shiftClosing: null | {
     jobId: string;
     lotId: LotId;
     startedAt: number;
     warnQueued: boolean;
+    unfinished: boolean;
   } = null;
   /** Edge-detect dayTime crossing WORK_END. */
   let prevDayTimeForClosing = -1;
@@ -742,6 +751,24 @@ export function createWorldScreen(
         "Ooh, fresh fruit! You're a peach.",
       ];
     }
+    if (itemId === "shell") {
+      return [
+        "A seashell from the pier? How thoughtful!",
+        "I can almost hear the waves. Thank you!",
+      ];
+    }
+    if (itemId === "mushroom") {
+      return [
+        "A Whisperwood find! I'll handle it carefully.",
+        "Forest treasure - you're so thoughtful.",
+      ];
+    }
+    if (itemId === "feather") {
+      return [
+        "A soft feather - perfect for a bookmark.",
+        "Light as a wish. Thank you!",
+      ];
+    }
     return [
       `Fresh ${matName.toLowerCase()}? You spoil me!`,
       "A thoughtful gift - thank you.",
@@ -909,6 +936,8 @@ export function createWorldScreen(
     if (craftedId === "fruit_jam") return "grape";
     if (craftedId === "clay_mug") return "clay";
     if (craftedId === "ore_trinket") return "ore";
+    if (craftedId === "shell_charm") return "shell";
+    if (craftedId === "keepsake_jar") return "flower";
     return "wood";
   };
 
@@ -1411,9 +1440,9 @@ export function createWorldScreen(
     }
   };
 
-  const syncFlowerVisuals = () => {
-    for (const handle of app.renderer.getFlowerHandles()) {
-      handle.root.visible = !state.isFlowerDepleted(handle.tx, handle.ty);
+  const syncForageVisuals = () => {
+    for (const handle of app.renderer.getForageHandles()) {
+      handle.root.visible = !state.isForageDepleted(handle.tx, handle.ty);
     }
   };
 
@@ -1924,15 +1953,17 @@ export function createWorldScreen(
         z: (node.ty + fp / 2) * TILE,
       });
     }
-    for (const handle of app.renderer.getFlowerHandles()) {
-      if (state.isFlowerDepleted(handle.tx, handle.ty)) continue;
+    for (const handle of app.renderer.getForageHandles()) {
+      if (state.isForageDepleted(handle.tx, handle.ty)) continue;
+      const def = forageById[handle.itemId];
       out.push({
-        kind: "flower",
+        kind: "forage",
         id: `${handle.tx},${handle.ty}`,
-        label: "Wildflower",
+        label: def?.label ?? handle.itemId,
         tiles: [{ x: handle.tx, y: handle.ty }],
         x: handle.tx * TILE + TILE / 2,
         z: handle.ty * TILE + TILE / 2,
+        forageItemId: handle.itemId,
       });
     }
     for (const drop of state.porchDrops) {
@@ -1999,7 +2030,7 @@ export function createWorldScreen(
     for (const handle of harvestHandles.values()) {
       if (handle.root.visible) out.push(handle.root);
     }
-    for (const handle of app.renderer.getFlowerHandles()) {
+    for (const handle of app.renderer.getForageHandles()) {
       if (handle.root.visible) out.push(handle.root);
     }
     for (const mesh of porchMeshes.values()) out.push(mesh);
@@ -2038,10 +2069,10 @@ export function createWorldScreen(
           null
         );
       }
-      const flowerTile = cur.userData.flowerTile as string | undefined;
-      if (flowerTile) {
+      const forageTile = cur.userData.forageTile as string | undefined;
+      if (forageTile) {
         return (
-          targets.find((t) => t.kind === "flower" && t.id === flowerTile) ?? null
+          targets.find((t) => t.kind === "forage" && t.id === forageTile) ?? null
         );
       }
       const porchUid = cur.userData.porchUid as string | undefined;
@@ -2109,7 +2140,7 @@ export function createWorldScreen(
       const node = state.harvestNodes.find((n) => n.uid === t.id);
       return harvestFootprint(node?.defId ?? "") >= 2 ? 56 : 36;
     }
-    if (t.kind === "flower") return 22;
+    if (t.kind === "forage") return 22;
     if (t.kind === "porch" || t.kind === "quest_item") return 18;
     return 28;
   };
@@ -2123,7 +2154,10 @@ export function createWorldScreen(
     if (t.kind === "quest_item") return "Pick up";
     if (t.kind === "pet") return "Cuddle";
     if (t.kind === "sign") return "Read";
-    if (t.kind === "flower") return "Pick";
+    if (t.kind === "forage") {
+      const itemId = t.forageItemId;
+      return (itemId && forageById[itemId]?.verb) || "Pick";
+    }
     if (t.kind === "porch") return "Collect";
     if (t.kind === "harvest") {
       const node = state.harvestNodes.find((n) => n.uid === t.id);
@@ -2451,9 +2485,21 @@ export function createWorldScreen(
   /** Sequenced milestone banners so reward / unlock / afford don't collide. */
   const celebQueue: Array<(done: () => void) => void> = [];
   let celebBusy = false;
+  let celebThoughtWait: (() => void) | null = null;
 
   const pumpCelebQueue = () => {
     if (celebBusy) return;
+    if (thoughtBubble?.isVisible()) {
+      if (!celebThoughtWait) {
+        celebThoughtWait = () => {
+          celebThoughtWait = null;
+          pumpCelebQueue();
+        };
+        thoughtBubble.whenCleared(celebThoughtWait);
+      }
+      return;
+    }
+    celebThoughtWait = null;
     const job = celebQueue.shift();
     if (!job) return;
     celebBusy = true;
@@ -2466,6 +2512,12 @@ export function createWorldScreen(
   const enqueueCelebration = (job: (done: () => void) => void) => {
     celebQueue.push(job);
     pumpCelebQueue();
+  };
+
+  /** Hold toasts while thoughts are up; resume celebrations when they clear. */
+  const syncThoughtGate = (thinking: boolean) => {
+    state.setToastHeld(thinking);
+    if (!thinking) pumpCelebQueue();
   };
 
   const primaryJobId = (): string | null => {
@@ -2769,6 +2821,43 @@ export function createWorldScreen(
     thoughtBubble?.showSequence(lines, msPerBeat);
   };
 
+  /** Play a moment banner immediately (caller owns sequencing via celeb queue). */
+  const playMomentCelebration = (
+    opts: {
+      eyebrow: string;
+      title: string;
+      note?: string;
+      badge?: string;
+      thumbId?: import("../mesh/inventoryItems").InventoryThumbId;
+      furnitureDefId?: string;
+      accent?: "gold" | "mint" | "rose";
+      confetti?: "soft" | "big" | "huge";
+      palette?: "party" | "gold";
+      sfx?: "success" | "chime" | "adopt" | "cash";
+      durationMs?: number;
+      onDone?: () => void;
+    },
+    done?: () => void,
+  ) => {
+    Audio.sfx(opts.sfx ?? "success");
+    confetti.burst(opts.confetti ?? "big", undefined, opts.palette ?? "party");
+    hud?.pulseAvatar();
+    momentCelebration.show({
+      eyebrow: opts.eyebrow,
+      title: opts.title,
+      note: opts.note,
+      badge: opts.badge,
+      thumbId: opts.thumbId,
+      furnitureDefId: opts.furnitureDefId,
+      accent: opts.accent ?? "gold",
+      durationMs: opts.durationMs ?? 3400,
+      onDone: () => {
+        opts.onDone?.();
+        done?.();
+      },
+    });
+  };
+
   /** Big centered banner + confetti for tools, pets, promotions, and similar milestones. */
   const celebrateKeyItem = (opts: {
     eyebrow: string;
@@ -2784,20 +2873,7 @@ export function createWorldScreen(
     durationMs?: number;
     onDone?: () => void;
   }) => {
-    Audio.sfx(opts.sfx ?? "success");
-    confetti.burst(opts.confetti ?? "big", undefined, opts.palette ?? "party");
-    hud?.pulseAvatar();
-    momentCelebration.show({
-      eyebrow: opts.eyebrow,
-      title: opts.title,
-      note: opts.note,
-      badge: opts.badge,
-      thumbId: opts.thumbId,
-      furnitureDefId: opts.furnitureDefId,
-      accent: opts.accent ?? "gold",
-      durationMs: opts.durationMs ?? 3400,
-      onDone: opts.onDone,
-    });
+    enqueueCelebration((done) => playMomentCelebration(opts, done));
   };
 
   const ownsHomeSofa = () =>
@@ -2830,19 +2906,21 @@ export function createWorldScreen(
         done();
         return;
       }
-      celebrateKeyItem({
-        eyebrow: "You can buy it!",
-        title: "Sunny Sofa",
-        note: `You have $${state.money} · sofa costs $${price} · press B at home`,
-        furnitureDefId: "sofa",
-        badge: "★",
-        accent: "gold",
-        confetti: "big",
-        palette: "gold",
-        sfx: "chime",
-        durationMs: 4200,
-        onDone: done,
-      });
+      playMomentCelebration(
+        {
+          eyebrow: "You can buy it!",
+          title: "Sunny Sofa",
+          note: `You have $${state.money} · sofa costs $${price} · press B at home`,
+          furnitureDefId: "sofa",
+          badge: "★",
+          accent: "gold",
+          confetti: "big",
+          palette: "gold",
+          sfx: "chime",
+          durationMs: 4200,
+        },
+        done,
+      );
     });
     void opts;
   };
@@ -2889,41 +2967,35 @@ export function createWorldScreen(
         ? (`mat:${mats[0].id}` as import("../mesh/inventoryItems").InventoryThumbId)
         : undefined;
 
-    enqueueCelebration((done) => {
-      celebrateKeyItem({
-        eyebrow: "Rewards!",
-        title: def.title,
-        note: noteBits.length
-          ? noteBits.join(" · ")
-          : "Thanks for helping out.",
-        badge: money > 0 ? "$" : "✓",
-        thumbId: rewardThumb,
-        accent: "mint",
-        confetti: money > 0 || mats.length > 0 ? "huge" : "big",
-        palette: "party",
-        sfx: money > 0 ? "cash" : "chime",
-        durationMs: 4500,
-        onDone: done,
-      });
+    celebrateKeyItem({
+      eyebrow: "Rewards!",
+      title: def.title,
+      note: noteBits.length
+        ? noteBits.join(" · ")
+        : "Thanks for helping out.",
+      badge: money > 0 ? "$" : "✓",
+      thumbId: rewardThumb,
+      accent: "mint",
+      confetti: money > 0 || mats.length > 0 ? "huge" : "big",
+      palette: "party",
+      sfx: money > 0 ? "cash" : "chime",
+      durationMs: 4500,
     });
 
     // Separate unlock moment(s) — available to buy, not "you can afford".
     for (const name of unlockFurniture) {
       const defId = Object.values(furnitureById).find((f) => f.name === name)?.id;
-      enqueueCelebration((done) => {
-        celebrateKeyItem({
-          eyebrow: "Catalog unlock!",
-          title: name,
-          note: "Now available to buy in build mode",
-          furnitureDefId: defId,
-          badge: "★",
-          accent: "rose",
-          confetti: "soft",
-          palette: "party",
-          sfx: "chime",
-          durationMs: 3600,
-          onDone: done,
-        });
+      celebrateKeyItem({
+        eyebrow: "Catalog unlock!",
+        title: name,
+        note: "Now available to buy in build mode",
+        furnitureDefId: defId,
+        badge: "★",
+        accent: "rose",
+        confetti: "soft",
+        palette: "party",
+        sfx: "chime",
+        durationMs: 3600,
       });
     }
 
@@ -3253,6 +3325,23 @@ export function createWorldScreen(
     }
   };
 
+  /** Start staggered patron exits for this job's lot (shared by both end paths). */
+  const beginShiftClosing = (
+    job: JobDef,
+    opts: { unfinished: boolean },
+  ) => {
+    if (shiftClosing) return;
+
+    shiftClosing = {
+      jobId: job.id,
+      lotId: job.lotId,
+      startedAt: performance.now(),
+      warnQueued: false,
+      unfinished: opts.unfinished,
+    };
+    queuePatronsLeave(job.lotId);
+  };
+
   const beginUnfinishedShiftClosing = (jobId: string) => {
     const job = jobById[jobId];
     if (!job || shiftClosing) return;
@@ -3269,13 +3358,7 @@ export function createWorldScreen(
     state.jobQualityScores = [];
     state.shiftLate = false;
 
-    shiftClosing = {
-      jobId,
-      lotId: job.lotId,
-      startedAt: performance.now(),
-      warnQueued: false,
-    };
-    queuePatronsLeave(job.lotId);
+    beginShiftClosing(job, { unfinished: true });
     think("Closing time - customers are heading out…", 3800);
   };
 
@@ -3296,7 +3379,10 @@ export function createWorldScreen(
 
     shiftClosing.warnQueued = true;
     const jobId = shiftClosing.jobId;
+    const unfinished = shiftClosing.unfinished;
     shiftClosing = null;
+
+    if (!unfinished) return;
 
     // Late clock-in may already have noted a miss today - don't double-strike.
     if (state.lastWorkMissDay !== state.dayIndex) {
@@ -3981,8 +4067,8 @@ export function createWorldScreen(
       beginHarvest(target);
       return;
     }
-    if (target.kind === "flower") {
-      beginFlowerPick(target);
+    if (target.kind === "forage") {
+      beginForagePick(target);
       return;
     }
     if (target.kind === "porch") {
@@ -4201,12 +4287,18 @@ export function createWorldScreen(
     });
   };
 
-  const beginFlowerPick = (target: Target) => {
+  const beginForagePick = (target: Target) => {
     const [txS, tyS] = target.id.split(",");
     const tx = Number(txS);
     const ty = Number(tyS);
     if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
-    if (state.isFlowerDepleted(tx, ty)) return;
+    if (state.isForageDepleted(tx, ty)) return;
+    const itemId: ForageItemId =
+      target.forageItemId ??
+      app.renderer.getForageHandles().find((h) => h.tx === tx && h.ty === ty)
+        ?.itemId ??
+      "flower";
+    const def = forageById[itemId];
     Audio.sfx("interact");
     const cx = tx * TILE + TILE / 2;
     const cz = ty * TILE + TILE / 2;
@@ -4218,32 +4310,42 @@ export function createWorldScreen(
     player.setWalking(false);
     player.setPoseMotion({ leanX: 0.42, hopY: -0.06 });
     const duration = 900;
-    state.startBusy("Picking", duration);
+    const busyLabel = def?.verb === "Scoop" ? "Scooping" : "Picking";
+    state.startBusy(busyLabel, duration);
     delayed(duration, () => {
       player.setPoseMotion(null);
-      if (state.isFlowerDepleted(tx, ty)) return;
-      const count = 1 + (Math.random() < 0.35 ? 1 : 0);
-      state.depleteFlower(tx, ty);
-      syncFlowerVisuals();
+      if (state.isForageDepleted(tx, ty)) return;
+      const count = rollForageYield(itemId);
+      state.depleteForage(tx, ty);
+      syncForageVisuals();
       Audio.sfx("success");
-      quests.emit("picked_flowers");
-      const yields = [{ itemId: "flower" as MaterialId, count }];
+      if (itemId === "flower") quests.emit("picked_flowers");
+      const yields = [{ itemId: itemId as MaterialId, count }];
       const remaining = { n: count };
+      const matName = materialById[itemId]?.name ?? def?.label ?? itemId;
       const finish = () => {
-        if (remaining.n > 0) state.addMaterial("flower", remaining.n);
+        if (remaining.n > 0) state.addMaterial(itemId, remaining.n);
         remaining.n = 0;
         player.playReaction("jump");
         Audio.sfx("chime");
         confetti.burst("soft");
-        state.showToast(`+${count} Wildflower${count > 1 ? "s" : ""}`, 2200);
-        if (state.setStoryFlag("first_flower_pick")) {
-          delayed(400, () => {
-            thoughtBubble?.showText(
-              "Maybe I can give these to someone so I can make friends!",
-              5600,
-            );
-            Audio.sfx("chime");
-          });
+        const toastMsg = `+${count} ${matName}${count > 1 && !matName.endsWith("s") ? "s" : ""}`;
+        if (state.setStoryFlag("first_flower_pick") && itemId === "flower") {
+          thoughtBubble?.showText(
+            "Maybe I can give these to someone so I can make friends!",
+            5600,
+          );
+          Audio.sfx("chime");
+          state.showToast(toastMsg, 2200);
+        } else if (state.setStoryFlag("first_forage_find") && itemId !== "flower") {
+          thoughtBubble?.showText(
+            "Neat find! Shells by the pier, mushrooms in Whisperwood, feathers in the park…",
+            5600,
+          );
+          Audio.sfx("chime");
+          state.showToast(toastMsg, 2200);
+        } else {
+          state.showToast(toastMsg, 2200);
         }
       };
       if (!lootBurst) {
@@ -4254,7 +4356,7 @@ export function createWorldScreen(
         onPieceCollect: () => {
           if (remaining.n <= 0) return;
           remaining.n -= 1;
-          state.addMaterial("flower", 1);
+          state.addMaterial(itemId, 1);
           Audio.sfx("coin");
         },
         onComplete: finish,
@@ -4791,6 +4893,9 @@ export function createWorldScreen(
     const to = Math.max(from, WORK_END);
     hintArrow?.hide();
 
+    // Same orderly patron exit as letting the clock hit five unfinished.
+    beginShiftClosing(job, { unfinished: false });
+
     timeMontage.play({
       from,
       to,
@@ -4828,70 +4933,73 @@ export function createWorldScreen(
           !state.isPromoted(job.id) &&
           (state.jobShiftCounts[job.id] ?? 0) >= PROMOTION_SHIFTS;
 
-        // Beat 1: payday only - cash + confetti + banner
-        Audio.sfx("cash");
-        confetti.burst("huge", undefined, "gold");
-        hud?.pulseAvatar();
-        payCelebration.show({
-          amount: pay,
-          title: qualityAvg >= 0.85 && !wasLate ? "Big payday!" : "Payday!",
-          note,
-          durationMs: 2800,
-          onDone: () => {
-            // Beat 2: quest / aspiration / promotion story beats
-            quests.emit(jobShiftEvent(job.id), undefined, {
-              unlockToast: false,
-            });
-            quests.emit("any_shift_complete", undefined, {
-              unlockToast: false,
-            });
-            aspirations.noteShift();
-
-            if (willPromote) {
-              state.jobPromoted.push(job.id);
-              const promo = JOB_PROMOTIONS[job.id];
-              if (promo) {
-                const boss = NPCS.find((n) => n.id === job.hireNpcId);
-                state.showDialogue(
-                  (boss?.id ?? "player") as NpcId,
-                  boss?.name ?? "Boss",
-                  promo.bossLine,
-                );
-                celebrateKeyItem({
-                  eyebrow: "Promoted!",
-                  title: promo.title,
-                  note: `New rank at ${lotNameForJob(job.id)}`,
-                  badge: "★",
-                  accent: "gold",
-                  confetti: "huge",
-                  palette: "gold",
-                  sfx: "chime",
-                  durationMs: 3800,
-                });
-              }
-            }
-
-            toastNewUnlocks(state, unlockBefore);
-            queueSofaAffordCelebration();
-
-            // Beat 3: home hint once dialogue / other UI clears
-            const home = buildingHintTarget("home");
-            const hintId = `evening_home_${state.dayIndex}`;
-            let tries = 0;
-            const tryEveningHint = () => {
-              tries += 1;
-              if (uiBusy() && tries < 40) {
-                window.setTimeout(tryEveningHint, 350);
-                return;
-              }
-              fireHint(hintId, "Long day - head home when you're ready.", {
-                x: home.x,
-                z: home.z,
-                label: "Home",
+        // Beat 1: payday only - cash + confetti + banner (waits if a thought is up)
+        enqueueCelebration((done) => {
+          Audio.sfx("cash");
+          confetti.burst("huge", undefined, "gold");
+          hud?.pulseAvatar();
+          payCelebration.show({
+            amount: pay,
+            title: qualityAvg >= 0.85 && !wasLate ? "Big payday!" : "Payday!",
+            note,
+            durationMs: 2800,
+            onDone: () => {
+              // Beat 2: quest / aspiration / promotion story beats
+              quests.emit(jobShiftEvent(job.id), undefined, {
+                unlockToast: false,
               });
-            };
-            window.setTimeout(tryEveningHint, willPromote ? 500 : 350);
-          },
+              quests.emit("any_shift_complete", undefined, {
+                unlockToast: false,
+              });
+              aspirations.noteShift();
+
+              if (willPromote) {
+                state.jobPromoted.push(job.id);
+                const promo = JOB_PROMOTIONS[job.id];
+                if (promo) {
+                  const boss = NPCS.find((n) => n.id === job.hireNpcId);
+                  state.showDialogue(
+                    (boss?.id ?? "player") as NpcId,
+                    boss?.name ?? "Boss",
+                    promo.bossLine,
+                  );
+                  celebrateKeyItem({
+                    eyebrow: "Promoted!",
+                    title: promo.title,
+                    note: `New rank at ${lotNameForJob(job.id)}`,
+                    badge: "★",
+                    accent: "gold",
+                    confetti: "huge",
+                    palette: "gold",
+                    sfx: "chime",
+                    durationMs: 3800,
+                  });
+                }
+              }
+
+              toastNewUnlocks(state, unlockBefore);
+              queueSofaAffordCelebration();
+              done();
+
+              // Beat 3: home hint once dialogue / other UI clears
+              const home = buildingHintTarget("home");
+              const hintId = `evening_home_${state.dayIndex}`;
+              let tries = 0;
+              const tryEveningHint = () => {
+                tries += 1;
+                if (uiBusy() && tries < 40) {
+                  window.setTimeout(tryEveningHint, 350);
+                  return;
+                }
+                fireHint(hintId, "Long day - head home when you're ready.", {
+                  x: home.x,
+                  z: home.z,
+                  label: "Home",
+                });
+              };
+              window.setTimeout(tryEveningHint, willPromote ? 500 : 350);
+            },
+          });
         });
       },
     });
@@ -7604,7 +7712,7 @@ export function createWorldScreen(
         harvestHandles.clear();
         for (const h of built.handles) harvestHandles.set(h.uid, h);
         syncHarvestVisuals();
-        syncFlowerVisuals();
+        syncForageVisuals();
         syncPorchVisuals();
         syncQuestItemVisuals();
       }
@@ -7731,6 +7839,7 @@ export function createWorldScreen(
       nametags = new NpcNameTags(ui);
       buildingTags = new BuildingNameTags(ui, state.playerName);
       thoughtBubble = new ThoughtBubble(ui);
+      thoughtBubble.onVisibilityChange = syncThoughtGate;
       hintArrow = new HintArrow(ui);
       interactTip = new InteractTip(ui);
       interactTip.setOnAction(() => activateTipTarget());
@@ -7939,6 +8048,7 @@ export function createWorldScreen(
       nametags?.destroy();
       buildingTags?.destroy();
       thoughtBubble?.destroy();
+      state.setToastHeld(false);
       hintArrow?.destroy();
       interactTip?.destroy();
       timeMontage?.destroy();
@@ -8634,7 +8744,7 @@ export function createWorldScreen(
         lastHarvestDay = state.dayIndex;
         rebuildCollision();
         syncHarvestVisuals();
-        syncFlowerVisuals();
+        syncForageVisuals();
       }
       syncQuestItemVisuals();
       syncInteractTip();

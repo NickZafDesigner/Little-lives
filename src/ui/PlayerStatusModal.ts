@@ -562,7 +562,7 @@ export class PlayerStatusModal {
       .join("");
 
     return `
-      <p class="ll-status-bag-lead">Gift wildflowers, chat, and hang out to grow friendships. At ${RELATIONSHIP_MAX}, ask a townsfolk to move in.</p>
+      <p class="ll-status-bag-lead">Gift wildflowers, seashells, and handmade keepsakes — chat and hang out to grow friendships. At ${RELATIONSHIP_MAX}, ask a townsfolk to move in.</p>
       <ul class="ll-status-friends">${rows}</ul>
     `;
   }
@@ -578,9 +578,10 @@ export class PlayerStatusModal {
         <li><kbd>R</kbd> <span>Rotate furniture while building</span></li>
         <li><kbd>Esc</kbd> <span>Close menus / exit</span></li>
       </ul>
-      <h3 class="ll-status-section">Friends &amp; flowers</h3>
+      <h3 class="ll-status-section">Friends &amp; finds</h3>
       <ul class="ll-status-tips">
-        <li>Pick wildflowers around town, then gift them to anyone for a friendship boost (one gift per person per day).</li>
+        <li>Pick wildflowers around town, scoop seashells by the pier, find mushrooms in Whisperwood, and soft feathers in the park.</li>
+        <li>Gift finds from your bag (one gift per person per day), or craft a Shell Charm / Keepsake Jar at Reed's workshop.</li>
         <li>Check the Friends tab to see every relationship score and roommate.</li>
         <li>Deeper chats unlock as friendship grows. At 100, ask someone to move in.</li>
         <li>Roommates wander your house - chat anytime, or send them out to harvest. Collect their haul from the porch.</li>

@@ -4,6 +4,7 @@ import {
   seedHarvestNodes,
   type HarvestNodeInstance,
 } from "../data/items";
+import type { ForageSpot } from "../data/forage";
 
 /** Tile codes for the overworld. */
 export const Tile = {
@@ -49,6 +50,8 @@ export interface TownMapData {
   lamps: Array<[number, number]>;
   /** Chop / mine / dig nodes (timber fills empty grass). */
   harvestNodes: HarvestNodeInstance[];
+  /** Overlay forage (shells / mushrooms / feathers); flowers use Tile.flower. */
+  forageSpots: ForageSpot[];
 }
 
 function fillRect(
@@ -1004,7 +1007,91 @@ export function createTownMap(): TownMapData {
     }
   }
 
-  return { ground, collision, doors, rocks, fencePosts, trees, lamps, harvestNodes };
+  const forageSpots: ForageSpot[] = [];
+  const addForage = (tx: number, ty: number, itemId: ForageSpot["itemId"]) => {
+    if (ty < 0 || ty >= MAP_H || tx < 0 || tx >= MAP_W) return;
+    if (collision[ty][tx]) return;
+    const t = ground[ty][tx];
+    if (itemId === "shell") {
+      if (t !== Tile.sand) return;
+    } else if (itemId === "feather") {
+      // Park lawn / ring path (not flower beds or water).
+      if (
+        t !== Tile.grass &&
+        t !== Tile.grassVar &&
+        t !== Tile.dirt &&
+        t !== Tile.parkPath
+      ) {
+        return;
+      }
+    } else if (t !== Tile.grass && t !== Tile.grassVar && t !== Tile.dirt) {
+      return;
+    }
+    if (forageSpots.some((s) => s.tx === tx && s.ty === ty)) return;
+    forageSpots.push({ tx, ty, itemId });
+  };
+
+  // Seashells on the south beach / pier approach sand.
+  for (const [tx, ty] of [
+    [68, 63],
+    [70, 64],
+    [72, 65],
+    [74, 64],
+    [76, 66],
+    [78, 63],
+    [80, 64],
+    [84, 65],
+    [86, 66],
+    [88, 63],
+    [90, 66],
+    [92, 64],
+  ] as Array<[number, number]>) {
+    addForage(tx, ty, "shell");
+  }
+
+  // Cap mushrooms on Whisperwood forest floor.
+  for (const [tx, ty] of [
+    [4, 18],
+    [6, 20],
+    [8, 22],
+    [10, 18],
+    [12, 24],
+    [14, 20],
+    [5, 26],
+    [9, 28],
+    [11, 22],
+    [3, 24],
+  ] as Array<[number, number]>) {
+    addForage(tx, ty, "mushroom");
+  }
+
+  // Soft feathers on / around Town Park (sparser).
+  for (const [tx, ty] of [
+    [25, 16],
+    [27, 15],
+    [32, 14],
+    [34, 14],
+    [26, 26],
+    [40, 26],
+    [32, 17],
+    [37, 16],
+    [30, 24],
+    [41, 19],
+  ] as Array<[number, number]>) {
+    addForage(tx, ty, "feather");
+  }
+
+  return {
+    ground,
+    collision,
+    doors,
+    rocks,
+    fencePosts,
+    trees,
+    lamps,
+    harvestNodes,
+    forageSpots,
+  };
 }
 
 export const SOLID_TILES = new Set<number>([Tile.water, Tile.wall, Tile.bush]);

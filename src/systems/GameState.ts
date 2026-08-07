@@ -365,8 +365,8 @@ export class GameState {
   harvestDepleted: Record<string, number> = {};
   /** uid → dayIndex when fruit was bumped loose; fruit returns next day. */
   harvestShaken: Record<string, number> = {};
-  /** Flower tile "tx,ty" → dayIndex when picked (respawns next day). */
-  flowerDepleted: Record<string, number> = {};
+  /** Forage spot "tx,ty" → dayIndex when picked (flowers + overlays; respawns next day). */
+  forageDepleted: Record<string, number> = {};
   /** Villagers living at the player's home. */
   roommates: NpcId[] = [];
   /** Goods left on the porch for the player to collect. */
@@ -521,18 +521,28 @@ export class GameState {
     this.harvestShaken[uid] = this.dayIndex;
   }
 
-  flowerKey(tx: number, ty: number): string {
+  forageKey(tx: number, ty: number): string {
     return `${tx},${ty}`;
   }
 
-  isFlowerDepleted(tx: number, ty: number): boolean {
-    const day = this.flowerDepleted[this.flowerKey(tx, ty)];
+  isForageDepleted(tx: number, ty: number): boolean {
+    const day = this.forageDepleted[this.forageKey(tx, ty)];
     if (day === undefined) return false;
     return this.dayIndex < day + 1;
   }
 
+  depleteForage(tx: number, ty: number) {
+    this.forageDepleted[this.forageKey(tx, ty)] = this.dayIndex;
+  }
+
+  /** @deprecated Use isForageDepleted. */
+  isFlowerDepleted(tx: number, ty: number): boolean {
+    return this.isForageDepleted(tx, ty);
+  }
+
+  /** @deprecated Use depleteForage. */
   depleteFlower(tx: number, ty: number) {
-    this.flowerDepleted[this.flowerKey(tx, ty)] = this.dayIndex;
+    this.depleteForage(tx, ty);
   }
 
   isRoommate(id: string): boolean {
@@ -700,9 +710,71 @@ export class GameState {
     );
   }
 
+  /**
+   * When true, toasts are queued instead of shown (thought bubble is up).
+   * WorldScreen toggles this from ThoughtBubble visibility.
+   */
+  toastHeld = false;
+  private toastQueue: Array<{ msg: string; ms: number }> = [];
+  private toastDrainTimer: number | null = null;
+
   showToast(msg: string, ms = 2200) {
+    if (this.toastHeld) {
+      this.toastQueue.push({ msg, ms });
+      return;
+    }
+    this.presentToast(msg, ms);
+  }
+
+  /** Hold / release toasts so they don't overlap a character thought bubble. */
+  setToastHeld(held: boolean) {
+    if (held === this.toastHeld) return;
+    if (held) {
+      this.clearToastDrainTimer();
+      const rem = this.toastUntil - performance.now();
+      if (rem > 80 && this.toast) {
+        this.toastQueue.unshift({ msg: this.toast, ms: Math.ceil(rem) });
+      }
+      this.toast = "";
+      this.toastUntil = 0;
+      this.toastHeld = true;
+      return;
+    }
+    this.toastHeld = false;
+    this.drainToastQueue();
+  }
+
+  private presentToast(msg: string, ms: number) {
     this.toast = msg;
     this.toastUntil = performance.now() + ms;
+  }
+
+  private clearToastDrainTimer() {
+    if (this.toastDrainTimer !== null) {
+      window.clearTimeout(this.toastDrainTimer);
+      this.toastDrainTimer = null;
+    }
+  }
+
+  private drainToastQueue() {
+    this.clearToastDrainTimer();
+    if (this.toastHeld || this.toastQueue.length === 0) return;
+    const rem = this.toastUntil - performance.now();
+    if (rem > 80 && this.toast) {
+      this.toastDrainTimer = window.setTimeout(
+        () => this.drainToastQueue(),
+        rem + 60,
+      );
+      return;
+    }
+    const next = this.toastQueue.shift()!;
+    this.presentToast(next.msg, next.ms);
+    if (this.toastQueue.length) {
+      this.toastDrainTimer = window.setTimeout(
+        () => this.drainToastQueue(),
+        next.ms + 60,
+      );
+    }
   }
 
   /**
@@ -862,7 +934,7 @@ export class GameState {
       craftedUnlocks: [...this.craftedUnlocks],
       harvestDepleted: { ...this.harvestDepleted },
       harvestShaken: { ...this.harvestShaken },
-      flowerDepleted: { ...this.flowerDepleted },
+      forageDepleted: { ...this.forageDepleted },
       roommates: [...this.roommates],
       porchDrops: this.porchDrops.map((d) => ({ ...d })),
       npcGiftDay: { ...this.npcGiftDay },
@@ -1004,7 +1076,10 @@ export class GameState {
     this.craftedUnlocks = [...(data.craftedUnlocks ?? [])];
     this.harvestDepleted = { ...(data.harvestDepleted ?? {}) };
     this.harvestShaken = { ...(data.harvestShaken ?? {}) };
-    this.flowerDepleted = { ...(data.flowerDepleted ?? {}) };
+    this.forageDepleted = {
+      ...(data.flowerDepleted ?? {}),
+      ...(data.forageDepleted ?? {}),
+    };
     this.roommates = (data.roommates ?? []).filter((id): id is NpcId =>
       NPCS.some((n) => n.id === id),
     );

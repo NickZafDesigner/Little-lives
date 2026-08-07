@@ -14,7 +14,10 @@ export type MaterialId =
   | "apple"
   | "orange"
   | "grape"
-  | "flower";
+  | "flower"
+  | "shell"
+  | "mushroom"
+  | "feather";
 
 export type HarvestKind = "tree" | "rock" | "ore" | "dig";
 
@@ -168,6 +171,24 @@ export const MATERIALS: MaterialDef[] = [
     name: "Wildflower",
     sellPrice: 2,
     description: "A cheerful bloom. Perfect as a gift for anyone.",
+  },
+  {
+    id: "shell",
+    name: "Seashell",
+    sellPrice: 4,
+    description: "A sun-warmed shell from the pier beach. Nice for charms.",
+  },
+  {
+    id: "mushroom",
+    name: "Cap Mushroom",
+    sellPrice: 5,
+    description: "A soft forest find from Whisperwood. Handle with care.",
+  },
+  {
+    id: "feather",
+    name: "Soft Feather",
+    sellPrice: 3,
+    description: "A light park feather. Lovely in bookmarks and keepsakes.",
   },
 ];
 

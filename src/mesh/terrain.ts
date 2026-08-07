@@ -13,6 +13,8 @@ import {
 } from "./terrainTextures";
 import { AssetLibrary } from "../render/AssetLibrary";
 import { addOutline } from "../render/outline";
+import { createInventoryItemMesh } from "./inventoryItems";
+import type { ForageItemId } from "../data/forage";
 
 const TILE_COLORS: Record<number, number> = {
   [Tile.grass]: Palette.grass,
@@ -103,19 +105,23 @@ function grassCloudTint(tx: number, ty: number): number {
 }
 
 /** Build merged terrain mesh + decorative props for the town. */
-export interface FlowerHandle {
+export interface ForageHandle {
   tx: number;
   ty: number;
+  itemId: ForageItemId;
   root: THREE.Object3D;
 }
 
+/** @deprecated Use ForageHandle — kept as an alias for flower-era callers. */
+export type FlowerHandle = ForageHandle;
+
 export function buildTerrain(map: TownMapData): {
   group: THREE.Group;
-  flowers: FlowerHandle[];
+  forage: ForageHandle[];
 } {
   const root = new THREE.Group();
   root.name = "terrain";
-  const flowers: FlowerHandle[] = [];
+  const forage: ForageHandle[] = [];
 
   const geoCache = new Map<string, THREE.BufferGeometry>();
   const box = (w: number, h: number, d: number) => {
@@ -333,10 +339,10 @@ export function buildTerrain(map: TownMapData): {
           flower.position.set(cx, height - 0.5, cz);
           flower.rotation.y = noise(tx, ty) * Math.PI * 2;
           flower.scale.setScalar(0.85 + noise(ty, tx) * 0.3);
-          flower.userData.flowerTile = `${tx},${ty}`;
+          flower.userData.forageTile = `${tx},${ty}`;
           addOutline(flower, 1.05);
           root.add(flower);
-          flowers.push({ tx, ty, root: flower });
+          forage.push({ tx, ty, itemId: "flower", root: flower });
         }
       }
       if (code === Tile.bush) {
@@ -398,6 +404,33 @@ export function buildTerrain(map: TownMapData): {
     root.add(post);
   }
 
+  // Place-tied forage overlays (shells / mushrooms / feathers).
+  for (const spot of map.forageSpots ?? []) {
+    if (spot.itemId === "flower") continue;
+    if (forage.some((f) => f.tx === spot.tx && f.ty === spot.ty)) continue;
+    const prop = createInventoryItemMesh(`mat:${spot.itemId}`);
+    const cx = spot.tx * TILE + TILE / 2;
+    const cz = spot.ty * TILE + TILE / 2;
+    const n = noise(spot.tx * 2.7, spot.ty * 4.1);
+    const y =
+      spot.itemId === "shell" ? 2.2 : spot.itemId === "feather" ? 3.4 : 2.8;
+    prop.position.set(cx, y, cz);
+    prop.rotation.y = n * Math.PI * 2;
+    prop.scale.setScalar(
+      spot.itemId === "shell" ? 0.42 : spot.itemId === "feather" ? 0.38 : 0.48,
+    );
+    prop.userData.forageTile = `${spot.tx},${spot.ty}`;
+    prop.castShadow = true;
+    addOutline(prop, 1.05);
+    root.add(prop);
+    forage.push({
+      tx: spot.tx,
+      ty: spot.ty,
+      itemId: spot.itemId,
+      root: prop,
+    });
+  }
+
   // Merge meshes sharing materials for fewer draw calls
   for (const [material, meshes] of meshesByMat) {
     if (meshes.length === 0) continue;
@@ -420,7 +453,7 @@ export function buildTerrain(map: TownMapData): {
     for (const g of geos) g.dispose();
   }
 
-  return { group: root, flowers };
+  return { group: root, forage };
 }
 
 function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
